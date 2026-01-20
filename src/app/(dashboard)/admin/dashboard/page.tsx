@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ChevronRight,
   Clock,
@@ -34,6 +35,52 @@ export default function AdminDashboard() {
     invoicingValue: 0,
     totalValue: 0,
   });
+  const [trendPeriod, setTrendPeriod] = useState("monthly");
+
+  const trendData: Record<string, { labels: string[]; data: number[] }> = {
+    weekly: {
+      labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+      data: [15, 25, 20, 35, 30, 45, 40],
+    },
+    monthly: {
+      labels: [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ],
+      data: [35, 45, 30, 60, 55, 70, 50, 65, 80, 55, 45, 60],
+    },
+    yearly: {
+      labels: ["2021", "2022", "2023", "2024", "2025"],
+      data: [40, 55, 45, 70, 65],
+    },
+  };
+
+  const currentTrend = trendData[trendPeriod];
+
+  // Helper to generate SVG path
+  const getPoints = (data: number[]) => {
+    const max = Math.max(...data, 100); // Ensure some headroom
+    const points = data.map((val, i) => {
+      const x = (i / (data.length - 1)) * 100;
+      const y = 100 - (val / max) * 100 * 0.8; // Use 80% of height max
+      return `${x},${y}`;
+    });
+    return points;
+  };
+
+  const points = getPoints(currentTrend.data);
+  const pathD = `M${points.join(" L")}`;
+  const areaD = `${pathD} L100,100 L0,100 Z`;
 
   useEffect(() => {
     // Load projects from LocalStorage to make dashboard dynamic based on user data
@@ -72,34 +119,34 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       {/* Summary Cards Row */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Card 1: Cash on Hand */}
+        {/* Card 1: Money on hand */}
         <Card className="bg-white dark:bg-gray-950">
           <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
               <Euro className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Project Value
+              Money on hand
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
-              € {stats.totalValue.toLocaleString()}
+              € 0
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
-              Across all phases
+              Available liquidity
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 2: Monthly Burn Rate */}
+        {/* Card 2: Monthly burn rate */}
         <Card className="bg-white dark:bg-gray-950">
           <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900">
               <Flame className="h-5 w-5 text-orange-600 dark:text-orange-400" />
             </div>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Est. Monthly Expenses
+              Monthly burn rate
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -110,59 +157,138 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Card 3: Runway */}
+        {/* Card 3: Awaiting payment */}
         <Card className="bg-white dark:bg-gray-950">
           <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary dark:bg-secondary/50">
-              <Clock className="h-5 w-5 text-primary" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+              <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Project Pipeline
+              Awaiting payment
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-secondary dark:text-gray-50">
-                {projects.length}
-              </span>
-              <span className="text-muted-foreground text-sm">
-                Total Projects
-              </span>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              € 0
             </div>
-            <div className="mt-2">
-              <Badge
-                variant="default" // Using default but styling it green
-                className="bg-green-100 text-green-700 hover:bg-green-200 border-0 rounded-sm px-2 font-normal"
-              >
-                Stable
-              </Badge>
+            <div className="mt-2 text-xs text-muted-foreground">
+              0 Invoices pending
             </div>
           </CardContent>
         </Card>
 
-        {/* Card 4: Projects in Payment */}
+        {/* Card 4: Total overdue */}
         <Card className="bg-white dark:bg-gray-950">
           <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900">
-              <Coins className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100 dark:bg-red-900">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
             </div>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Invoicing Potential
+              Total overdue
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-700 dark:text-green-500">
-              € {stats.invoicingValue.toLocaleString()}
+            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+              € 0
             </div>
             <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
               <History className="h-3 w-3" />
               <span className="font-medium text-gray-700 dark:text-gray-300">
-                {stats.invoicing} Ready for Invoice
+                0 Overdue invoices
               </span>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Cash Trend Statistics */}
+      <Card className="bg-white dark:bg-gray-950">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold text-muted-foreground">
+              Cash Trend Statistics
+            </CardTitle>
+            <Tabs
+              value={trendPeriod}
+              onValueChange={setTrendPeriod}
+              className="w-[400px]"
+            >
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                <TabsTrigger value="yearly">Yearly</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="relative h-[250px] w-full pt-4 pb-2">
+            {/* SVG Chart */}
+            <svg
+              className="absolute inset-0 h-full w-full overflow-visible text-primary"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="line-gradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor="currentColor"
+                    stopOpacity="0.2"
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="currentColor"
+                    stopOpacity="0"
+                  />
+                </linearGradient>
+              </defs>
+              <path d={areaD} fill="url(#line-gradient)" />
+              <path
+                d={pathD}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+
+            {/* Interactive Overlay & Tooltips */}
+            {currentTrend.data.map((h, i) => {
+              const max = Math.max(...currentTrend.data, 100);
+              const heightPercent = (h / max) * 100 * 0.8; // Match SVG logic
+              return (
+                <div
+                  key={i}
+                  className="absolute h-full w-10 -ml-5 hover:bg-gray-100/5 dark:hover:bg-white/5 group bg-transparent z-10 cursor-pointer transition-colors"
+                  style={{
+                    left: `${(i / (currentTrend.data.length - 1)) * 100}%`,
+                  }}
+                >
+                  {/* Dot */}
+                  <div
+                    className="absolute w-3 h-3 bg-primary rounded-full ring-4 ring-white dark:ring-gray-950 transition-all scale-0 group-hover:scale-100"
+                    style={{
+                      top: `${100 - heightPercent}%`,
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                  {/* Tooltip */}
+                  <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded shadow whitespace-nowrap z-20 transition-opacity pointer-events-none">
+                    € {(h * 1250).toLocaleString()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between px-2 text-xs text-muted-foreground mt-2">
+            {currentTrend.labels.map((label, i) => (
+              <span key={i}>{label}</span>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -183,7 +309,7 @@ export default function AdminDashboard() {
                       {stats.active}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      In Progress
+                      Active
                     </span>
                   </div>
                   <div className="text-sm font-semibold text-secondary">
@@ -221,18 +347,15 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          {/* Active Projects List Table */}
+          {/* Subcontractor Success Rate */}
           <Card className="bg-white dark:bg-gray-950 flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <CardTitle className="text-base font-semibold text-muted-foreground">
-                  Recent Projects
+                  Subcontractor Success Rate
                 </CardTitle>
-                <div className="text-2xl font-bold mt-1">
-                  {projects.length}{" "}
-                  <span className="text-base font-normal text-muted-foreground">
-                    Total Projects
-                  </span>
+                <div className="text-sm text-muted-foreground mt-1">
+                  Top performing partners
                 </div>
               </div>
               <Button variant="outline" size="sm" className="h-8">
@@ -240,46 +363,64 @@ export default function AdminDashboard() {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-              {projects.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground text-sm">
-                  No projects found. Add a project to see data here.
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
-                    <TableRow>
-                      <TableHead className="w-[40%]">Project</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {projects.slice(0, 5).map((project: any, i: number) => (
-                      <TableRow key={i}>
-                        <TableCell className="py-3">
-                          <div className="font-medium text-sm flex items-center gap-2">
-                            <div className="h-6 w-6 bg-secondary rounded flex items-center justify-center text-primary">
-                              <Building2 className="h-3 w-3" />
-                            </div>
-                            <div>
-                              <div>{project.project}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {project.address}
-                              </div>
-                            </div>
+              <Table>
+                <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+                  <TableRow>
+                    <TableHead className="w-[40%]">Subcontractor</TableHead>
+                    <TableHead>Success Rate</TableHead>
+                    <TableHead className="text-right">Rating</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[
+                    { name: "Elektro-Hofmann GmbH", rate: 98, rating: "A+" },
+                    { name: "Schmidt Bauunternehmung", rate: 92, rating: "A" },
+                    { name: "Müller Sanitärtechnik", rate: 88, rating: "B+" },
+                    { name: "Fischer Bedachungen", rate: 85, rating: "B" },
+                    { name: "Weber Trockenbau", rate: 78, rating: "C+" },
+                  ].map((sub, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="py-3">
+                        <div className="font-medium text-sm flex items-center gap-2">
+                          <div className="h-6 w-6 bg-blue-100 dark:bg-blue-900 rounded flex items-center justify-center text-blue-600 dark:text-blue-400">
+                            <span className="text-xs font-bold">
+                              {sub.name.charAt(0)}
+                            </span>
                           </div>
-                        </TableCell>
-                        <TableCell className="py-3 text-sm text-muted-foreground">
-                          {project.start}
-                        </TableCell>
-                        <TableCell className="py-3 text-right font-medium">
-                          {project.amount}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                          <div>{sub.name}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-24 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-green-500 rounded-full"
+                              style={{ width: `${sub.rate}%` }}
+                            />
+                          </div>
+                          <span className="text-sm text-muted-foreground">
+                            {sub.rate}%
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 text-right">
+                        <Badge
+                          variant="secondary"
+                          className={`${
+                            sub.rating.startsWith("A")
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : sub.rating.startsWith("B")
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                          }`}
+                        >
+                          {sub.rating}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </div>
@@ -290,7 +431,7 @@ export default function AdminDashboard() {
           <Card className="bg-white dark:bg-gray-950 flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">
-                Reklamacije (Complaints)
+                Open Complaints
               </CardTitle>
               <Button variant="outline" size="sm" className="h-8">
                 View All <ChevronRight className="ml-1 h-3 w-3" />

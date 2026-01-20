@@ -11,10 +11,10 @@ import {
   Briefcase,
   Settings,
   LogOut,
-  ShieldAlert,
   Folder,
   Archive,
   HardHat,
+  AlertOctagon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -41,6 +41,7 @@ export function Sidebar({ role }: SidebarProps) {
       { name: "Overview", href: "/admin/dashboard", icon: LayoutDashboard },
       { name: "Financials", href: "/admin/deals", icon: Briefcase },
       { name: "Projects", href: "/admin/projects", icon: Folder },
+      { name: "Complaints", href: "/admin/complaints", icon: AlertOctagon },
       { name: "Contacts", href: "/admin/contacts", icon: Users },
       { name: "Archive", href: "/admin/archive", icon: Archive },
     );

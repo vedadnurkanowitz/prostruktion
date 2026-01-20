@@ -295,7 +295,7 @@ export default function AdminProjects() {
       projectTotal: numericAmount, // Store total for calculations
       action: "Create Invoice",
       overdue: false,
-      status: "Ready",
+      status: "For Invoice",
       days: "Now",
     };
 
@@ -351,9 +351,7 @@ export default function AdminProjects() {
     (p) => p.status === "In Progress" || p.status === "Scheduled",
   ).length;
   const abnahmeProjects = projects.filter((p) => p.abnahme === "Yes").length;
-  const invoicingProjects = projects.filter(
-    (p) => p.invoiceStatus === "Ready" || p.invoiceStatus === "Sent",
-  ).length;
+  // const invoicingProjects removed
   const archivedProjects = projects.filter(
     (p) => p.status === "Archived",
   ).length;
@@ -366,7 +364,7 @@ export default function AdminProjects() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -407,21 +405,6 @@ export default function AdminProjects() {
             <div className="flex items-center justify-between">
               <div className="text-2xl font-bold">{abnahmeProjects}</div>
               <ArrowUpRight className="h-4 w-4 text-orange-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-100 dark:border-purple-900">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <FileText className="h-4 w-4 text-purple-600" /> Projects in
-              Invoicing
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{invoicingProjects}</div>
-              <ArrowUpRight className="h-4 w-4 text-purple-500" />
             </div>
           </CardContent>
         </Card>
@@ -538,152 +521,267 @@ export default function AdminProjects() {
         )}
       </div>
 
-      {/* Main Table */}
-      <div className="rounded-md border bg-white dark:bg-gray-950">
-        <Table>
-          <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
-            <TableRow>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Project & Address
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Contractor
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Partner
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Mediator
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Subcontractor
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Start date
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Status
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Abnahme
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Amount (€)
-              </TableHead>
-              <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
-                Invoice (€)
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {projects.map((item, i) => (
-              <TableRow key={i} className="group hover:bg-muted/50">
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
-                      <Building2 className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm">
-                        {item.project}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {item.address}
-                      </div>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>{item.contractor}</TableCell>
-                <TableCell>{item.partner}</TableCell>
-                <TableCell>{item.mediator}</TableCell>
-                <TableCell>{item.sub}</TableCell>
-                <TableCell className="text-sm">{item.start}</TableCell>
-                <TableCell>
-                  <Badge
-                    className={`${item.statusColor} hover:${item.statusColor} font-normal border-0`}
-                  >
-                    {item.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded w-fit text-sm">
-                    {item.abnahme}{" "}
-                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                  </div>
-                </TableCell>
-                <TableCell className="font-medium">{item.amount}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    {item.invoiceStatus === "Sent" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 bg-green-50 text-green-700 border-green-200"
-                        disabled
-                      >
-                        Sent <CheckCircle2 className="ml-1 h-3 w-3" />
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="h-7 bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={() => handleCreateInvoice(item, i)}
-                      >
-                        Create Invoice
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
+      {/* Scheduled Projects Table */}
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold tracking-tight">
+          Scheduled Projects
+        </h3>
+        <div className="rounded-md border bg-white dark:bg-gray-950">
+          <Table>
+            <TableHeader className="bg-yellow-50 dark:bg-yellow-900/10">
+              <TableRow>
+                <TableHead className="font-semibold">
+                  Project & Address
+                </TableHead>
+                <TableHead className="font-semibold">Contractor</TableHead>
+                <TableHead className="font-semibold">Partner</TableHead>
+                <TableHead className="font-semibold">Mediator</TableHead>
+                <TableHead className="font-semibold">Subcontractor</TableHead>
+                <TableHead className="font-semibold">Overdue</TableHead>
+                <TableHead className="font-semibold text-right">
+                  Penalty
+                </TableHead>
+                <TableHead className="font-semibold text-right">
+                  Amount
+                </TableHead>
+                <TableHead className="font-semibold text-right">
+                  Net Amount
+                </TableHead>
+                <TableHead className="font-semibold text-right">
+                  Start Date
+                </TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {projects.filter((p) => p.status === "Scheduled").length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={10}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    No scheduled projects found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                projects
+                  .filter((p) => p.status === "Scheduled")
+                  .map((project, i) => {
+                    // Mock Logic for Demo
+                    const amountString = project.amount || "0";
+                    const amount = parseFloat(
+                      amountString.replace(/[^0-9.-]+/g, ""),
+                    );
+                    const isOverdue = i % 3 === 0; // Deterministic logic
+                    const penalty = isOverdue ? 500 : 0;
+                    const netAmount = amount - penalty;
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50">
-          <div className="text-sm text-muted-foreground">
-            Showing {totalProjects} projects
-          </div>
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
+                              <Building2 className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="font-semibold text-sm">
+                                {project.project}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {project.address}
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{project.contractor}</TableCell>
+                        <TableCell>{project.partner}</TableCell>
+                        <TableCell>{project.mediator}</TableCell>
+                        <TableCell>{project.sub}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={isOverdue ? "destructive" : "secondary"}
+                            className={
+                              isOverdue
+                                ? "bg-red-100 text-red-700 hover:bg-red-200 border-0"
+                                : "bg-green-100 text-green-700 hover:bg-green-200 border-0"
+                            }
+                          >
+                            {isOverdue ? "Yes" : "No"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-red-600 font-medium">
+                          {penalty > 0
+                            ? `- € ${penalty.toLocaleString()}`
+                            : "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          € {amount.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          € {netAmount.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {project.start}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground"
-              disabled
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 text-sm font-medium bg-white dark:bg-gray-800 border shadow-sm"
-            >
-              1
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground"
-              disabled={totalProjects <= 10}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+      {/* Main Table (Active Projects) */}
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold tracking-tight">
+          Active Projects
+        </h3>
+        <div className="rounded-md border bg-white dark:bg-gray-950">
+          <Table>
+            <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+              <TableRow>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Project & Address
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Contractor
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Partner
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Mediator
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Subcontractor
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Start date
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Status
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Abnahme
+                </TableHead>
+                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                  Amount (€)
+                </TableHead>
+                <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
+                  Invoice (€)
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {projects.map((item, i) => (
+                <TableRow key={i} className="group hover:bg-muted/50">
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
+                        <Building2 className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-sm">
+                          {item.project}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.address}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{item.contractor}</TableCell>
+                  <TableCell>{item.partner}</TableCell>
+                  <TableCell>{item.mediator}</TableCell>
+                  <TableCell>{item.sub}</TableCell>
+                  <TableCell className="text-sm">{item.start}</TableCell>
+                  <TableCell>
+                    <Badge
+                      className={`${item.statusColor} hover:${item.statusColor} font-normal border-0`}
+                    >
+                      {item.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded w-fit text-sm">
+                      {item.abnahme}{" "}
+                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-medium">{item.amount}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {item.invoiceStatus === "Sent" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 bg-green-50 text-green-700 border-green-200"
+                          disabled
+                        >
+                          Sent <CheckCircle2 className="ml-1 h-3 w-3" />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="h-7 bg-blue-600 hover:bg-blue-700 text-white"
+                          onClick={() => handleCreateInvoice(item, i)}
+                        >
+                          Create Invoice
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Button variant="outline" size="icon" className="h-6 w-6">
-                <ChevronLeft className="h-3 w-3" />
+          {/* Footer */}
+          <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50">
+            <div className="text-sm text-muted-foreground">
+              Showing {totalProjects} projects
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground"
+                disabled
+              >
+                <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span>10 / page</span>
-              <Button variant="outline" size="icon" className="h-6 w-6">
-                <ChevronRight className="h-3 w-3" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 text-sm font-medium bg-white dark:bg-gray-800 border shadow-sm"
+              >
+                1
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground"
+                disabled={totalProjects <= 10}
+              >
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <Button variant="outline" size="sm" className="h-8">
-              Download CSV <ChevronRight className="ml-1 h-3 w-3" />
-            </Button>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Button variant="outline" size="icon" className="h-6 w-6">
+                  <ChevronLeft className="h-3 w-3" />
+                </Button>
+                <span>10 / page</span>
+                <Button variant="outline" size="icon" className="h-6 w-6">
+                  <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+              <Button variant="outline" size="sm" className="h-8">
+                Download CSV <ChevronRight className="ml-1 h-3 w-3" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

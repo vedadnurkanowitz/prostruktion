@@ -32,6 +32,8 @@ import {
   Plus,
   Rocket,
   CheckCircle2,
+  ArrowDown,
+  AlertCircle,
 } from "lucide-react";
 
 import { useEffect } from "react";
@@ -39,10 +41,17 @@ import { useEffect } from "react";
 export default function FinancialDashboardPage() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [currentInvoice, setCurrentInvoice] = useState<any>(null);
+
+  // Staging: Individual Projects from Project Management
+  const [forInvoiceProjects, setForInvoiceProjects] = useState<any[]>([]);
+
+  // Ready: Batched by Partner
   const [readyToInvoiceProjects, setReadyToInvoiceProjects] = useState<any[]>(
     [],
   );
+
   const [invoicedProjects, setInvoicedProjects] = useState<any[]>([]);
+  const [receivedProjects, setReceivedProjects] = useState<any[]>([]);
 
   useEffect(() => {
     // Load from LocalStorage
@@ -51,62 +60,105 @@ export default function FinancialDashboardPage() {
       try {
         const parsed = JSON.parse(storedInvoices);
         if (Array.isArray(parsed)) {
-          // Append to existing mock data
-          setReadyToInvoiceProjects((prev) => {
-            // Filter out any that might already exist by ID if we were using real IDs,
-            // but for now just appending is fine for the demo.
-            // Avoid duplicates if IDs clash (mock ids are low, stored dates are high)
-            const existingIds = new Set(prev.map((p) => p.id));
-            const newItems = parsed.filter((p) => !existingIds.has(p.id));
-            return [...prev, ...newItems];
-          });
+          // 1. Separate "For Invoice" items
+          const forInvoice = parsed.filter((p) => p.status === "For Invoice");
+          setForInvoiceProjects(forInvoice);
+
+          // 2. Separate "Ready" items (waiting for batch invoice)
+          const ready = parsed.filter((p) => p.status === "Ready");
+          setReadyToInvoiceProjects(ready);
         }
       } catch (e) {
         console.error("Failed to parse stored invoices", e);
       }
     }
+
+    // Load Generated Invoices
+    const storedGenerated = localStorage.getItem(
+      "prostruktion_generated_invoices",
+    );
+    if (storedGenerated) {
+      try {
+        const parsedInv = JSON.parse(storedGenerated);
+        if (Array.isArray(parsedInv)) {
+          setInvoicedProjects(
+            parsedInv.filter((i: any) => i.status === "Unpaid"),
+          );
+          setReceivedProjects(
+            parsedInv.filter((i: any) => i.status === "Received"),
+          );
+        }
+      } catch (e) {
+        console.error("Failed to parse generated invoices", e);
+      }
+    }
   }, []);
 
-  const handleCreateInvoice = (project: any) => {
-    // 1. Calculate splits
-    const totalAmount = project.projectTotal || project.amount;
+  const handleMoveToReady = (project: any) => {
+    // Update local state
+    setForInvoiceProjects((prev) => prev.filter((p) => p.id !== project.id));
 
-    // Check if mediator exists
-    const hasMediator =
-      project.mediator &&
-      project.mediator !== "-" &&
-      project.mediator.trim() !== "";
+    const updatedProject = { ...project, status: "Ready" };
+    setReadyToInvoiceProjects((prev) => [...prev, updatedProject]);
 
-    const totalCommission = totalAmount * 0.3;
+    // Update LocalStorage
+    const storedInvoices = JSON.parse(
+      localStorage.getItem("prostruktion_invoices") || "[]",
+    );
+    const updatedStorage = storedInvoices.map((p: any) =>
+      p.id === project.id ? { ...p, status: "Ready" } : p,
+    );
+    localStorage.setItem(
+      "prostruktion_invoices",
+      JSON.stringify(updatedStorage),
+    );
+  };
 
-    let companyShare, partnerShare, mediatorShare;
+  const handleBatchInvoice = (partnerName: string) => {
+    // Find all projects for this partner in Ready state
+    const batchProjects = readyToInvoiceProjects.filter(
+      (p) => p.partner === partnerName,
+    );
+    if (batchProjects.length === 0) return;
 
-    if (hasMediator) {
-      companyShare = totalAmount * 0.1; // 10%
-      partnerShare = totalAmount * 0.1; // 10%
-      mediatorShare = totalAmount * 0.1; // 10%
-    } else {
-      companyShare = totalAmount * 0.15; // 15%
-      partnerShare = totalAmount * 0.15; // 15%
-      mediatorShare = 0;
-    }
+    // Calculate totals for the batch
+    const totalAmount = batchProjects.reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0,
+    );
+    // Note: p.amount in storage IS the share (company share), as per admin/projects logic.
+    // If we want total project value we should have stored it.
+    // Looking at admin/projects, 'amount' saved to 'prostruktion_invoices' IS the Calculated Company Share.
+    // So summing them is correct for the Invoice Amount.
 
-    // 2. Set current invoice data for modal
-    setCurrentInvoice({
-      ...project,
-      totalCommission,
-      companyShare,
-      partnerShare,
-      mediatorShare,
-      hasMediator,
-    });
+    const totalCommission = (totalAmount / 0.1) * 0.3; // Reverse calc for demo or just use sum.
+    // Actually, let's just sum the stored values for simplicity in this demo.
 
-    // 3. Mark locally as sent and move to Invoiced table
+    // Create Invoice Data for Modal (Aggregated)
+    const invoiceData = {
+      project: `Batch Invoice: ${batchProjects.length} Projects`,
+      partner: partnerName,
+      amount: totalAmount,
+      totalCommission: batchProjects.reduce(
+        (sum, p) => sum + p.projectTotal * 0.3,
+        0,
+      ), // Assuming projectTotal exists
+      companyShare: totalAmount,
+      partnerShare: batchProjects.reduce(
+        (sum, p) => sum + p.projectTotal * 0.15,
+        0,
+      ), // Approx
+      hasMediator: false,
+      mediatorShare: 0,
+    };
+    setCurrentInvoice(invoiceData);
+
+    // Update Local States
     setReadyToInvoiceProjects((prev) =>
-      prev.filter((p) => p.id !== project.id),
+      prev.filter((p) => p.partner !== partnerName),
     );
 
-    // Add to Invoiced Projects
+    // Create Single Invoice Entry
     const newInvoice = {
       status: "Unpaid",
       color: "bg-blue-300",
@@ -115,15 +167,99 @@ export default function FinancialDashboardPage() {
         month: "short",
         day: "numeric",
       }),
-      inv: `INV-${1050 + Math.floor(Math.random() * 100)}`, // Generate mock invoice #
-      partner: project.project, // Assuming format matches design
-      amount: `€ ${project.amount.toLocaleString()}`,
+      inv: `INV-${1050 + Math.floor(Math.random() * 100)}`,
+      partner: partnerName,
+      amount: `€ ${totalAmount.toLocaleString()}`,
       overdue: false,
     };
-    setInvoicedProjects((prev) => [newInvoice, ...prev]);
+    // Update LocalStorage (Mark all as Sent)
+    const storedInvoices = JSON.parse(
+      localStorage.getItem("prostruktion_invoices") || "[]",
+    );
+    const updatedStorage = storedInvoices.map((p: any) =>
+      p.partner === partnerName && p.status === "Ready"
+        ? { ...p, status: "Sent" }
+        : p,
+    );
+    localStorage.setItem(
+      "prostruktion_invoices",
+      JSON.stringify(updatedStorage),
+    );
 
-    // 4. Open success modal
+    // Save New Invoice to Storage
+    const storedGenerated = JSON.parse(
+      localStorage.getItem("prostruktion_generated_invoices") || "[]",
+    );
+    const invoiceWithId = { ...newInvoice, id: Date.now() };
+    // Update state with ID
+    setInvoicedProjects((prev) => [{ ...invoiceWithId }, ...prev]);
+
+    localStorage.setItem(
+      "prostruktion_generated_invoices",
+      JSON.stringify([invoiceWithId, ...storedGenerated]),
+    );
+
     setSuccessModalOpen(true);
+  };
+
+  // Helper to Group Ready Projects by Partner
+  const getGroupedReadyProjects = () => {
+    const groups: {
+      [key: string]: {
+        partner: string;
+        count: number;
+        total: number;
+        projects: any[];
+      };
+    } = {};
+
+    readyToInvoiceProjects.forEach((p) => {
+      if (!groups[p.partner]) {
+        groups[p.partner] = {
+          partner: p.partner,
+          count: 0,
+          total: 0,
+          projects: [],
+        };
+      }
+      groups[p.partner].count += 1;
+      groups[p.partner].total += p.amount || 0;
+      groups[p.partner].projects.push(p);
+    });
+
+    return Object.values(groups);
+  };
+
+  const calculateDaysPending = (dateString: string) => {
+    const createdDate = new Date(dateString);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const handleMarkAsReceived = (invoice: any) => {
+    const updatedInvoice = {
+      ...invoice,
+      status: "Received",
+      color: "bg-green-500", // Green for received/paid
+    };
+
+    // Update State
+    setInvoicedProjects((prev) => prev.filter((i) => i.id !== invoice.id));
+    setReceivedProjects((prev) => [updatedInvoice, ...prev]);
+
+    // Update LocalStorage
+    const storedGenerated = JSON.parse(
+      localStorage.getItem("prostruktion_generated_invoices") || "[]",
+    );
+    const updatedStorage = storedGenerated.map((i: any) =>
+      i.id === invoice.id ? updatedInvoice : i,
+    );
+    localStorage.setItem(
+      "prostruktion_generated_invoices",
+      JSON.stringify(updatedStorage),
+    );
   };
 
   return (
@@ -231,11 +367,92 @@ export default function FinancialDashboardPage() {
         </Card>
       </div>
 
-      {/* Ready to Invoice Table */}
+      {/* For Invoice Table (Input) */}
+      <Card className="bg-white dark:bg-gray-950 border-none shadow-none ring-1 ring-gray-200 dark:ring-gray-800">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 bg-yellow-50/50 dark:bg-yellow-900/10 rounded-t-lg">
+          <CardTitle className="text-base font-semibold">For Invoice</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-blue-600 hover:text-blue-700"
+          >
+            View All <ChevronRight className="ml-1 h-3 w-3" />
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+              <TableRow>
+                <TableHead>Project</TableHead>
+                <TableHead>Partner</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Pending</TableHead>
+                <TableHead className="text-right">Amount €</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {forInvoiceProjects.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    No projects waiting for invoice.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                forInvoiceProjects.map((row) => {
+                  const daysPending = calculateDaysPending(row.date);
+                  const isOverdueForBatch = daysPending >= 14;
+
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">
+                        {row.project}
+                      </TableCell>
+                      <TableCell>{row.partner}</TableCell>
+                      <TableCell>{row.date}</TableCell>
+                      <TableCell>
+                        <div
+                          className={`flex items-center gap-2 text-xs font-medium ${isOverdueForBatch ? "text-green-600" : "text-muted-foreground"}`}
+                        >
+                          {daysPending} Days
+                          {isOverdueForBatch && (
+                            <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px]">
+                              <AlertCircle className="h-3 w-3" /> Batch Ready
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-bold">
+                        € {row.amount.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          className={`h-7 text-white ${isOverdueForBatch ? "bg-green-600 hover:bg-green-700 animate-pulse" : "bg-blue-600 hover:bg-blue-700"}`}
+                          onClick={() => handleMoveToReady(row)}
+                        >
+                          {isOverdueForBatch
+                            ? "Move to Ready!"
+                            : "Move to Ready"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Ready to Invoice Table (Batched) */}
       <Card className="bg-white dark:bg-gray-950 border-none shadow-none ring-1 ring-gray-200 dark:ring-gray-800">
         <CardHeader className="flex flex-row items-center justify-between pb-2 bg-purple-50/50 dark:bg-purple-900/10 rounded-t-lg">
           <CardTitle className="text-base font-semibold">
-            Ready to Invoice (Not Sent)
+            Ready to Invoice (Batched by Partner)
           </CardTitle>
           <Button
             variant="ghost"
@@ -249,96 +466,127 @@ export default function FinancialDashboardPage() {
           <Table>
             <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
               <TableRow>
-                <TableHead>Project #</TableHead>
                 <TableHead>Partner</TableHead>
-                <TableHead>Mediator</TableHead>
-                <TableHead>Employer</TableHead>
-                <TableHead>Abnahme Date</TableHead>
-                <TableHead className="text-right">Invoice Amount €</TableHead>
+                <TableHead>Projects Count</TableHead>
+                <TableHead className="text-right">Total Amount €</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {readyToInvoiceProjects.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">{row.project}</TableCell>
-                  <TableCell>{row.partner}</TableCell>
-                  <TableCell>{row.mediator || "-"}</TableCell>
-                  <TableCell>{row.emp}</TableCell>
-                  <TableCell>{row.date}</TableCell>
-                  <TableCell className="text-right font-bold">
-                    € {row.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      {row.status === "Sent" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 bg-green-50 text-green-700 border-green-200"
-                          disabled
-                        >
-                          Sent <CheckCircle2 className="ml-1 h-3 w-3" />
-                        </Button>
-                      ) : row.overdue ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200"
-                          onClick={() => handleCreateInvoice(row)}
-                        >
-                          {row.action}{" "}
-                          <span className="ml-1 font-normal text-muted-foreground text-[10px] bg-white px-1.5 rounded">
-                            {row.days}
-                          </span>
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="h-7 bg-blue-600 hover:bg-blue-700 text-white"
-                          onClick={() => handleCreateInvoice(row)}
-                        >
-                          {row.action}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs"
-                      >
-                        Mark as Sent
-                      </Button>
-                    </div>
+              {getGroupedReadyProjects().length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    No projects ready for batch invoicing.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                getGroupedReadyProjects().map((group, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">
+                      {group.partner}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{group.count} Projects</Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold">
+                      € {group.total.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        className="h-7 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleBatchInvoice(group.partner)}
+                      >
+                        Invoice Batch
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
-          <div className="flex items-center justify-between p-3 border-t bg-gray-50 dark:bg-gray-900/20 rounded-b-lg">
-            <div className="text-xs text-muted-foreground">
-              Showing 1 to 5 of 8 entries
-            </div>
-            <div className="font-bold text-sm">Total: € 149,500</div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                &lt;
-              </Button>
-              <span className="text-xs font-medium">1</span>
-              <span className="text-xs text-muted-foreground">2</span>
-              <span className="text-xs text-muted-foreground">3</span>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                &gt;
-              </Button>
-            </div>
-          </div>
+        </CardContent>
+      </Card>
+
+      {/* Invoiced Table (New Section) */}
+      <Card className="bg-white dark:bg-gray-950 border-none shadow-none ring-1 ring-gray-200 dark:ring-gray-800">
+        <CardHeader className="flex flex-row items-center justify-between pb-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-t-lg">
+          <CardTitle className="text-base font-semibold">Invoiced</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-blue-600 hover:text-blue-700"
+          >
+            View All <ChevronRight className="ml-1 h-3 w-3" />
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Invoice #</TableHead>
+                <TableHead>Partner</TableHead>
+                <TableHead className="text-right">Amount €</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoicedProjects.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    No invoiced projects pending receipt.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                invoicedProjects.map((row, i) => (
+                  <TableRow key={row.id || i}>
+                    <TableCell>
+                      <Badge
+                        className={`${row.overdue ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-blue-100 text-blue-700 hover:bg-blue-200"} border-0 w-16 justify-center`}
+                      >
+                        {row.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{row.date}</TableCell>
+                    <TableCell className="text-xs font-medium">
+                      {row.inv}
+                    </TableCell>
+                    <TableCell className="text-xs">{row.partner}</TableCell>
+                    <TableCell
+                      className={`text-right font-bold text-sm ${row.overdue ? "text-red-600" : ""}`}
+                    >
+                      {row.amount}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        className="h-7 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleMarkAsReceived(row)}
+                      >
+                        <ArrowDown className="h-3 w-3 mr-1" /> Receive
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Invoiced Table */}
+        {/* Received Table (was Invoiced) */}
         <Card className="bg-white dark:bg-gray-950 border-none shadow-none ring-1 ring-gray-200 dark:ring-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-t-lg">
-            <CardTitle className="text-base font-semibold">Invoiced</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 bg-green-50/50 dark:bg-green-900/10 rounded-t-lg">
+            <CardTitle className="text-base font-semibold">Received</CardTitle>
             <Button
               variant="ghost"
               size="sm"
@@ -359,11 +607,11 @@ export default function FinancialDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoicedProjects.map((row, i) => (
+                {receivedProjects.map((row, i) => (
                   <TableRow key={i}>
                     <TableCell>
                       <Badge
-                        className={`${row.overdue ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : row.status === "Unpaid" && row.color === "bg-green-500" ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-blue-100 text-blue-700 hover:bg-blue-200"} border-0 w-16 justify-center`}
+                        className={`${row.overdue ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-green-100 text-green-700 hover:bg-green-200"} border-0 w-16 justify-center`}
                       >
                         {row.status}
                       </Badge>
@@ -496,10 +744,11 @@ export default function FinancialDashboardPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="h-5 w-5" /> Invoice Created & Email Sent
+              <CheckCircle2 className="h-5 w-5" /> Batch Invoice Created & Sent
             </DialogTitle>
             <DialogDescription>
-              The invoice has been created and sent to the partner.
+              A single invoice for the partner's batch has been created and
+              sent.
             </DialogDescription>
           </DialogHeader>
 
@@ -507,53 +756,26 @@ export default function FinancialDashboardPage() {
             <div className="space-y-4">
               <div className="bg-muted p-4 rounded-lg space-y-3 text-sm">
                 <div className="flex justify-between font-medium">
-                  <span>Project</span>
+                  <span>Batch</span>
                   <span>{currentInvoice.project}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Wait List Total</span>
+                  <span>Total Batch Value</span>
                   <span>€ {currentInvoice.amount.toLocaleString()}</span>
                 </div>
                 <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between font-semibold text-blue-600 pb-2">
-                    <span>Total 30% Commission</span>
-                    <span>
-                      € {currentInvoice.totalCommission.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="pl-4 space-y-1 text-xs text-muted-foreground">
-                    <div className="flex justify-between">
-                      <span>
-                        Your Company (
-                        {currentInvoice.hasMediator ? "10%" : "15%"})
-                      </span>
-                      <span>
-                        € {currentInvoice.companyShare.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>
-                        Partner ({currentInvoice.hasMediator ? "10%" : "15%"})
-                      </span>
-                      <span>
-                        € {currentInvoice.partnerShare.toLocaleString()}
-                      </span>
-                    </div>
-                    {currentInvoice.hasMediator && (
-                      <div className="flex justify-between">
-                        <span>Mediator (10%)</span>
-                        <span>
-                          € {currentInvoice.mediatorShare.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
+                  {/* Simplified view for Batch */}
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    Includes {currentInvoice.amount / 1000} projects (est)
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 text-xs bg-blue-50 p-2 rounded text-blue-700">
                 <Rocket className="h-3 w-3" />
-                <span>Email sent successfully to {currentInvoice.partner}</span>
+                <span>
+                  Invoice sent successfully to {currentInvoice.partner}
+                </span>
               </div>
             </div>
           )}

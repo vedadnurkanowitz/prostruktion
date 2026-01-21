@@ -118,7 +118,7 @@ export function SubcontractorDetail({
       id: "1",
       name: "Mark Weber",
       role: "Electrician",
-      subRole: "Electrician",
+      subRole: "Senior Electrician",
       status: "Active",
       a1Status: "Valid",
       coolingStatus: "Valid",
@@ -130,8 +130,8 @@ export function SubcontractorDetail({
     {
       id: "2",
       name: "Ralf König",
-      role: "HVAC Installer",
-      subRole: "HVAC Installer",
+      role: "Cooling Technician",
+      subRole: "HVAC Specialist",
       status: "Active",
       a1Status: "Valid",
       coolingStatus: "Expiring Soon",
@@ -143,8 +143,8 @@ export function SubcontractorDetail({
     {
       id: "3",
       name: "Simone Fischer",
-      role: "Welder",
-      subRole: "Fisslene Fischer",
+      role: "S/H/K",
+      subRole: "Sanitary Expert",
       status: "Active",
       a1Status: "Valid",
       coolingStatus: "Valid",
@@ -156,7 +156,7 @@ export function SubcontractorDetail({
     {
       id: "4",
       name: "Stefan Bauer",
-      role: "Plumber",
+      role: "S/H/K",
       subRole: "Plumber",
       status: "Active",
       a1Status: "Expired",
@@ -169,7 +169,7 @@ export function SubcontractorDetail({
     {
       id: "5",
       name: "Patrick Wagner",
-      role: "Plumber",
+      role: "S/H/K",
       subRole: "Plumber",
       status: "Active",
       a1Status: "Expired",
@@ -182,8 +182,8 @@ export function SubcontractorDetail({
     {
       id: "6",
       name: "Tim Roth",
-      role: "Plumber",
-      subRole: "Patake Wagmer",
+      role: "S/H/K",
+      subRole: "Pipe Fitter",
       status: "Active",
       a1Status: "Expired",
       coolingStatus: "Valid",
@@ -195,8 +195,8 @@ export function SubcontractorDetail({
     {
       id: "7",
       name: "Marco Schmidt",
-      role: "Staff",
-      subRole: "Marco schmidt",
+      role: "Electrician",
+      subRole: "Assistant",
       status: "Active",
       a1Status: "Expired",
       coolingStatus: "None",
@@ -501,13 +501,13 @@ export function SubcontractorDetail({
                             <SelectValue placeholder="Select trade" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="electrician">
+                            <SelectItem value="Electrician">
                               Electrician
                             </SelectItem>
-                            <SelectItem value="cooling-technician">
+                            <SelectItem value="S/H/K">S/H/K</SelectItem>
+                            <SelectItem value="Cooling Technician">
                               Cooling Technician
                             </SelectItem>
-                            <SelectItem value="shk">SHK</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

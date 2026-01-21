@@ -62,7 +62,7 @@ export function Sidebar({ role }: SidebarProps) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col border-r border-gray-800 bg-gray-900 w-64">
+    <div className="flex min-h-screen flex-col border-r border-gray-800 bg-gray-900 w-64 shrink-0">
       <div className="flex h-16 items-center border-b border-gray-800 px-4 font-bold text-lg gap-3 text-white">
         <Image
           src="/logo-dark.png"

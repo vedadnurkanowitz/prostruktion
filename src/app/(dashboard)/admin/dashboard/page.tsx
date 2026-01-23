@@ -34,6 +34,7 @@ export default function AdminDashboard() {
     invoicing: 0,
     invoicingValue: 0,
     totalValue: 0,
+    cashOnHand: 0,
   });
   const [trendPeriod, setTrendPeriod] = useState("monthly");
 
@@ -89,6 +90,48 @@ export default function AdminDashboard() {
       const parsed = JSON.parse(storedProjects);
       setProjects(parsed);
 
+      // Calculate Cash on Hand from Financials Data
+
+      // 1. Get Received Income
+      const storedGeneratedInvoices = localStorage.getItem(
+        "prostruktion_generated_invoices",
+      );
+      let totalReceived = 0;
+
+      if (storedGeneratedInvoices) {
+        const generated = JSON.parse(storedGeneratedInvoices);
+        // Sum items marked as "Received"
+        totalReceived = generated.reduce((acc: number, curr: any) => {
+          if (curr.status === "Received") {
+            return (
+              acc +
+              (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
+                0)
+            );
+          }
+          return acc;
+        }, 0);
+      }
+
+      // 2. Get Expenses (Using dummy default matching Financials page if no storage)
+      const storedExpenses = localStorage.getItem("prostruktion_expenses");
+      let totalExpenses = 27100; // Default dummy expenses (2800 + 6200 + 18100)
+
+      if (storedExpenses) {
+        const expenses = JSON.parse(storedExpenses);
+        const storedTotal = expenses.reduce(
+          (acc: number, curr: any) =>
+            acc +
+            (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) || 0),
+          0,
+        );
+        // If we have stored expenses, let's assume they replace or add to dummy.
+        // For this demo, let's use storedTotal if > 0, else default.
+        if (storedTotal > 0) totalExpenses = storedTotal;
+      }
+
+      const cashOnHand = totalReceived - totalExpenses;
+
       // Calculate Stats
       const active = parsed.filter(
         (p: any) => p.status === "In Progress" || p.status === "Active",
@@ -111,7 +154,36 @@ export default function AdminDashboard() {
         invoicing: invoicing.length,
         invoicingValue: getValue(invoicing),
         totalValue: getValue(parsed),
+        cashOnHand: cashOnHand,
       });
+    } else {
+      // Fallback calculation if no projects but maybe financial data exists
+      const storedInvoices = localStorage.getItem("prostruktion_invoices");
+      const storedExpenses = localStorage.getItem("prostruktion_expenses");
+
+      let totalReceived = 0;
+      let totalExpenses = 0;
+
+      if (storedInvoices) {
+        const invoices = JSON.parse(storedInvoices);
+        totalReceived = invoices.reduce(
+          (acc: number, curr: any) => acc + (Number(curr.amount) || 0),
+          0,
+        );
+      }
+
+      if (storedExpenses) {
+        const expenses = JSON.parse(storedExpenses);
+        totalExpenses = expenses.reduce(
+          (acc: number, curr: any) => acc + (Number(curr.amount) || 0),
+          0,
+        );
+      }
+
+      setStats((prev) => ({
+        ...prev,
+        cashOnHand: totalReceived - totalExpenses,
+      }));
     }
   }, []);
 
@@ -130,8 +202,10 @@ export default function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
-              € 0
+            <div
+              className={`text-2xl font-bold ${stats.cashOnHand < 0 ? "text-red-600" : "text-gray-900 dark:text-gray-50"}`}
+            >
+              € {stats.cashOnHand.toLocaleString()}
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
               Available liquidity

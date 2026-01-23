@@ -153,7 +153,10 @@ const DUMMY_WORKERS = [
   },
 ];
 
+import { useRouter } from "next/navigation";
+
 export default function ArchivePage() {
+  const router = useRouter();
   const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
   const [stats, setStats] = useState({
     total: 0,
@@ -164,6 +167,10 @@ export default function ArchivePage() {
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   const toggleRow = (index: number) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(index)) {
@@ -172,6 +179,34 @@ export default function ArchivePage() {
       newExpanded.add(index);
     }
     setExpandedRows(newExpanded);
+  };
+
+  const handleCreateComplaint = (project: any) => {
+    const newComplaint = {
+      id: Math.floor(10000 + Math.random() * 90000).toString(),
+      project: project.project,
+      address: project.address,
+      abnahmeDate: project.abnahme || project.start, // Fallback
+      warrantyStatus: project.status,
+      contractor: project.contractor,
+      partner: project.partner,
+      subcontractor: project.sub,
+      repairBy: "Open", // Default
+      count: 1,
+      status1: "red",
+      status2: "yellow",
+    };
+
+    const existingComplaints = JSON.parse(
+      localStorage.getItem("prostruktion_complaints") || "[]",
+    );
+    localStorage.setItem(
+      "prostruktion_complaints",
+      JSON.stringify([newComplaint, ...existingComplaints]),
+    );
+
+    // Navigate to complaints page
+    router.push("/admin/complaints");
   };
 
   useEffect(() => {
@@ -282,6 +317,20 @@ export default function ArchivePage() {
           status: "Expired",
           statusColor: "bg-green-100 text-green-700",
         },
+        {
+          project: "TEST WARRANTY EXPIRING",
+          address: "Test Street 123",
+          contractor: "Test Construct",
+          partner: "Partner A",
+          mediator: "-",
+          sub: "Sub Alpha",
+          abnahme: "Old Date",
+          warrantyEnd: formatDate(expiringDate),
+          amount: "€ 500,000",
+          workers: ["w1"],
+          status: "Expiring",
+          statusColor: "bg-purple-100 text-purple-700",
+        },
       ];
     }
 
@@ -332,6 +381,13 @@ export default function ArchivePage() {
       expired: processedData.filter((p: any) => p.status === "Expired").length,
     });
   }, []);
+
+  // Pagination Logic
+  const totalPages = Math.ceil(archivedProjects.length / itemsPerPage);
+  const paginatedArchive = archivedProjects.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
 
   return (
     <div className="space-y-6">
@@ -482,7 +538,7 @@ export default function ArchivePage() {
         </div>
 
         <div>
-          <Button className="h-9 bg-blue-600 hover:bg-blue-700">
+          <Button className="h-9 bg-primary hover:bg-primary/90 text-primary-foreground">
             <PlusIconWrapper /> Reset Filters
           </Button>
         </div>
@@ -523,12 +579,12 @@ export default function ArchivePage() {
                 Amount (€)
               </TableHead>
               <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
-                Invoice
+                Actions
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {archivedProjects.map((item, i) => {
+            {paginatedArchive.map((item, i) => {
               const isExpanded = expandedRows.has(i);
               return (
                 <Fragment key={i}>
@@ -580,12 +636,18 @@ export default function ArchivePage() {
                     </TableCell>
                     <TableCell className="font-medium">{item.amount}</TableCell>
                     <TableCell className="text-right">
-                      <Badge
+                      <Button
+                        size="sm"
                         variant="outline"
-                        className="bg-green-50 text-green-700 border-green-200"
+                        className="h-8 bg-red-50 text-red-600 border-red-200 hover:bg-red-100 dark:bg-red-900/20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCreateComplaint(item);
+                        }}
                       >
-                        Paid <CheckCircle2 className="ml-1 h-3 w-3" />
-                      </Badge>
+                        <AlertTriangle className="mr-2 h-3 w-3" />
+                        Complaint
+                      </Button>
                     </TableCell>
                   </TableRow>
                   {isExpanded && (
@@ -774,49 +836,75 @@ export default function ArchivePage() {
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50">
           <div className="text-sm text-muted-foreground">
-            Showing 1 to {archivedProjects.length} of {stats.total} entries
+            Showing{" "}
+            {archivedProjects.length > 0
+              ? (currentPage - 1) * itemsPerPage + 1
+              : 0}{" "}
+            to {Math.min(currentPage * itemsPerPage, archivedProjects.length)}{" "}
+            of {stats.total} entries
           </div>
 
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-blue-600 bg-blue-50 border-blue-100"
+              className="h-8 text-primary-foreground bg-primary hover:bg-primary/90 border-primary"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
             >
               <ChevronLeft className="mr-1 h-3 w-3" /> Previous
             </Button>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 bg-blue-600 text-white"
-              >
-                1
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                2
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                3
-              </Button>
-            </div>
+
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              // Simple sliding logic
+              let p = i + 1;
+              if (totalPages > 5 && currentPage > 3) p = currentPage - 2 + i;
+              if (p > totalPages) return null;
+
+              return (
+                <Button
+                  key={p}
+                  variant={currentPage === p ? "ghost" : "ghost"}
+                  size="sm"
+                  className={`h-8 w-8 p-0 ${currentPage === p ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}`}
+                  onClick={() => setCurrentPage(p)}
+                >
+                  {p}
+                </Button>
+              );
+            })}
+
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-blue-600 bg-blue-50 border-blue-100"
+              className="h-8 text-primary-foreground bg-primary hover:bg-primary/90 border-primary"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
             >
               Next Page <ChevronRight className="ml-1 h-3 w-3" />
             </Button>
           </div>
 
           <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-muted-foreground"
-            >
-              10 / page <ChevronRight className="ml-1 h-3 w-3 rotate-90" />
-            </Button>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(val) => {
+                  setItemsPerPage(Number(val));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[100px] text-xs">
+                  <SelectValue placeholder={itemsPerPage + " / page"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5 / page</SelectItem>
+                  <SelectItem value="10">10 / page</SelectItem>
+                  <SelectItem value="20">20 / page</SelectItem>
+                  <SelectItem value="50">50 / page</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button variant="outline" size="sm" className="h-8">
               Download CSV <ChevronRight className="ml-1 h-3 w-3" />
             </Button>

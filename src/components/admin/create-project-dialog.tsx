@@ -30,12 +30,6 @@ export default function CreateProjectDialog() {
   const [brokers, setBrokers] = useState<any[]>([]);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (open) {
-      fetchUsers();
-    }
-  }, [open]);
-
   const fetchUsers = async () => {
     const supabase = createClient();
     const { data: p } = await supabase
@@ -49,6 +43,12 @@ export default function CreateProjectDialog() {
     if (p) setPartners(p);
     if (b) setBrokers(b);
   };
+
+  useEffect(() => {
+    if (open) {
+      fetchUsers();
+    }
+  }, [open]);
 
   const handleSubmit = async (formData: FormData) => {
     const result = await createProject(null, formData);

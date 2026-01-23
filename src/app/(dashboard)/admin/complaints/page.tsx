@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,141 +43,156 @@ import {
 export default function ComplaintsPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Mock Data matching the reference image style
-  const complaints = [
-    {
-      id: "45918",
-      project: "EnerPlan Headquarters",
-      address: "Höhenbergallee 19 / Mündea 14",
-      abnahmeDate: "Sep 12, 2022",
-      warrantyStatus: "In Warranty",
-      contractor: "Solbeth AG",
-      partner: "Nestler",
-      subcontractor: "Nestler Immobilien",
-      repairBy: "SUB",
-      count: 0,
-      status1: "green",
-      status2: "yellow",
-    },
-    {
-      id: "45912",
-      project: "Neubau Wohnkomplex",
-      address: "Branzerstraße 26 / Grinted",
-      abnahmeDate: "Oct 23, 2023",
-      warrantyStatus: "In Warranty",
-      contractor: "GT Gruppe",
-      partner: "GT Guppe",
-      subcontractor: "Hüber Mont GmbH",
-      repairBy: "Partner",
-      count: 1,
-      status1: "green",
-      status2: "yellow",
-    },
-    {
-      id: "45792",
-      project: "Neubau Wohnkomplex",
-      address: "Branzerstraße 26 / Grinted",
-      abnahmeDate: "Oct 23, 2023",
-      warrantyStatus: "In Warranty",
-      contractor: "Beltex GmbH",
-      partner: "Lahlmach Group",
-      subcontractor: "Hüber Mont GmbH",
-      repairBy: "Partner",
-      count: 1,
-      status1: "green",
-      status2: "yellow",
-    },
-    {
-      id: "45776",
-      project: "Neubau Wohnkomplex",
-      address: "Branzerstraße 26 / Grinted",
-      abnahmeDate: "Aug 25, 2023",
-      warrantyStatus: "In Warranty",
-      contractor: "Beltex GmbH",
-      partner: "Beltex GmbH",
-      subcontractor: "Hüber Mont GmbH",
-      repairBy: "Contract",
-      count: 1,
-      status1: "green",
-      status2: "yellow",
-    },
-    {
-      id: "45718",
-      project: "Hartmann-Krause Logistikzentren",
-      address: "Am Zander 10 / Vogelvaj",
-      abnahmeDate: "May 11, 2023",
-      warrantyStatus: "Out of Warranty",
-      contractor: "GT Gruppe",
-      partner: "Lahmach Group",
-      subcontractor: "GT Gruppe",
-      repairBy: "SUB",
-      count: 0,
-      status1: "red",
-      status2: "yellow",
-    },
-    {
-      id: "45636",
-      project: "Sanierungsprojekt Weidkammer 21",
-      address: "Lindenstraße 59 / Asaio",
-      abnahmeDate: "Jul 12, 2023",
-      warrantyStatus: "In Warranty",
-      contractor: "Lahmpach Group",
-      partner: "Lahhoach",
-      subcontractor: "Hüber Mont GmbH",
-      repairBy: "Partner",
-      count: 1,
-      status1: "green",
-      status2: "yellow",
-    },
-    {
-      id: "45636",
-      project: "Neubau Wohnprojekt",
-      address: "Lindenstraße 59 / Lindenstraße C1",
-      abnahmeDate: "Jul 29, 2024",
-      warrantyStatus: "Out of Warranty",
-      contractor: "Hüber Mont GmbH",
-      partner: "Contractor",
-      subcontractor: "Hüber Mont GmbH",
-      repairBy: "Contract", // "Contract" in image truncated probably Contractor
-      count: 0,
-      status1: "red",
-      status2: "yellow",
-    },
-    {
-      id: "45636",
-      project: "Neubau Wohnprojekt",
-      address: "Lindenstraße 59 / Lindenstraße 69",
-      abnahmeDate: "Mar 28, 2024",
-      warrantyStatus: "In Warranty",
-      contractor: "Hotz & Bauer GmbH",
-      partner: "Partner",
-      subcontractor: "Buig & Bauer GmbH",
-      repairBy: "Open",
-      count: 1,
-      status1: "green",
-      status2: "green",
-    },
-    {
-      id: "45617",
-      project: "Neubau Wohnprojekt",
-      address: "Lindenstraße 59 / Lindenstraße 69",
-      abnahmeDate: "Mar 8, 2023",
-      warrantyStatus: "In Warranty",
-      contractor: "Hotz & Bauer GmbH",
-      partner: "Contractor",
-      subcontractor: "Contractor",
-      repairBy: "SUB",
-      count: 0,
-      status1: "yellow",
-      status2: "green",
-    },
-  ];
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // State for complaints
+  const [complaints, setComplaints] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Initial Mock Data
+    const initialComplaints = [
+      {
+        id: "45918",
+        project: "EnerPlan Headquarters",
+        address: "Höhenbergallee 19 / Mündea 14",
+        abnahmeDate: "Sep 12, 2022",
+        warrantyStatus: "In Warranty",
+        contractor: "Solbeth AG",
+        partner: "Nestler",
+        subcontractor: "Nestler Immobilien",
+        repairBy: "SUB",
+        count: 0,
+        status1: "green",
+        status2: "yellow",
+      },
+      {
+        id: "45912",
+        project: "Neubau Wohnkomplex",
+        address: "Branzerstraße 26 / Grinted",
+        abnahmeDate: "Oct 23, 2023",
+        warrantyStatus: "In Warranty",
+        contractor: "GT Gruppe",
+        partner: "GT Guppe",
+        subcontractor: "Hüber Mont GmbH",
+        repairBy: "Partner",
+        count: 1,
+        status1: "green",
+        status2: "yellow",
+      },
+      {
+        id: "45792",
+        project: "Neubau Wohnkomplex",
+        address: "Branzerstraße 26 / Grinted",
+        abnahmeDate: "Oct 23, 2023",
+        warrantyStatus: "In Warranty",
+        contractor: "Beltex GmbH",
+        partner: "Lahlmach Group",
+        subcontractor: "Hüber Mont GmbH",
+        repairBy: "Partner",
+        count: 1,
+        status1: "green",
+        status2: "yellow",
+      },
+      {
+        id: "45776",
+        project: "Neubau Wohnkomplex",
+        address: "Branzerstraße 26 / Grinted",
+        abnahmeDate: "Aug 25, 2023",
+        warrantyStatus: "In Warranty",
+        contractor: "Beltex GmbH",
+        partner: "Beltex GmbH",
+        subcontractor: "Hüber Mont GmbH",
+        repairBy: "Contract",
+        count: 1,
+        status1: "green",
+        status2: "yellow",
+      },
+      {
+        id: "45718",
+        project: "Hartmann-Krause Logistikzentren",
+        address: "Am Zander 10 / Vogelvaj",
+        abnahmeDate: "May 11, 2023",
+        warrantyStatus: "Out of Warranty",
+        contractor: "GT Gruppe",
+        partner: "Lahmach Group",
+        subcontractor: "GT Gruppe",
+        repairBy: "SUB",
+        count: 0,
+        status1: "red",
+        status2: "yellow",
+      },
+      {
+        id: "45636",
+        project: "Sanierungsprojekt Weidkammer 21",
+        address: "Lindenstraße 59 / Asaio",
+        abnahmeDate: "Jul 12, 2023",
+        warrantyStatus: "In Warranty",
+        contractor: "Lahmpach Group",
+        partner: "Lahhoach",
+        subcontractor: "Hüber Mont GmbH",
+        repairBy: "Partner",
+        count: 1,
+        status1: "green",
+        status2: "yellow",
+      },
+      {
+        id: "45636",
+        project: "Neubau Wohnprojekt",
+        address: "Lindenstraße 59 / Lindenstraße C1",
+        abnahmeDate: "Jul 29, 2024",
+        warrantyStatus: "Out of Warranty",
+        contractor: "Hüber Mont GmbH",
+        partner: "Contractor",
+        subcontractor: "Hüber Mont GmbH",
+        repairBy: "Contract", // "Contract" in image truncated probably Contractor
+        count: 0,
+        status1: "red",
+        status2: "yellow",
+      },
+      {
+        id: "45636",
+        project: "Neubau Wohnprojekt",
+        address: "Lindenstraße 59 / Lindenstraße 69",
+        abnahmeDate: "Mar 28, 2024",
+        warrantyStatus: "In Warranty",
+        contractor: "Hotz & Bauer GmbH",
+        partner: "Partner",
+        subcontractor: "Buig & Bauer GmbH",
+        repairBy: "Open",
+        count: 1,
+        status1: "green",
+        status2: "green",
+      },
+      {
+        id: "45617",
+        project: "Neubau Wohnprojekt",
+        address: "Lindenstraße 59 / Lindenstraße 69",
+        abnahmeDate: "Mar 8, 2023",
+        warrantyStatus: "In Warranty",
+        contractor: "Hotz & Bauer GmbH",
+        partner: "Contractor",
+        subcontractor: "Contractor",
+        repairBy: "SUB",
+        count: 0,
+        status1: "yellow",
+        status2: "green",
+      },
+    ];
+
+    const storedComplaints = JSON.parse(
+      localStorage.getItem("prostruktion_complaints") || "[]",
+    );
+    // Combine stored first (newest)
+    setComplaints([...storedComplaints, ...initialComplaints]);
+  }, []);
 
   const getWarrantyBadge = (status: string) => {
     if (status === "In Warranty") {
-      return "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-0";
+      return "bg-orange-100 text-orange-700 hover:bg-orange-200 border-0";
     }
-    return "bg-red-100 text-red-700 hover:bg-red-200 border-0";
+    return "bg-green-100 text-green-700 hover:bg-green-200 border-0";
   };
 
   const getRepairBadge = (status: string) => {
@@ -205,6 +220,14 @@ export default function ComplaintsPage() {
       <div className={`h-3 w-3 rounded-full ${map[color] || "bg-gray-300"}`} />
     );
   };
+
+  // Pagination Logic
+  const totalItems = complaints.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const paginatedComplaints = complaints.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
 
   return (
     <div className="space-y-6">
@@ -258,7 +281,7 @@ export default function ComplaintsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {complaints.map((item, i) => (
+              {paginatedComplaints.map((item, i) => (
                 <TableRow
                   key={i}
                   className="group hover:bg-muted/50 border-b border-gray-100 dark:border-gray-800"
@@ -310,15 +333,74 @@ export default function ComplaintsPage() {
 
           {/* Pagination Footer */}
           <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50">
-            <Button variant="ghost" size="icon" disabled>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button className="bg-indigo-600 hover:bg-indigo-700 text-white h-8 px-4 text-xs">
-              View all
-            </Button>
-            <Button variant="ghost" size="icon">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <div className="text-sm text-muted-foreground">
+              Showing{" "}
+              {totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to{" "}
+              {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems}{" "}
+              entries
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let p = i + 1;
+                if (totalPages > 5 && currentPage > 3) p = currentPage - 2 + i;
+                if (p > totalPages) return null;
+                return (
+                  <Button
+                    key={p}
+                    variant={currentPage === p ? "default" : "outline"}
+                    size="sm"
+                    className={`h-8 w-8 p-0 ${currentPage === p ? "bg-indigo-600 hover:bg-indigo-700 text-white" : ""}`}
+                    onClick={() => setCurrentPage(p)}
+                  >
+                    {p}
+                  </Button>
+                );
+              })}
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage >= totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(val) => {
+                  setItemsPerPage(Number(val));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue placeholder={itemsPerPage} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">/ page</span>
+            </div>
           </div>
         </CardContent>
       </Card>

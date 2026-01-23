@@ -238,6 +238,20 @@ export default function AdminProjects() {
     setExpandedScheduledRows(newExpanded);
   };
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Apply pagination
+  const filteredProjects = projects; // Placeholder for future filtering
+  const totalProjects = filteredProjects.length;
+  const totalPages = Math.ceil(totalProjects / itemsPerPage);
+
+  const paginatedProjects = filteredProjects.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
+
   useEffect(() => {
     // Fetch from Supabase
     const fetchDropdownUsers = async () => {
@@ -408,6 +422,12 @@ export default function AdminProjects() {
     */
 
     // Fetch archived count
+    // One-time clear of archive to fix warranty date calculation data
+    if (!localStorage.getItem("archive_cleared_fix_v2")) {
+      localStorage.removeItem("prostruktion_archive");
+      localStorage.setItem("archive_cleared_fix_v2", "true");
+    }
+
     const storedArchive = localStorage.getItem("prostruktion_archive");
     if (storedArchive) {
       try {
@@ -417,6 +437,8 @@ export default function AdminProjects() {
         console.error("Failed to parse archive", e);
         setArchivedCount(0);
       }
+    } else {
+      setArchivedCount(0);
     }
   }, []);
 
@@ -672,7 +694,7 @@ export default function AdminProjects() {
     const realIndex = projects.findIndex((p) => p === targetProject);
 
     if (realIndex !== -1) {
-      let color = "bg-blue-600 text-white";
+      let color = "bg-primary text-primary-foreground";
       if (newStatus === "In Progress") color = "bg-orange-500 text-white";
       if (newStatus === "In Abnahme") color = "bg-yellow-500 text-black";
       if (newStatus === "Finished") color = "bg-green-600 text-white";
@@ -772,6 +794,12 @@ export default function AdminProjects() {
 
     // 5. Save to LocalStorage for Archive
     // Map project fields to Archive format (mocking warranty dates for demo)
+
+    const now = new Date();
+    const warrantyDate = new Date(now);
+    warrantyDate.setFullYear(warrantyDate.getFullYear() + 5);
+    warrantyDate.setMonth(warrantyDate.getMonth() + 1);
+
     const archiveRecord = {
       project: project.project,
       address: project.address,
@@ -779,14 +807,12 @@ export default function AdminProjects() {
       partner: project.partner,
       mediator: hasMediator ? project.mediator : "-",
       sub: project.sub,
-      abnahme: new Date().toLocaleDateString("en-US", {
+      abnahme: now.toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
       }),
-      warrantyEnd: new Date(
-        new Date().setMonth(new Date().getMonth() + 61),
-      ).toLocaleDateString("en-US", {
+      warrantyEnd: warrantyDate.toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -809,7 +835,7 @@ export default function AdminProjects() {
   };
 
   // Calculate Stats
-  const totalProjects = projects.length;
+  // const totalProjects = projects.length; // Moved up
   const scheduledProjects = projects.filter(
     (p) => p.status === "Scheduled",
   ).length;
@@ -957,7 +983,7 @@ export default function AdminProjects() {
 
         <div>
           <Button
-            className="h-8 bg-blue-600 hover:bg-blue-700"
+            className="h-8 bg-primary hover:bg-primary/90 text-primary-foreground"
             onClick={() => setAddProjectOpen(true)}
           >
             <Plus className="mr-2 h-3 w-3" /> Add Project
@@ -966,27 +992,59 @@ export default function AdminProjects() {
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{totalProjects} Projects found</span>
-        {totalProjects > 10 && (
+        <span>
+          Showing {totalProjects > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}
+          -{Math.min(currentPage * itemsPerPage, totalProjects)} of{" "}
+          {totalProjects} Projects
+        </span>
+
+        <div className="flex items-center gap-4">
+          {/* Items per page selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs">Rows per page:</span>
+            <Select
+              value={itemsPerPage.toString()}
+              onValueChange={(val) => {
+                setItemsPerPage(Number(val));
+                setCurrentPage(1);
+              }}
+            >
+              <SelectTrigger className="h-6 w-[70px] text-xs">
+                <SelectValue placeholder={itemsPerPage} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0 text-muted-foreground"
-              disabled
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
             >
               &lt;
             </Button>
-            <span className="text-foreground font-medium">1</span>
+            <span className="text-foreground font-medium px-2">
+              {currentPage} / {Math.max(1, totalPages)}
+            </span>
             <Button
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0 text-muted-foreground"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
             >
               &gt;
             </Button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Scheduled Projects Table */}
@@ -1029,7 +1087,8 @@ export default function AdminProjects() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projects.filter((p) => p.status === "Scheduled").length === 0 ? (
+              {paginatedProjects.filter((p) => p.status === "Scheduled")
+                .length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={10}
@@ -1039,7 +1098,7 @@ export default function AdminProjects() {
                   </TableCell>
                 </TableRow>
               ) : (
-                projects
+                paginatedProjects
                   .filter((p) => p.status === "Scheduled")
                   .map((project, i) => {
                     const {
@@ -1125,7 +1184,7 @@ export default function AdminProjects() {
                           <TableCell className="text-right">
                             <Button
                               size="sm"
-                              className="h-7 bg-blue-600 hover:bg-blue-700 text-white"
+                              className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
                               onClick={() => handleStartProject(i)}
                             >
                               <Rocket className="mr-1 h-3 w-3" /> Start
@@ -1342,7 +1401,7 @@ export default function AdminProjects() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projects
+              {paginatedProjects
                 .filter((p) => p.status !== "Scheduled")
                 .map((item, i) => {
                   // Calculate stats for accordion details
@@ -1431,7 +1490,7 @@ export default function AdminProjects() {
                             ) : (
                               <Button
                                 size="sm"
-                                className="h-7 bg-blue-600 hover:bg-blue-700 text-white"
+                                className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
                                 onClick={() => handleCreateInvoice(item, i)}
                                 disabled={item.status !== "Finished"}
                               >
@@ -2126,7 +2185,7 @@ export default function AdminProjects() {
             </Button>
             <Button
               onClick={handleAddProject}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               Create Project
             </Button>

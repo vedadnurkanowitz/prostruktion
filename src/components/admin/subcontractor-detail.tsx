@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -66,7 +66,17 @@ import {
   Download,
   Upload,
   Trash2,
+  ShieldCheck,
+  ShieldAlert,
+  ArrowRightLeft,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface DocumentItem {
   file: File;
@@ -85,10 +95,12 @@ interface Worker {
   a1Start?: string;
   a1End?: string;
   a1Files?: string[];
-  coolingStatus: "Valid" | "Expiring Soon" | "Expired" | "None";
-  coolingStart?: string;
-  coolingEnd?: string;
-  coolingFiles?: string[];
+  certStatus: "Valid" | "Expiring Soon" | "Expired" | "None";
+  certStart?: string;
+  certEnd?: string;
+  certFiles?: string[];
+  activeProjects: number;
+  completedProjects: number;
   complaints: number;
   successRate: number;
   joinedDate: string;
@@ -121,9 +133,11 @@ export function SubcontractorDetail({
       subRole: "Senior Electrician",
       status: "Active",
       a1Status: "Valid",
-      coolingStatus: "Valid",
+      certStatus: "Valid",
+      activeProjects: 3,
+      completedProjects: 45,
       complaints: 0,
-      successRate: 100,
+      successRate: 0, // Calculated automatically
       joinedDate: "2024-01-15",
       avatarSeed: "Mark",
     },
@@ -134,9 +148,11 @@ export function SubcontractorDetail({
       subRole: "HVAC Specialist",
       status: "Active",
       a1Status: "Valid",
-      coolingStatus: "Expiring Soon",
+      certStatus: "Expiring Soon",
+      activeProjects: 1,
+      completedProjects: 12,
       complaints: 1,
-      successRate: 98,
+      successRate: 0,
       joinedDate: "2024-02-01",
       avatarSeed: "Ralf",
     },
@@ -147,9 +163,11 @@ export function SubcontractorDetail({
       subRole: "Sanitary Expert",
       status: "Active",
       a1Status: "Valid",
-      coolingStatus: "Valid",
+      certStatus: "Valid",
+      activeProjects: 2,
+      completedProjects: 8,
       complaints: 0,
-      successRate: 100,
+      successRate: 0,
       joinedDate: "2024-03-10",
       avatarSeed: "Simone",
     },
@@ -160,9 +178,11 @@ export function SubcontractorDetail({
       subRole: "Plumber",
       status: "Active",
       a1Status: "Expired",
-      coolingStatus: "Valid",
+      certStatus: "Valid",
+      activeProjects: 1,
+      completedProjects: 32,
       complaints: 3,
-      successRate: 91,
+      successRate: 0,
       joinedDate: "2023-11-05",
       avatarSeed: "Stefan",
     },
@@ -173,9 +193,11 @@ export function SubcontractorDetail({
       subRole: "Plumber",
       status: "Active",
       a1Status: "Expired",
-      coolingStatus: "Valid",
+      certStatus: "Valid",
+      activeProjects: 2,
+      completedProjects: 15,
       complaints: 1,
-      successRate: 96,
+      successRate: 0,
       joinedDate: "2024-01-20",
       avatarSeed: "Patrick",
     },
@@ -186,9 +208,11 @@ export function SubcontractorDetail({
       subRole: "Pipe Fitter",
       status: "Active",
       a1Status: "Expired",
-      coolingStatus: "Valid",
+      certStatus: "Valid",
+      activeProjects: 2,
+      completedProjects: 6,
       complaints: 1,
-      successRate: 95,
+      successRate: 0,
       joinedDate: "2024-02-15",
       avatarSeed: "Tim",
     },
@@ -199,9 +223,11 @@ export function SubcontractorDetail({
       subRole: "Assistant",
       status: "Active",
       a1Status: "Expired",
-      coolingStatus: "None",
+      certStatus: "None",
+      activeProjects: 1,
+      completedProjects: 21,
       complaints: 0,
-      successRate: 97,
+      successRate: 0,
       joinedDate: "2023-10-01",
       avatarSeed: "Marco",
     },
@@ -228,29 +254,35 @@ export function SubcontractorDetail({
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddManagerOpen, setIsAddManagerOpen] = useState(false);
   const [a1Na, setA1Na] = useState(false);
-  const [coolingNa, setCoolingNa] = useState(false);
+  const [certNa, setCertNa] = useState(false);
   const [a1Files, setA1Files] = useState<File[]>([]);
-  const [coolingFiles, setCoolingFiles] = useState<File[]>([]);
+  const [certFiles, setCertFiles] = useState<File[]>([]);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [docCurrentPage, setDocCurrentPage] = useState(1);
+  const [docItemsPerPage, setDocItemsPerPage] = useState(10);
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "a1" | "cooling",
+    type: "a1" | "cert",
   ) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       if (type === "a1") {
         setA1Files((prev) => [...prev, ...newFiles].slice(0, 2));
       } else {
-        setCoolingFiles((prev) => [...prev, ...newFiles].slice(0, 2));
+        setCertFiles((prev) => [...prev, ...newFiles].slice(0, 2));
       }
     }
   };
 
-  const removeFile = (index: number, type: "a1" | "cooling") => {
+  const removeFile = (index: number, type: "a1" | "cert") => {
     if (type === "a1") {
       setA1Files((prev) => prev.filter((_, i) => i !== index));
     } else {
-      setCoolingFiles((prev) => prev.filter((_, i) => i !== index));
+      setCertFiles((prev) => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -297,13 +329,57 @@ export function SubcontractorDetail({
     return "Valid";
   };
 
+  // Auto-calculate success rates on load or data change
+  // Formula: ((Completed - Complaints) / Completed) * 100
+  // Note: If Completed = 0, we default to 100% (innocent until proven guilty) or 0% depending on preference.
+  // Using 100% as a base for new workers.
+  useEffect(() => {
+    setWorkers((prevWorkers) => {
+      // Check if any worker needs an update to avoid infinite loop if values are stable
+      const needsUpdate = prevWorkers.some((w) => {
+        const calculated =
+          w.completedProjects === 0
+            ? 100
+            : Math.round(
+                ((w.completedProjects - w.complaints) / w.completedProjects) *
+                  100,
+              );
+        // Ensure within bounds 0-100 just in case complaints > completed (which shouldn't happen logically but mathematically can)
+        const clamped = Math.max(0, Math.min(100, calculated));
+        return w.successRate !== clamped;
+      });
+
+      if (!needsUpdate) return prevWorkers;
+
+      return prevWorkers.map((w) => {
+        const calculated =
+          w.completedProjects === 0
+            ? 100
+            : Math.round(
+                ((w.completedProjects - w.complaints) / w.completedProjects) *
+                  100,
+              );
+        return { ...w, successRate: Math.max(0, Math.min(100, calculated)) };
+      });
+    });
+  }, []); // Run once on mount to recalc mock data. In real app, run on [workers] dependency with care or separate calculation from state.
+
+  const handleStatusUpdate = (workerId: string, newStatus: any) => {
+    setWorkers((prev) =>
+      prev.map((w) => (w.id === workerId ? { ...w, status: newStatus } : w)),
+    );
+  };
+
   // Stats
-  const totalWorkers = 28;
-  const displayTotalWorkers = 28;
-  const displayActiveProjects = 12;
-  const displayCompletedProjects = 41;
-  const displaySuccessRate = 94;
-  const displayComplaints = 6;
+  const displayTotalWorkers = subcontractor.regWorkers || 28;
+  const displayActiveProjects = subcontractor.activeProjects || 12;
+  const displayCompletedProjects = subcontractor.completedProjects || 41;
+  const displayInWarranty = subcontractor.inWarranty || 28;
+  const displayExpiredWarranty = subcontractor.expiredWarranty || 13;
+  const displayComplaints = subcontractor.complaints || 6;
+  const displayResolvedComplaints = subcontractor.resolvedComplaints || 4;
+  const displayTransferedComplaints = subcontractor.transferedComplaints || 2;
+  const displaySuccessRate = subcontractor.successRate || 94; // Restored
 
   return (
     <div className="space-y-6">
@@ -328,7 +404,10 @@ export function SubcontractorDetail({
               <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <span className="opacity-70">
-                    #{Math.floor(Math.random() * 10000000)}
+                    #
+                    {subcontractor.id
+                      ? subcontractor.id.substring(0, 8)
+                      : "ID-12345"}
                   </span>
                   <span className="mx-1">•</span>
                   <span>Installation & Montage</span>
@@ -369,92 +448,156 @@ export function SubcontractorDetail({
         {/* Workers Tab */}
         <TabsContent value="workers" className="space-y-6 mt-6">
           {/* Stats Cards - Colorful Layout */}
-          <div className="grid gap-6 md:grid-cols-5">
-            <Card className="bg-primary/5 dark:bg-primary/5 border-primary/20 dark:border-primary/20 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <Users className="h-5 w-5" /> Registered Workers
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="text-3xl font-bold text-foreground">
-                    {displayTotalWorkers}
-                  </div>
-                  <div className="h-8 w-8 bg-primary/20 rounded flex items-center justify-center">
-                    <Users className="h-5 w-5 text-primary-foreground" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
+          {/* Stats Cards - Updated Layout */}
+          {/* Stats Cards - Updated Layout (2 rows x 4 columns) */}
+          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {/* 1. Active Projects */}
             <Card className="bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-emerald-700/80 dark:text-emerald-400 flex items-center gap-2">
-                  <Briefcase className="h-5 w-5" /> Active Projects
+                <CardTitle className="text-xs font-semibold text-emerald-700/80 dark:text-emerald-400 flex items-center gap-2">
+                  <Briefcase className="h-4 w-4" /> Active Projects
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <div className="text-3xl font-bold text-gray-900 dark:text-gray-50">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
                     {displayActiveProjects}
                   </div>
-                  <div className="h-8 w-8 bg-emerald-100 rounded flex items-center justify-center">
-                    <Briefcase className="h-5 w-5 text-emerald-600" />
+                  <div className="h-7 w-7 bg-emerald-100 rounded flex items-center justify-center">
+                    <Briefcase className="h-4 w-4 text-emerald-600" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
+            {/* 2. Completed Projects */}
             <Card className="bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-indigo-700/80 dark:text-indigo-400 flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5" /> Completed
+                <CardTitle className="text-xs font-semibold text-indigo-700/80 dark:text-indigo-400 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" /> Completed
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <div className="text-3xl font-bold text-gray-900 dark:text-gray-50">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
                     {displayCompletedProjects}
                   </div>
-                  <div className="h-8 w-8 bg-indigo-100 rounded flex items-center justify-center">
-                    <CheckCircle2 className="h-5 w-5 text-indigo-600" />
+                  <div className="h-7 w-7 bg-indigo-100 rounded flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4 text-indigo-600" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-pink-50/50 dark:bg-pink-950/20 border-pink-100 dark:border-pink-900 shadow-sm">
+            {/* 3. In Warranty */}
+            <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-pink-700/80 dark:text-pink-400 flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5" /> Complaints
+                <CardTitle className="text-xs font-semibold text-blue-700/80 dark:text-blue-400 flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" /> In Warranty
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <div className="text-3xl font-bold text-gray-900 dark:text-gray-50">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
+                    {displayInWarranty}
+                  </div>
+                  <div className="h-7 w-7 bg-blue-100 rounded flex items-center justify-center">
+                    <ShieldCheck className="h-4 w-4 text-blue-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 4. Expired Warranty */}
+            <Card className="bg-gray-50/50 dark:bg-gray-950/20 border-gray-200 dark:border-gray-800 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-gray-700/80 dark:text-gray-400 flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4" /> Expired
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
+                    {displayExpiredWarranty}
+                  </div>
+                  <div className="h-7 w-7 bg-gray-200 rounded flex items-center justify-center">
+                    <ShieldAlert className="h-4 w-4 text-gray-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 5. Complaints (Total) */}
+            <Card className="bg-red-50/50 dark:bg-red-950/20 border-red-100 dark:border-red-900 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-red-700/80 dark:text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" /> Complaints
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
                     {displayComplaints}
                   </div>
-                  <div className="h-8 w-8 bg-pink-100 rounded flex items-center justify-center">
-                    <AlertCircle className="h-5 w-5 text-pink-600" />
+                  <div className="h-7 w-7 bg-red-100 rounded flex items-center justify-center">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-amber-50/50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900 shadow-sm">
+            {/* 6. Resolved Complaints */}
+            <Card className="bg-green-50/50 dark:bg-green-950/20 border-green-100 dark:border-green-900 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-amber-700/80 dark:text-amber-400 flex items-center gap-2">
-                  <RotateCw className="h-5 w-5" /> Success Rate
+                <CardTitle className="text-xs font-semibold text-green-700/80 dark:text-green-400 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" /> Resolved
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <div className="text-3xl font-bold text-gray-900 dark:text-gray-50">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
+                    {displayResolvedComplaints}
+                  </div>
+                  <div className="h-7 w-7 bg-green-100 rounded flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 7. Transfered Complaints */}
+            <Card className="bg-orange-50/50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-900 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-orange-700/80 dark:text-orange-400 flex items-center gap-2">
+                  <ArrowRightLeft className="h-4 w-4" /> Transfered
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
+                    {displayTransferedComplaints}
+                  </div>
+                  <div className="h-7 w-7 bg-orange-100 rounded flex items-center justify-center">
+                    <ArrowRightLeft className="h-4 w-4 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 8. Success Rate */}
+            <Card className="bg-amber-50/50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-amber-700/80 dark:text-amber-400 flex items-center gap-2">
+                  <RotateCw className="h-4 w-4" /> Success Rate
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
                     {displaySuccessRate}%
                   </div>
-                  <div className="h-8 w-8 bg-amber-100 rounded flex items-center justify-center">
-                    <RotateCw className="h-5 w-5 text-amber-600" />
+                  <div className="h-7 w-7 bg-amber-100 rounded flex items-center justify-center">
+                    <RotateCw className="h-4 w-4 text-amber-600" />
                   </div>
                 </div>
               </CardContent>
@@ -463,8 +606,14 @@ export function SubcontractorDetail({
 
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold tracking-tight">
+              <h3 className="text-lg font-semibold tracking-tight flex items-center gap-2">
                 Registered Workers
+                <Badge
+                  variant="secondary"
+                  className="bg-gray-100 text-gray-700"
+                >
+                  {displayTotalWorkers}
+                </Badge>
               </h3>
 
               <div className="flex items-center gap-2">
@@ -621,22 +770,22 @@ export function SubcontractorDetail({
                         )}
                       </div>
 
-                      {/* Cooling Information */}
+                      {/* Certification Information */}
                       <div className="space-y-3 border rounded-md p-3">
                         <div className="flex items-center justify-between">
                           <Label className="font-semibold text-sm">
-                            Cooling Certificate
+                            Trade Certification
                           </Label>
                           <div className="flex items-center space-x-2">
                             <Checkbox
-                              id="cooling-na"
-                              checked={coolingNa}
+                              id="cert-na"
+                              checked={certNa}
                               onCheckedChange={(checked) =>
-                                setCoolingNa(checked as boolean)
+                                setCertNa(checked as boolean)
                               }
                             />
                             <Label
-                              htmlFor="cooling-na"
+                              htmlFor="cert-na"
                               className="text-xs font-normal"
                             >
                               Not Applicable
@@ -645,37 +794,37 @@ export function SubcontractorDetail({
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
-                            <Label htmlFor="cooling-start" className="text-xs">
+                            <Label htmlFor="cert-start" className="text-xs">
                               Start Date
                             </Label>
                             <Input
-                              id="cooling-start"
+                              id="cert-start"
                               type="date"
-                              disabled={coolingNa}
+                              disabled={certNa}
                               className="h-8 text-xs"
                             />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label htmlFor="cooling-end" className="text-xs">
+                            <Label htmlFor="cert-end" className="text-xs">
                               End Date
                             </Label>
                             <Input
-                              id="cooling-end"
+                              id="cert-end"
                               type="date"
-                              disabled={coolingNa}
+                              disabled={certNa}
                               className="h-8 text-xs"
                             />
                           </div>
                         </div>
 
-                        {!coolingNa && (
+                        {!certNa && (
                           <div className="grid gap-2">
                             <div className="flex items-center justify-between">
                               <Label className="text-xs">
                                 Attachments (Max 2)
                               </Label>
                               <span className="text-[10px] text-muted-foreground">
-                                {coolingFiles.length}/2
+                                {certFiles.length}/2
                               </span>
                             </div>
                             <div className="flex gap-2">
@@ -684,13 +833,13 @@ export function SubcontractorDetail({
                                 className="text-xs h-8 cursor-pointer"
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 multiple
-                                disabled={coolingFiles.length >= 2}
-                                onChange={(e) => handleFileChange(e, "cooling")}
+                                disabled={certFiles.length >= 2}
+                                onChange={(e) => handleFileChange(e, "cert")}
                               />
                             </div>
-                            {coolingFiles.length > 0 && (
+                            {certFiles.length > 0 && (
                               <div className="flex flex-col gap-1 mt-1">
-                                {coolingFiles.map((file, index) => (
+                                {certFiles.map((file, index) => (
                                   <div
                                     key={index}
                                     className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 border px-2 py-1 rounded text-xs"
@@ -717,7 +866,7 @@ export function SubcontractorDetail({
                                       </button>
                                       <button
                                         onClick={() =>
-                                          removeFile(index, "cooling")
+                                          removeFile(index, "cert")
                                         }
                                         className="text-gray-500 hover:text-red-500"
                                       >
@@ -767,18 +916,28 @@ export function SubcontractorDetail({
               <Table>
                 <TableHeader className="bg-gray-50/50 dark:bg-gray-900/50">
                   <TableRow>
-                    <TableHead className="font-semibold w-[250px]">
+                    <TableHead className="font-semibold w-[220px]">
                       Name
                     </TableHead>
-                    <TableHead className="font-semibold">Role</TableHead>
-                    <TableHead className="font-semibold w-[200px]">
+                    <TableHead className="font-semibold w-[120px]">
+                      Role
+                    </TableHead>
+                    <TableHead className="font-semibold w-[100px]">
                       A1
                     </TableHead>
-                    <TableHead className="font-semibold w-[200px]">
-                      Cooling
+                    <TableHead className="font-semibold w-[150px]">
+                      Certification
                     </TableHead>
-                    <TableHead className="font-semibold">Complaints</TableHead>
-                    <TableHead className="font-semibold">
+                    <TableHead className="font-semibold w-[160px]">
+                      Completed Projects
+                    </TableHead>
+                    <TableHead className="font-semibold w-[100px]">
+                      Complaints
+                    </TableHead>
+                    <TableHead className="font-semibold w-[140px]">
+                      Status
+                    </TableHead>
+                    <TableHead className="font-semibold text-right">
                       Success Rate
                     </TableHead>
                   </TableRow>
@@ -833,7 +992,7 @@ export function SubcontractorDetail({
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {worker.coolingStatus === "Valid" && (
+                          {worker.certStatus === "Valid" && (
                             <Badge
                               variant="outline"
                               className="bg-green-50 text-green-700 border-green-200 text-xs font-normal gap-1 pl-1"
@@ -842,7 +1001,7 @@ export function SubcontractorDetail({
                               Valid
                             </Badge>
                           )}
-                          {worker.coolingStatus === "Expiring Soon" && (
+                          {worker.certStatus === "Expiring Soon" && (
                             <Badge
                               variant="outline"
                               className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-normal gap-1 pl-1"
@@ -851,9 +1010,15 @@ export function SubcontractorDetail({
                               Expiring Soon
                             </Badge>
                           )}
-                          {worker.coolingStatus === "None" && (
+                          {worker.certStatus === "None" && (
                             <div className="h-2 w-8 bg-gray-100 rounded-full"></div>
                           )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-sm">
+                          <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                          <span>{worker.completedProjects}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -863,51 +1028,141 @@ export function SubcontractorDetail({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-700 w-full pl-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Badge
+                              variant="outline"
+                              className={`
+                                cursor-pointer hover:opacity-80 transition-opacity
+                                ${
+                                  worker.status === "Active"
+                                    ? "bg-green-50 text-green-700 border-green-200"
+                                    : worker.status === "On Leave"
+                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                      : "bg-red-50 text-red-700 border-red-200"
+                                }
+                              `}
+                            >
+                              {worker.status}{" "}
+                              <ChevronDown className="ml-1 h-3 w-3" />
+                            </Badge>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(worker.id, "Active")
+                              }
+                            >
+                              Active
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(worker.id, "On Leave")
+                              }
+                            >
+                              On Leave
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusUpdate(worker.id, "Blocked")
+                              }
+                            >
+                              Blocked
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2 text-sm font-medium text-gray-700 w-full pl-2 p-1.5 rounded-md">
                           <CheckCircle2 className="h-4 w-4 text-green-500 fill-green-100" />
-                          {worker.successRate}%
+                          <span>{worker.successRate}%</span>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center p-4">
-                      <Button
-                        variant="secondary"
-                        className="w-full max-w-[200px] text-blue-600 bg-blue-50 hover:bg-blue-100"
-                      >
-                        View All Workers
-                      </Button>
-                    </TableCell>
-                  </TableRow>
                 </TableBody>
               </Table>
 
               {/* Footer matching image style roughly */}
-              <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50 text-xs text-muted-foreground">
-                <span>
-                  Showing 1 to {Math.min(6, workers.length)} of{" "}
-                  {displayTotalWorkers} entries
-                </span>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-6 w-6">
-                    <span className="sr-only">Prev</span>&lt;
-                  </Button>
+              {/* Footer with Uniform Pagination */}
+              <div className="flex flex-col md:flex-row items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50 gap-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing{" "}
+                  {workers.length > 0
+                    ? (currentPage - 1) * itemsPerPage + 1
+                    : 0}{" "}
+                  to {Math.min(currentPage * itemsPerPage, workers.length)} of{" "}
+                  {workers.length} entries
+                </div>
+
+                <div className="flex items-center gap-2">
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
-                    className="h-6 w-6 p-0 bg-primary/20 text-primary-foreground"
+                    className="h-8 w-8 p-0"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
                   >
-                    1
+                    <span className="sr-only">Prev</span>
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    2
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    3
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6">
-                    <span className="sr-only">Next</span>&gt;
+
+                  {Array.from(
+                    {
+                      length: Math.min(
+                        5,
+                        Math.ceil(workers.length / itemsPerPage),
+                      ),
+                    },
+                    (_, i) => {
+                      const totalPages = Math.ceil(
+                        workers.length / itemsPerPage,
+                      );
+                      let pageNum = i + 1;
+
+                      if (totalPages > 5 && currentPage > 3) {
+                        pageNum = currentPage - 2 + i;
+                      }
+
+                      if (pageNum > totalPages) return null;
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={
+                            currentPage === pageNum ? "secondary" : "outline"
+                          }
+                          size="sm"
+                          className={`h-8 w-8 p-0 ${
+                            currentPage === pageNum
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "text-muted-foreground"
+                          }`}
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    },
+                  )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-2 text-yellow-600 gap-1"
+                    onClick={() =>
+                      setCurrentPage((p) =>
+                        Math.min(
+                          Math.ceil(workers.length / itemsPerPage),
+                          p + 1,
+                        ),
+                      )
+                    }
+                    disabled={
+                      currentPage >= Math.ceil(workers.length / itemsPerPage)
+                    }
+                  >
+                    Next Page <ChevronRight className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
@@ -1255,26 +1510,51 @@ export function SubcontractorDetail({
                   )}
                 </TableBody>
               </Table>
-              {/* Pagination mimicking workers tab */}
+              {/* Pagination mimicking uniform style */}
               {documents.length > 0 && (
-                <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50 text-xs text-muted-foreground">
-                  <span>
-                    Showing 1 to {documents.length} of {documents.length}{" "}
-                    entries
-                  </span>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
-                      <span className="sr-only">Prev</span>&lt;
+                <div className="flex flex-col md:flex-row items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50 gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    {documents.length > 0
+                      ? (docCurrentPage - 1) * docItemsPerPage + 1
+                      : 0}{" "}
+                    to{" "}
+                    {Math.min(
+                      docCurrentPage * docItemsPerPage,
+                      documents.length,
+                    )}{" "}
+                    of {documents.length} entries
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() =>
+                        setDocCurrentPage((p) => Math.max(1, p - 1))
+                      }
+                      disabled={docCurrentPage === 1}
+                    >
+                      <span className="sr-only">Prev</span>
+                      <ChevronLeft className="h-4 w-4" />
                     </Button>
+
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="h-6 w-6 p-0 bg-primary/20 text-primary-foreground"
+                      className="h-8 w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90"
                     >
                       1
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
-                      <span className="sr-only">Next</span>&gt;
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 text-yellow-600 gap-1"
+                      disabled
+                    >
+                      Next Page <ChevronRight className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>

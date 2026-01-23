@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ import {
   CheckCircle2,
   ArrowDown,
   AlertCircle,
+  Building2,
+  ChevronsUpDown,
 } from "lucide-react";
 
 import { useEffect } from "react";
@@ -52,6 +55,18 @@ export default function FinancialDashboardPage() {
 
   const [invoicedProjects, setInvoicedProjects] = useState<any[]>([]);
   const [receivedProjects, setReceivedProjects] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [cashOnHand, setCashOnHand] = useState(0);
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(
+    null,
+  );
+  const [sideProjectModalOpen, setSideProjectModalOpen] = useState(false);
+  const [sideProjectForm, setSideProjectForm] = useState({
+    projectName: "",
+    partnerName: "",
+    amount: "",
+    address: "",
+  });
 
   useEffect(() => {
     // Load from LocalStorage
@@ -74,6 +89,7 @@ export default function FinancialDashboardPage() {
     }
 
     // Load Generated Invoices
+    let totalRec = 0;
     const storedGenerated = localStorage.getItem(
       "prostruktion_generated_invoices",
     );
@@ -84,13 +100,88 @@ export default function FinancialDashboardPage() {
           setInvoicedProjects(
             parsedInv.filter((i: any) => i.status === "Unpaid"),
           );
-          setReceivedProjects(
-            parsedInv.filter((i: any) => i.status === "Received"),
+          const received = parsedInv.filter(
+            (i: any) => i.status === "Received",
+          );
+          setReceivedProjects(received);
+
+          // Calc Total Received
+          totalRec = received.reduce(
+            (acc: number, curr: any) =>
+              acc +
+              (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
+                0),
+            0,
           );
         }
       } catch (e) {
         console.error("Failed to parse generated invoices", e);
       }
+    }
+
+    // Load Expenses
+    const storedExpenses = localStorage.getItem("prostruktion_expenses");
+    let totalExp = 27100; // Default dummy sum (2800 + 6200 + 18100)
+
+    if (storedExpenses) {
+      const parsedExpenses = JSON.parse(storedExpenses);
+      if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
+        setExpenses(parsedExpenses);
+        const storedTotal = parsedExpenses.reduce(
+          (acc: number, curr: any) =>
+            acc +
+            (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) || 0),
+          0,
+        );
+        if (storedTotal > 0) totalExp = storedTotal;
+      }
+    }
+
+    setCashOnHand(totalRec - totalExp);
+
+    // Seed dummy overdue invoice for testing
+    const dummyOverdue = {
+      id: "dummy-overdue-1",
+      project: "TEST OVERDUE PROJECT",
+      partner: "Test Partner",
+      amount: "€ 15,000",
+      date: "Jan 01, 2024", // Definitely > 7 days old
+      status: "Unpaid",
+      inv: "INV-TEST-001",
+      overdue: true,
+    };
+
+    // Check if we already have it to avoid duplicates
+    const storedGen = JSON.parse(
+      localStorage.getItem("prostruktion_generated_invoices") || "[]",
+    );
+    if (!storedGen.find((i: any) => i.id === "dummy-overdue-1")) {
+      localStorage.setItem(
+        "prostruktion_generated_invoices",
+        JSON.stringify([dummyOverdue, ...storedGen]),
+      );
+      window.location.reload();
+    }
+    // Seed dummy "For Invoice" project > 14 days old
+    const dummyPending = {
+      id: "dummy-pending-14",
+      project: "TEST PENDING OLD",
+      partner: "Test Partner",
+      amount: 5000, // Number for this table logic usually
+      date: "Jan 01, 2024",
+      status: "For Invoice",
+      address: "Historical Lane 1, Oldtown",
+    };
+
+    const storedProjs = JSON.parse(
+      localStorage.getItem("prostruktion_invoices") || "[]",
+    );
+    if (!storedProjs.find((p: any) => p.id === "dummy-pending-14")) {
+      localStorage.setItem(
+        "prostruktion_invoices",
+        JSON.stringify([...storedProjs, dummyPending]),
+      );
+      window.location.reload();
     }
   }, []);
 
@@ -107,6 +198,33 @@ export default function FinancialDashboardPage() {
     );
     const updatedStorage = storedInvoices.map((p: any) =>
       p.id === project.id ? { ...p, status: "Ready" } : p,
+    );
+    localStorage.setItem(
+      "prostruktion_invoices",
+      JSON.stringify(updatedStorage),
+    );
+  };
+
+  const handleRevertToPending = (partnerName: string) => {
+    // find projects to revert
+    const projectsToRevert = readyToInvoiceProjects.filter(
+      (p) => p.partner === partnerName,
+    );
+
+    // Update local state
+    setForInvoiceProjects((prev) => [...prev, ...projectsToRevert]);
+    setReadyToInvoiceProjects((prev) =>
+      prev.filter((p) => p.partner !== partnerName),
+    );
+
+    // Update LocalStorage
+    const storedInvoices = JSON.parse(
+      localStorage.getItem("prostruktion_invoices") || "[]",
+    );
+    const updatedStorage = storedInvoices.map((p: any) =>
+      p.partner === partnerName && p.status === "Ready"
+        ? { ...p, status: "For Invoice" }
+        : p,
     );
     localStorage.setItem(
       "prostruktion_invoices",
@@ -150,6 +268,7 @@ export default function FinancialDashboardPage() {
       ), // Approx
       hasMediator: false,
       mediatorShare: 0,
+      items: batchProjects, // Included to detail individual projects in modal
     };
     setCurrentInvoice(invoiceData);
 
@@ -161,6 +280,7 @@ export default function FinancialDashboardPage() {
     // Create Single Invoice Entry
     const newInvoice = {
       status: "Unpaid",
+      id: `INV-${1050 + Math.floor(Math.random() * 100)}`, // Add explicit ID for keying
       color: "bg-blue-300",
       date: new Date().toLocaleDateString("en-US", {
         year: "2-digit",
@@ -171,6 +291,7 @@ export default function FinancialDashboardPage() {
       partner: partnerName,
       amount: `€ ${totalAmount.toLocaleString()}`,
       overdue: false,
+      items: batchProjects, // Store detailed items
     };
     // Update LocalStorage (Mark all as Sent)
     const storedInvoices = JSON.parse(
@@ -238,6 +359,56 @@ export default function FinancialDashboardPage() {
     return diffDays;
   };
 
+  const handleAddSideProject = () => {
+    if (!sideProjectForm.projectName || !sideProjectForm.amount) return;
+
+    const newInvoice = {
+      id: `side-${Date.now()}`,
+      status: "Unpaid",
+      color: "bg-purple-300",
+      date: new Date().toLocaleDateString("en-US", {
+        year: "2-digit",
+        month: "short",
+        day: "numeric",
+      }),
+      inv: `SIDE-${1000 + Math.floor(Math.random() * 100)}`,
+      partner: sideProjectForm.partnerName || "Side Project",
+      amount: `€ ${parseFloat(sideProjectForm.amount).toLocaleString()}`,
+      overdue: false,
+      isSideProject: true,
+      items: [
+        {
+          project: sideProjectForm.projectName,
+          address: sideProjectForm.address || "External Project",
+          partner: sideProjectForm.partnerName || "External",
+          amount: parseFloat(sideProjectForm.amount),
+          hasMediator: false,
+        },
+      ],
+    };
+
+    // Update state
+    setInvoicedProjects((prev) => [newInvoice, ...prev]);
+
+    // Save to localStorage
+    const storedGenerated = JSON.parse(
+      localStorage.getItem("prostruktion_generated_invoices") || "[]",
+    );
+    localStorage.setItem(
+      "prostruktion_generated_invoices",
+      JSON.stringify([newInvoice, ...storedGenerated]),
+    );
+
+    // Reset form and close modal
+    setSideProjectForm({
+      projectName: "",
+      partnerName: "",
+      amount: "",
+      address: "",
+    });
+    setSideProjectModalOpen(false);
+  };
+
   const handleMarkAsReceived = (invoice: any) => {
     const updatedInvoice = {
       ...invoice,
@@ -271,6 +442,19 @@ export default function FinancialDashboardPage() {
         </h2>
       </div>
 
+      {/* Page Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Financial Dashboard</h1>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+          onClick={() => setSideProjectModalOpen(true)}
+        >
+          <Plus className="mr-1 h-4 w-4" /> Side Project
+        </Button>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Card 1 */}
@@ -287,11 +471,13 @@ export default function FinancialDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900 dark:text-gray-50">
-              € 325,000
+            <div
+              className={`text-2xl font-bold ${cashOnHand < 0 ? "text-red-600" : "text-gray-900 dark:text-gray-50"}`}
+            >
+              € {cashOnHand.toLocaleString()}
             </div>
             <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-              Period: 30 days <ChevronDown className="h-3 w-3" />
+              Real-time <ChevronDown className="h-3 w-3" />
             </div>
           </CardContent>
         </Card>
@@ -308,13 +494,29 @@ export default function FinancialDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <div className="text-2xl font-bold text-blue-600">€ 215,000</div>
+              <div className="text-2xl font-bold text-blue-600">
+                €{" "}
+                {Math.round(
+                  [
+                    ...forInvoiceProjects,
+                    ...readyToInvoiceProjects,
+                    ...invoicedProjects,
+                  ].reduce(
+                    (acc, curr) =>
+                      acc +
+                      (parseFloat(
+                        curr.amount?.toString().replace(/[^0-9.-]+/g, ""),
+                      ) || 0),
+                    0,
+                  ),
+                ).toLocaleString()}
+              </div>
               <span className="text-xs text-muted-foreground">
                 Next 30 days
               </span>
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
-              All Partners - Mar 01 - Mai 2024
+              Sum of Pending & Invoiced
             </div>
           </CardContent>
         </Card>
@@ -330,9 +532,25 @@ export default function FinancialDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">€ 50,500</div>
+            <div className="text-2xl font-bold text-red-600">
+              €{" "}
+              {invoicedProjects
+                .reduce((acc, curr) => {
+                  const days = calculateDaysPending(curr.date);
+                  if (days > 7 && curr.status !== "Received") {
+                    return (
+                      acc +
+                      (parseFloat(
+                        curr.amount?.toString().replace(/[^0-9.-]+/g, ""),
+                      ) || 0)
+                    );
+                  }
+                  return acc;
+                }, 0)
+                .toLocaleString()}
+            </div>
             <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-              Due Date: End <ChevronDown className="h-3 w-3" />
+              {">"} 7 Days Pending <ChevronDown className="h-3 w-3" />
             </div>
           </CardContent>
         </Card>
@@ -344,24 +562,43 @@ export default function FinancialDashboardPage() {
               <FileWarning className="h-4 w-4 text-orange-600" />
             </div>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              8 Invoices
+              Invoices Status
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
               <div>
-                <div className="text-xl font-bold text-blue-600">3</div>
-                <div className="text-xs text-muted-foreground">Due</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {
+                    forInvoiceProjects.filter(
+                      (p) => calculateDaysPending(p.date) > 14,
+                    ).length
+                  }
+                </div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  Pending {">"} 14 Days
+                </div>
               </div>
-              <div className="h-8 w-px bg-orange-200"></div>
+              <div className="h-8 w-px bg-orange-200/60 dark:bg-orange-800/30"></div>
               <div>
-                <div className="text-xl font-bold text-red-600">5</div>
-                <div className="text-xs text-muted-foreground">Overdue</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {
+                    invoicedProjects.filter((i) => i.status !== "Received")
+                      .length
+                  }
+                </div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  Sent / Unpaid
+                </div>
               </div>
             </div>
 
             <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-              Due Date: Paid <ChevronDown className="h-3 w-3" />
+              Active Pipeline:{" "}
+              {forInvoiceProjects.length +
+                invoicedProjects.filter((i) => i.status !== "Received")
+                  .length}{" "}
+              files
             </div>
           </CardContent>
         </Card>
@@ -374,7 +611,7 @@ export default function FinancialDashboardPage() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 text-blue-600 hover:text-blue-700"
+            className="h-8 text-yellow-600 hover:text-yellow-700"
           >
             View All <ChevronRight className="ml-1 h-3 w-3" />
           </Button>
@@ -408,21 +645,26 @@ export default function FinancialDashboardPage() {
 
                   return (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium">
-                        {row.project}
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                            <Building2 className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <div className="font-medium">{row.project}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {row.address || "No address provided"}
+                            </div>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>{row.partner}</TableCell>
                       <TableCell>{row.date}</TableCell>
                       <TableCell>
                         <div
-                          className={`flex items-center gap-2 text-xs font-medium ${isOverdueForBatch ? "text-green-600" : "text-muted-foreground"}`}
+                          className={`flex items-center gap-2 text-xs font-medium text-muted-foreground`}
                         >
                           {daysPending} Days
-                          {isOverdueForBatch && (
-                            <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px]">
-                              <AlertCircle className="h-3 w-3" /> Batch Ready
-                            </div>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-bold">
@@ -431,12 +673,10 @@ export default function FinancialDashboardPage() {
                       <TableCell className="text-right">
                         <Button
                           size="sm"
-                          className={`h-7 text-white ${isOverdueForBatch ? "bg-green-600 hover:bg-green-700 animate-pulse" : "bg-blue-600 hover:bg-blue-700"}`}
+                          className="h-7 text-primary-foreground bg-primary hover:bg-primary/90"
                           onClick={() => handleMoveToReady(row)}
                         >
-                          {isOverdueForBatch
-                            ? "Move to Ready!"
-                            : "Move to Ready"}
+                          Move to Ready
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -457,7 +697,7 @@ export default function FinancialDashboardPage() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 text-blue-600 hover:text-blue-700"
+            className="h-8 text-yellow-600 hover:text-yellow-700"
           >
             View All <ChevronRight className="ml-1 h-3 w-3" />
           </Button>
@@ -497,6 +737,14 @@ export default function FinancialDashboardPage() {
                     <TableCell className="text-right">
                       <Button
                         size="sm"
+                        variant="outline"
+                        className="h-7 mr-2 text-xs border-dashed text-gray-500 hover:text-gray-900"
+                        onClick={() => handleRevertToPending(group.partner)}
+                      >
+                        Undo
+                      </Button>
+                      <Button
+                        size="sm"
                         className="h-7 bg-green-600 hover:bg-green-700 text-white"
                         onClick={() => handleBatchInvoice(group.partner)}
                       >
@@ -518,7 +766,7 @@ export default function FinancialDashboardPage() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 text-blue-600 hover:text-blue-700"
+            className="h-8 text-yellow-600 hover:text-yellow-700"
           >
             View All <ChevronRight className="ml-1 h-3 w-3" />
           </Button>
@@ -547,34 +795,140 @@ export default function FinancialDashboardPage() {
                 </TableRow>
               ) : (
                 invoicedProjects.map((row, i) => (
-                  <TableRow key={row.id || i}>
-                    <TableCell>
-                      <Badge
-                        className={`${row.overdue ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-blue-100 text-blue-700 hover:bg-blue-200"} border-0 w-16 justify-center`}
-                      >
-                        {row.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">{row.date}</TableCell>
-                    <TableCell className="text-xs font-medium">
-                      {row.inv}
-                    </TableCell>
-                    <TableCell className="text-xs">{row.partner}</TableCell>
-                    <TableCell
-                      className={`text-right font-bold text-sm ${row.overdue ? "text-red-600" : ""}`}
+                  <React.Fragment key={row.id || `inv-${i}`}>
+                    <TableRow
+                      className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50"
+                      onClick={() =>
+                        setExpandedInvoiceId(
+                          expandedInvoiceId === row.id ? null : row.id,
+                        )
+                      }
                     >
-                      {row.amount}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        className="h-7 bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => handleMarkAsReceived(row)}
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="h-9 w-9 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                            <Building2 className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-sm">
+                              {row.items?.[0]?.project ||
+                                `Batch: ${row.partner}`}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {row.items?.[0]?.address || "Multiple projects"}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">{row.date}</TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {row.inv}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {row.partner}
+                        {row.items && row.items.length > 0 && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({row.items.length})
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right font-bold text-sm ${row.overdue ? "text-red-600" : ""}`}
                       >
-                        <ArrowDown className="h-3 w-3 mr-1" /> Receive
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                        {row.amount}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          className="h-7 bg-green-600 hover:bg-green-700 text-white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkAsReceived(row);
+                          }}
+                        >
+                          <ArrowDown className="h-3 w-3 mr-1" /> Receive
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {expandedInvoiceId === row.id && (
+                      <TableRow className="bg-gray-50/50 dark:bg-gray-900/30">
+                        <TableCell colSpan={6} className="p-4">
+                          <div className="space-y-3 pl-8">
+                            <div className="rounded-md border overflow-hidden">
+                              <Table>
+                                <TableHeader className="bg-yellow-50/50 dark:bg-yellow-900/10">
+                                  <TableRow className="hover:bg-transparent">
+                                    <TableHead className="w-[30%]">
+                                      Project
+                                    </TableHead>
+                                    <TableHead>Contractor</TableHead>
+                                    <TableHead>Partner</TableHead>
+                                    <TableHead className="text-right">
+                                      Financial Debt
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                      Share
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {row.items && row.items.length > 0 ? (
+                                    row.items.map((item: any, idx: number) => (
+                                      <TableRow
+                                        key={idx}
+                                        className="hover:bg-muted/50"
+                                      >
+                                        <TableCell>
+                                          <div className="flex items-center gap-3">
+                                            <div className="h-9 w-9 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                                              <Building2 className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                              <div className="font-medium text-sm">
+                                                {item.project}
+                                              </div>
+                                              <div className="text-xs text-muted-foreground">
+                                                {item.address ||
+                                                  "Unknown Address"}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell>{item.partner}</TableCell>
+                                        <TableCell>Prostruktion</TableCell>
+                                        <TableCell className="text-right font-bold">
+                                          € {item.amount?.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          <Badge
+                                            variant="outline"
+                                            className="bg-blue-50 text-blue-700 border-blue-200"
+                                          >
+                                            {item.hasMediator ? "10%" : "15%"}
+                                          </Badge>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))
+                                  ) : (
+                                    <TableRow>
+                                      <TableCell
+                                        colSpan={5}
+                                        className="text-center text-muted-foreground py-4 text-xs italic"
+                                      >
+                                        No detailed project data available for
+                                        this invoice.
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 ))
               )}
             </TableBody>
@@ -590,7 +944,7 @@ export default function FinancialDashboardPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 text-blue-600 hover:text-blue-700"
+              className="h-8 text-yellow-600 hover:text-yellow-700"
             >
               View All &gt;
             </Button>
@@ -632,13 +986,24 @@ export default function FinancialDashboardPage() {
             </Table>
             <div className="flex items-center justify-between p-3 border-t bg-gray-50 dark:bg-gray-900/20 rounded-b-lg">
               <div className="text-xs text-muted-foreground flex items-center gap-1">
-                Showing 1 to 9 of 8 entries <ChevronDown className="h-3 w-3" />
+                {receivedProjects.length} Entries
               </div>
               <div className="flex items-center gap-2 text-sm font-bold">
                 <span className="text-xs text-muted-foreground font-normal flex items-center gap-1">
-                  Download CSV <Download className="h-3 w-3" />
+                  Total Received:
                 </span>
-                € 92,800
+                <span className="text-green-600">
+                  €{" "}
+                  {receivedProjects
+                    .reduce(
+                      (acc, curr) =>
+                        acc +
+                        (parseFloat(curr.amount.replace(/[^0-9.-]+/g, "")) ||
+                          0),
+                      0,
+                    )
+                    .toLocaleString()}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -665,35 +1030,38 @@ export default function FinancialDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[
-                  {
-                    status: "Unpaid",
-                    date: "May 29, 24",
-                    exp: "EXP-1152",
-                    cat: "Accounting",
-                    amount: "€ 2,800",
-                    days: "7 days",
-                    overdue: false,
-                  },
-                  {
-                    status: "Overdue",
-                    date: "May 23, 24",
-                    exp: "EXP-1144",
-                    cat: "Travel",
-                    amount: "€ 6,200",
-                    days: "4 days",
-                    overdue: true,
-                  },
-                  {
-                    status: "Overdue",
-                    date: "Apr 17, 24",
-                    exp: "EXP-1140",
-                    cat: "Salaries",
-                    amount: "€ 18,100",
-                    days: "8 days",
-                    overdue: true,
-                  },
-                ].map((row, i) => (
+                {(expenses.length > 0
+                  ? expenses
+                  : [
+                      {
+                        status: "Unpaid",
+                        date: "May 29, 24",
+                        exp: "EXP-1152",
+                        cat: "Accounting",
+                        amount: "€ 2,800",
+                        days: "7 days",
+                        overdue: false,
+                      },
+                      {
+                        status: "Overdue",
+                        date: "May 23, 24",
+                        exp: "EXP-1144",
+                        cat: "Travel",
+                        amount: "€ 6,200",
+                        days: "4 days",
+                        overdue: true,
+                      },
+                      {
+                        status: "Overdue",
+                        date: "Apr 17, 24",
+                        exp: "EXP-1140",
+                        cat: "Salaries",
+                        amount: "€ 18,100",
+                        days: "8 days",
+                        overdue: true,
+                      },
+                    ]
+                ).map((row: any, i: number) => (
                   <TableRow key={i}>
                     <TableCell>
                       <Badge
@@ -718,21 +1086,33 @@ export default function FinancialDashboardPage() {
               </TableBody>
             </Table>
             <div className="flex items-center justify-between p-3 border-t bg-gray-50 dark:bg-gray-900/20 rounded-b-lg">
-              <div className="text-[10px] text-muted-foreground">
-                Total: 5 <span className="mx-1">|</span> Pending: 3{" "}
-                <span className="mx-1">|</span> Due Soon: 1{" "}
-                <span className="font-bold text-foreground">€ 28,750</span>
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                {expenses.length > 0 ? expenses.length : 3} Entries
               </div>
               <div className="flex items-center gap-2 text-sm font-bold">
-                <span className="text-xs text-muted-foreground font-normal">
-                  Total:
+                <span className="text-xs text-muted-foreground font-normal flex items-center gap-1">
+                  Total Expenses:
                 </span>
-                <Badge
-                  variant="secondary"
-                  className="bg-gray-200 hover:bg-gray-200 text-gray-700"
-                >
-                  Dats € 28,750
-                </Badge>
+                <span className="text-red-600">
+                  €{" "}
+                  {(expenses.length > 0
+                    ? expenses
+                    : [
+                        { amount: "2800" },
+                        { amount: "6200" },
+                        { amount: "18100" },
+                      ]
+                  )
+                    .reduce(
+                      (acc, curr) =>
+                        acc +
+                        (parseFloat(
+                          curr.amount.toString().replace(/[^0-9.-]+/g, ""),
+                        ) || 0),
+                      0,
+                    )
+                    .toLocaleString()}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -764,9 +1144,41 @@ export default function FinancialDashboardPage() {
                   <span>€ {currentInvoice.amount.toLocaleString()}</span>
                 </div>
                 <div className="border-t pt-2 mt-2">
-                  {/* Simplified view for Batch */}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    Includes {currentInvoice.amount / 1000} projects (est)
+                  <div className="text-xs font-semibold text-muted-foreground mb-2">
+                    Included Projects:
+                  </div>
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {currentInvoice.items && currentInvoice.items.length > 0 ? (
+                      currentInvoice.items.map((item: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="bg-white dark:bg-black/20 p-2 rounded border text-xs space-y-1"
+                        >
+                          <div className="flex justify-between font-medium">
+                            <span>{item.project}</span>
+                            <span>€ {item.amount?.toLocaleString()}</span>
+                          </div>
+                          <div className="text-muted-foreground">
+                            {item.partner} (Contractor)
+                          </div>
+                          <div className="text-muted-foreground italic">
+                            {item.address || "Unknown Address"}
+                          </div>
+                          <div className="flex justify-end mt-1">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] h-5 bg-blue-50 text-blue-700 border-blue-200"
+                            >
+                              Share: {item.hasMediator ? "10%" : "15%"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        List of projects unavailable.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -782,6 +1194,108 @@ export default function FinancialDashboardPage() {
 
           <DialogFooter>
             <Button onClick={() => setSuccessModalOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Side Project Modal */}
+      <Dialog
+        open={sideProjectModalOpen}
+        onOpenChange={setSideProjectModalOpen}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-blue-600" /> Add Side Project
+              Invoice
+            </DialogTitle>
+            <DialogDescription>
+              Create an invoice for a project not tracked in the main app.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Project Name *</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Website for Client X"
+                value={sideProjectForm.projectName}
+                onChange={(e) =>
+                  setSideProjectForm({
+                    ...sideProjectForm,
+                    projectName: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Partner / Client Name
+              </label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., John Doe"
+                value={sideProjectForm.partnerName}
+                onChange={(e) =>
+                  setSideProjectForm({
+                    ...sideProjectForm,
+                    partnerName: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Address / Location</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., 123 Main Street"
+                value={sideProjectForm.address}
+                onChange={(e) =>
+                  setSideProjectForm({
+                    ...sideProjectForm,
+                    address: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Amount (€) *</label>
+              <input
+                type="number"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., 5000"
+                value={sideProjectForm.amount}
+                onChange={(e) =>
+                  setSideProjectForm({
+                    ...sideProjectForm,
+                    amount: e.target.value,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setSideProjectModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddSideProject}
+              disabled={!sideProjectForm.projectName || !sideProjectForm.amount}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Create Invoice
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

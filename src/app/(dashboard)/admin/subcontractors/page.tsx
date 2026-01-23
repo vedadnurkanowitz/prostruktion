@@ -39,6 +39,10 @@ export default function SubcontractorsPage() {
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
   const [selectedSubcontractor, setSelectedSubcontractor] = useState<any>(null);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   useEffect(() => {
     // Load data from local storage
     const storedData = localStorage.getItem("prostruktion_subcontractors");
@@ -72,6 +76,13 @@ export default function SubcontractorsPage() {
           totalSubs
         ).toFixed(1)
       : "0.0";
+
+  // Pagination Logic
+  const totalPages = Math.ceil(subcontractors.length / itemsPerPage);
+  const paginatedSubcontractors = subcontractors.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
 
   if (selectedSubcontractor) {
     return (
@@ -235,7 +246,7 @@ export default function SubcontractorsPage() {
             />
             <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
           </div>
-          <Button className="h-8 bg-blue-600 hover:bg-blue-700">
+          <Button className="h-8 bg-primary hover:bg-primary/90 text-primary-foreground">
             <RotateCcw className="mr-2 h-3 w-3" /> Reset Filters
           </Button>
         </div>
@@ -287,7 +298,7 @@ export default function SubcontractorsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              subcontractors.map((company, i) => (
+              paginatedSubcontractors.map((company, i) => (
                 <TableRow key={i} className="group hover:bg-muted/50">
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -357,7 +368,7 @@ export default function SubcontractorsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 text-xs bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+                        className="h-7 text-xs bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
                         onClick={() => setSelectedSubcontractor(company)}
                       >
                         Manage
@@ -373,46 +384,75 @@ export default function SubcontractorsPage() {
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50">
           <div className="text-sm text-muted-foreground">
-            Showing {subcontractors.length > 0 ? 1 : 0} to{" "}
-            {subcontractors.length} of {subcontractors.length} entries
+            Showing{" "}
+            {subcontractors.length > 0
+              ? (currentPage - 1) * itemsPerPage + 1
+              : 0}{" "}
+            to {Math.min(currentPage * itemsPerPage, subcontractors.length)} of{" "}
+            {subcontractors.length} entries
           </div>
 
-          {subcontractors.length > 10 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground"
-                disabled
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 text-sm font-medium bg-white dark:bg-gray-800 border shadow-sm"
-              >
-                1
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              // Simple sliding logic
+              let p = i + 1;
+              if (totalPages > 5 && currentPage > 3) p = currentPage - 2 + i;
+              if (p > totalPages) return null;
+
+              return (
+                <Button
+                  key={p}
+                  variant={currentPage === p ? "ghost" : "outline"}
+                  size="sm"
+                  className={`h-8 w-8 text-sm font-medium ${currentPage === p ? "bg-white dark:bg-gray-800 border shadow-sm" : "text-muted-foreground"}`}
+                  onClick={() => setCurrentPage(p)}
+                >
+                  {p}
+                </Button>
+              );
+            })}
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Button variant="outline" size="icon" className="h-6 w-6">
-                <ChevronLeft className="h-3 w-3" />
-              </Button>
-              <span>10 / page</span>
-              <Button variant="outline" size="icon" className="h-6 w-6">
-                <ChevronRight className="h-3 w-3" />
-              </Button>
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(val) => {
+                  setItemsPerPage(Number(val));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-6 w-[70px] text-xs">
+                  <SelectValue placeholder={itemsPerPage} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+              <span>/ page</span>
             </div>
             <Button variant="outline" size="sm" className="h-8">
               Download CSV <ChevronRight className="ml-1 h-3 w-3" />

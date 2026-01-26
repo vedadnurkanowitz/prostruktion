@@ -15,6 +15,8 @@ import {
   Archive,
   HardHat,
   AlertOctagon,
+  CheckSquare,
+  Map as MapIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -44,6 +46,8 @@ export function Sidebar({ role }: SidebarProps) {
       { name: "Complaints", href: "/admin/complaints", icon: AlertOctagon },
       { name: "Contacts", href: "/admin/contacts", icon: Users },
       { name: "Archive", href: "/admin/archive", icon: Archive },
+      { name: "Todos", href: "/admin/todos", icon: CheckSquare },
+      { name: "Map", href: "/admin/map", icon: MapIcon },
     );
   } else if (role === "partner") {
     navItems.push(

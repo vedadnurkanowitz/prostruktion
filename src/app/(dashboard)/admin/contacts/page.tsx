@@ -81,6 +81,7 @@ type Contact = {
   completedProjects: number;
   successRate: number;
   mediator?: string;
+  documents?: any[];
 };
 
 type Worker = {
@@ -282,6 +283,40 @@ export default function ContactsPage() {
       localStorage.setItem(storageKey, JSON.stringify(existing));
     }
 
+    // Save to Supabase (Best Effort)
+    const saveToSupabase = async () => {
+      try {
+        const supabase = createClient();
+        const supabaseId = self.crypto.randomUUID();
+
+        // Check if profiles table accepts manual insert (requires no FK on auth.users or loose constraint)
+        await supabase.from("profiles").insert({
+          id: supabaseId,
+          full_name: newContact.name,
+          email: newContact.email,
+          role: newContact.role,
+          // company_name? phone? (columns unknown, safer to stick to basics known from reads)
+        });
+
+        // If including a mediator creation (for subcontractors)
+        if (newContact.role === "subcontractor" && newContact.mediatorName) {
+          const medId = self.crypto.randomUUID();
+          await supabase.from("profiles").insert({
+            id: medId,
+            full_name: newContact.mediatorName,
+            email: newContact.mediatorEmail,
+            role: "broker",
+          });
+        }
+      } catch (e) {
+        console.warn(
+          "Failed to save contact to Supabase (likely schema restriction):",
+          e,
+        );
+      }
+    };
+    saveToSupabase();
+
     // Update Local State directly to avoid reload
     setContacts((prev) => [contactObj, ...prev]);
 
@@ -420,6 +455,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            documents: s.documents || [],
           });
         });
       }
@@ -446,6 +482,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            documents: c.documents || [],
           });
         });
       } else {
@@ -498,6 +535,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            // documents: [] // Mock partners have no storage unless saved to localstorage later (which uses name key)
           });
         }
       });
@@ -522,6 +560,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            documents: p.documents || [],
           });
         });
       }
@@ -546,6 +585,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            documents: m.documents || [],
           });
         });
       }
@@ -574,6 +614,7 @@ export default function ContactsPage() {
           Math.random() > 0.7 ? Math.floor(Math.random() * 2) + 1 : 0,
         completedProjects: Math.floor(Math.random() * 100) + 10,
         successRate: Math.floor(Math.random() * 15) + 85, // 85-100%
+        documents: c.documents || [], // Preserve documents!
       }));
 
       setContacts([...contactsWithMetrics, ...mediatorsRaw]); // Store all, filter in render

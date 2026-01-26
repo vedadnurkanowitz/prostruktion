@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,7 +79,7 @@ import {
 } from "@/components/ui/popover";
 
 interface DocumentItem {
-  file: File;
+  file?: File; // Optional for persistence
   name: string;
   startDate?: string;
   endDate?: string;
@@ -287,8 +287,154 @@ export function SubcontractorDetail({
   };
 
   // Documents State
-  // Documents State
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const isInitializedRef = useRef(false);
+
+  // Load documents from localStorage on mount
+  useEffect(() => {
+    if (isInitializedRef.current) return;
+
+    // Try to load from localStorage first
+    const keys = [
+      "prostruktion_subcontractors",
+      "prostruktion_contractors",
+      "prostruktion_partners",
+      "prostruktion_mediators",
+    ];
+
+    for (const key of keys) {
+      const data = localStorage.getItem(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          const found = parsed.find(
+            (i: any) =>
+              i.name?.toLowerCase().trim() ===
+              subcontractor.name?.toLowerCase().trim(),
+          );
+          if (found && found.documents && found.documents.length > 0) {
+            setDocuments(found.documents);
+            console.log(
+              "[SubcontractorDetail] Loaded",
+              found.documents.length,
+              "documents for",
+              subcontractor.name,
+            );
+            isInitializedRef.current = true;
+            return;
+          }
+        } catch (e) {
+          console.error("Error parsing localStorage:", e);
+        }
+      }
+    }
+
+    // If nothing in localStorage, use props
+    if (subcontractor.documents && subcontractor.documents.length > 0) {
+      setDocuments(subcontractor.documents);
+    }
+    isInitializedRef.current = true;
+  }, [subcontractor.name, subcontractor.documents]);
+
+  // Helper function to save documents to localStorage
+  const saveDocumentsToStorage = (docsToSave: DocumentItem[]) => {
+    // Determine storage key
+    let storageKey = "";
+    if (subcontractor.role === "subcontractor")
+      storageKey = "prostruktion_subcontractors";
+    else if (subcontractor.role === "contractor")
+      storageKey = "prostruktion_contractors";
+    else if (subcontractor.role === "partner")
+      storageKey = "prostruktion_partners";
+    else if (subcontractor.role === "broker")
+      storageKey = "prostruktion_mediators";
+
+    // Fallback: search all keys
+    if (!storageKey && subcontractor.name) {
+      const keys = [
+        "prostruktion_subcontractors",
+        "prostruktion_contractors",
+        "prostruktion_partners",
+        "prostruktion_mediators",
+      ];
+      for (const key of keys) {
+        const data = localStorage.getItem(key);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            const found = parsed.find(
+              (i: any) =>
+                i.name?.toLowerCase().trim() ===
+                subcontractor.name?.toLowerCase().trim(),
+            );
+            if (found) {
+              storageKey = key;
+              break;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (!storageKey) {
+      console.warn(
+        "[SubcontractorDetail] No storage key found for:",
+        subcontractor.name,
+      );
+      return;
+    }
+
+    const storedData = localStorage.getItem(storageKey);
+    if (!storedData) return;
+
+    try {
+      const parsed = JSON.parse(storedData);
+      const index = parsed.findIndex(
+        (i: any) =>
+          i.name?.toLowerCase().trim() ===
+          subcontractor.name?.toLowerCase().trim(),
+      );
+
+      if (index !== -1) {
+        // Prepare docs for storage (strip File object)
+        const docsForStorage = docsToSave.map((d) => ({
+          name: d.name,
+          startDate: d.startDate,
+          endDate: d.endDate,
+        }));
+
+        // Calculate nearest expiry
+        let nearestExpiry: string | null = null;
+        let isExpired = false;
+
+        docsToSave.forEach((doc) => {
+          if (doc.endDate) {
+            const end = new Date(doc.endDate);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (end < today) isExpired = true;
+            if (!nearestExpiry || end < new Date(nearestExpiry)) {
+              nearestExpiry = doc.endDate;
+            }
+          }
+        });
+
+        parsed[index].documents = docsForStorage;
+        parsed[index].expiry = nearestExpiry;
+        parsed[index].docsExpired = isExpired;
+
+        localStorage.setItem(storageKey, JSON.stringify(parsed));
+        console.log(
+          "[SubcontractorDetail] Saved",
+          docsForStorage.length,
+          "documents for",
+          subcontractor.name,
+        );
+      }
+    } catch (e) {
+      console.error("Error saving to localStorage:", e);
+    }
+  };
 
   const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -296,12 +442,18 @@ export function SubcontractorDetail({
         file,
         name: file.name,
       }));
-      setDocuments((prev) => [...prev, ...newFiles]);
+      const newDocs = [...documents, ...newFiles];
+      setDocuments(newDocs);
+      // Save immediately
+      setTimeout(() => saveDocumentsToStorage(newDocs), 0);
     }
   };
 
   const removeDocument = (index: number) => {
-    setDocuments((prev) => prev.filter((_, i) => i !== index));
+    const newDocs = documents.filter((_, i) => i !== index);
+    setDocuments(newDocs);
+    // Save immediately
+    setTimeout(() => saveDocumentsToStorage(newDocs), 0);
   };
 
   const handleDocumentUpdate = (
@@ -309,9 +461,12 @@ export function SubcontractorDetail({
     field: keyof DocumentItem,
     value: any,
   ) => {
-    setDocuments((prev) =>
-      prev.map((doc, i) => (i === index ? { ...doc, [field]: value } : doc)),
+    const newDocs = documents.map((doc, i) =>
+      i === index ? { ...doc, [field]: value } : doc,
     );
+    setDocuments(newDocs);
+    // Save immediately
+    setTimeout(() => saveDocumentsToStorage(newDocs), 0);
   };
 
   const getDocumentStatus = (endDate?: string) => {
@@ -325,7 +480,7 @@ export function SubcontractorDetail({
     const diffTime = end.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays <= 30) return "Expiring Soon";
+    if (diffDays <= 15) return "Expiring Soon";
     return "Valid";
   };
 
@@ -1381,11 +1536,11 @@ export function SubcontractorDetail({
                     </TableRow>
                   ) : (
                     documents.map((doc, index) => {
-                      const file = doc.file || (doc as unknown as File);
-                      const name = doc.name || file.name;
+                      // Handle missing file object (from storage) gracefully
+                      const name = doc.name || "Untitled Document";
                       const status = getDocumentStatus(doc.endDate);
 
-                      if (!file) return null;
+                      // if (!file) return null; // Removed to allow viewing stored docs
 
                       return (
                         <TableRow
@@ -1410,7 +1565,9 @@ export function SubcontractorDetail({
                                   className="h-8 text-sm font-medium border-transparent hover:border-input focus:border-input px-2 -ml-2 bg-transparent truncate"
                                 />
                                 <span className="text-xs text-muted-foreground pl-0.5">
-                                  {(file.size / 1024).toFixed(1)} KB
+                                  {doc.file
+                                    ? (doc.file.size / 1024).toFixed(1) + " KB"
+                                    : "Stored"}
                                 </span>
                               </div>
                             </div>
@@ -1483,13 +1640,16 @@ export function SubcontractorDetail({
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 text-gray-500 hover:text-primary-foreground"
+                                disabled={!doc.file}
                                 onClick={() => {
-                                  const url = URL.createObjectURL(file);
-                                  const a = document.createElement("a");
-                                  a.href = url;
-                                  a.download = name;
-                                  a.click();
-                                  URL.revokeObjectURL(url);
+                                  if (doc.file) {
+                                    const url = URL.createObjectURL(doc.file);
+                                    const a = document.createElement("a");
+                                    a.href = url;
+                                    a.download = name;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  }
                                 }}
                               >
                                 <Download className="h-4 w-4" />

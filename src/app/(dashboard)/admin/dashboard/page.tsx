@@ -24,6 +24,7 @@ import {
   History,
   Building2,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function AdminDashboard() {
   const [projects, setProjects] = useState<any[]>([]);
@@ -31,17 +32,29 @@ export default function AdminDashboard() {
     active: 0,
     activeValue: 0,
     abnahme: 0,
-    invoicing: 0,
+    abnahmeValue: 0,
+    invoicing: 0, // Now represents 'For Invoice'
     invoicingValue: 0,
     totalValue: 0,
     cashOnHand: 0,
+    monthlyBurnRate: 0,
+    awaitingPayment: 0,
+    awaitingPaymentCount: 0,
+    totalOverdue: 0,
+    totalOverdueCount: 0,
+    openComplaints: 0,
+    scheduledComplaints: 0,
+    rescheduledComplaints: 0,
+    expiringDocs: [] as any[],
   });
   const [trendPeriod, setTrendPeriod] = useState("monthly");
 
-  const trendData: Record<string, { labels: string[]; data: number[] }> = {
+  const [chartData, setChartData] = useState<
+    Record<string, { labels: string[]; data: number[] }>
+  >({
     weekly: {
       labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-      data: [15, 25, 20, 35, 30, 45, 40],
+      data: [0, 0, 0, 0, 0, 0, 0],
     },
     monthly: {
       labels: [
@@ -58,15 +71,15 @@ export default function AdminDashboard() {
         "Nov",
         "Dec",
       ],
-      data: [35, 45, 30, 60, 55, 70, 50, 65, 80, 55, 45, 60],
+      data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     },
     yearly: {
       labels: ["2021", "2022", "2023", "2024", "2025"],
-      data: [40, 55, 45, 70, 65],
+      data: [0, 0, 0, 0, 0],
     },
-  };
+  });
 
-  const currentTrend = trendData[trendPeriod];
+  const currentTrend = chartData[trendPeriod];
 
   // Helper to generate SVG path
   const getPoints = (data: number[]) => {
@@ -85,106 +98,400 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     // Load projects from LocalStorage to make dashboard dynamic based on user data
-    const storedProjects = localStorage.getItem("prostruktion_projects");
-    if (storedProjects) {
-      const parsed = JSON.parse(storedProjects);
-      setProjects(parsed);
+    // Calculate Cash on Hand (Financials Logic)
+    // 1. Get Received Income
+    const storedGeneratedInvoices = localStorage.getItem(
+      "prostruktion_generated_invoices",
+    );
+    let totalReceived = 0;
 
-      // Calculate Cash on Hand from Financials Data
+    if (storedGeneratedInvoices) {
+      const generated = JSON.parse(storedGeneratedInvoices);
 
-      // 1. Get Received Income
-      const storedGeneratedInvoices = localStorage.getItem(
-        "prostruktion_generated_invoices",
-      );
-      let totalReceived = 0;
+      // Calculate Monthly Income for Chart
+      const monthlyData = new Array(12).fill(0);
 
-      if (storedGeneratedInvoices) {
-        const generated = JSON.parse(storedGeneratedInvoices);
-        // Sum items marked as "Received"
-        totalReceived = generated.reduce((acc: number, curr: any) => {
-          if (curr.status === "Received") {
-            return (
-              acc +
-              (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
-                0)
-            );
+      generated.forEach((curr: any) => {
+        if (curr && curr.status === "Received") {
+          const val =
+            parseFloat(
+              (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0;
+
+          totalReceived += val;
+
+          // Add to monthly chart data
+          const dateStr = curr.date; // e.g., "May 29, 24"
+          if (dateStr) {
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+              const monthIndex = date.getMonth(); // 0-11
+              monthlyData[monthIndex] += val;
+            }
           }
-          return acc;
-        }, 0);
-      }
+        }
+      });
 
-      // 2. Get Expenses (Using dummy default matching Financials page if no storage)
-      const storedExpenses = localStorage.getItem("prostruktion_expenses");
-      let totalExpenses = 27100; // Default dummy expenses (2800 + 6200 + 18100)
+      // Update Chart Data
+      setChartData((prev) => ({
+        ...prev,
+        monthly: {
+          ...prev.monthly,
+          data: monthlyData,
+        },
+      }));
+    }
 
-      if (storedExpenses) {
-        const expenses = JSON.parse(storedExpenses);
-        const storedTotal = expenses.reduce(
+    // 2. Get Expenses
+    const storedExpenses = localStorage.getItem("prostruktion_expenses");
+    let totalExpenses = 0;
+
+    if (storedExpenses) {
+      const parsedExpenses = JSON.parse(storedExpenses);
+      if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
+        totalExpenses = parsedExpenses.reduce(
           (acc: number, curr: any) =>
             acc +
-            (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) || 0),
+            (parseFloat(
+              (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0),
           0,
         );
-        // If we have stored expenses, let's assume they replace or add to dummy.
-        // For this demo, let's use storedTotal if > 0, else default.
-        if (storedTotal > 0) totalExpenses = storedTotal;
+      } else {
+        // Fallback if empty array in storage (Default dummy sum)
+        totalExpenses = 27100;
+      }
+    } else {
+      // Default dummy data if no storage
+      totalExpenses = 27100;
+      // Default dummy time duration approx 2 months for the dummy data implies:
+      // May 29, 24 -> May 23, 24 -> Apr 17, 24.
+      // That is April and May. So 2 months.
+      // 27100 / 2 = 13550
+    }
+
+    const cashOnHand = totalReceived - totalExpenses;
+
+    // Calculate Monthly Burn Rate
+    // Formula: Total of Fixed Expenses + (Total of Variable monthly expenses / Number of months)
+    let numberOfMonths = 1;
+    let totalFixed = 0;
+    let totalVariable = 0;
+
+    if (storedExpenses) {
+      const parsedExpenses = JSON.parse(storedExpenses);
+      if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
+        // Calculate totals for Fixed and Variable
+        parsedExpenses.forEach((e: any) => {
+          const val =
+            parseFloat(
+              (e.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0;
+          if (e.type === "Variable") {
+            totalVariable += val;
+          } else {
+            // Assume Fixed if not Variable (or explicitly Fixed)
+            totalFixed += val;
+          }
+        });
+
+        // Find min and max date
+        const dates = parsedExpenses.map((e: any) =>
+          new Date(e.date).getTime(),
+        );
+        const minDate = Math.min(...dates);
+        const maxDate = Math.max(...dates);
+
+        if (minDate && maxDate && maxDate >= minDate) {
+          const minD = new Date(minDate);
+          const maxD = new Date(maxDate);
+          const months =
+            (maxD.getFullYear() - minD.getFullYear()) * 12 +
+            (maxD.getMonth() - minD.getMonth()) +
+            1;
+          numberOfMonths = Math.max(1, months);
+        }
+      } else {
+        // Default dummy data (Apr, May)
+        // Fixed: 2800 + 18100 = 20900
+        // Variable: 6200
+        totalFixed = 20900;
+        totalVariable = 6200;
+        numberOfMonths = 2;
+      }
+    } else {
+      // Default dummy data fallback
+      totalFixed = 20900;
+      totalVariable = 6200;
+      numberOfMonths = 2;
+    }
+
+    const monthlyBurnRate = totalFixed + totalVariable / numberOfMonths;
+
+    // Calculate Awaiting Payment (Financials Logic)
+    // Sources:
+    // 1. Storage 'prostruktion_invoices' -> filter 'For Invoice' AND 'Ready'
+    // 2. Storage 'prostruktion_generated_invoices' -> filter 'Unpaid'
+    let awaitingTotal = 0;
+    let awaitingCount = 0;
+
+    const storedInvoices = localStorage.getItem("prostruktion_invoices");
+    if (storedInvoices) {
+      const parsed = JSON.parse(storedInvoices);
+      const pending = parsed.filter(
+        (p: any) => p.status === "For Invoice" || p.status === "Ready",
+      );
+      awaitingCount += pending.length;
+      awaitingTotal += pending.reduce(
+        (acc: number, curr: any) =>
+          acc +
+          (parseFloat(
+            (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+          ) || 0),
+        0,
+      );
+    }
+
+    if (storedGeneratedInvoices) {
+      const generated = JSON.parse(storedGeneratedInvoices);
+      const unpaid = generated.filter((i: any) => i.status === "Unpaid");
+      awaitingCount += unpaid.length;
+      awaitingTotal += unpaid.reduce(
+        (acc: number, curr: any) =>
+          acc +
+          (parseFloat(
+            (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+          ) || 0),
+        0,
+      );
+    }
+
+    // Calculate Total Overdue (Financials Logic)
+    // Source: 'prostruktion_generated_invoices' -> status != "Received" and Days Pending > 7
+    let overdueTotal = 0;
+    let overdueCount = 0;
+
+    const calculateDaysPending = (dateString: string) => {
+      const createdDate = new Date(dateString);
+      const today = new Date();
+      const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
+    };
+
+    if (storedGeneratedInvoices) {
+      const generated = JSON.parse(storedGeneratedInvoices);
+      const overdueItems = generated.filter((curr: any) => {
+        const days = calculateDaysPending(curr.date);
+        return days > 7 && curr.status !== "Received";
+      });
+
+      overdueCount = overdueItems.length;
+      overdueTotal = overdueItems.reduce(
+        (acc: number, curr: any) =>
+          acc +
+          (parseFloat(
+            (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+          ) || 0),
+        0,
+      );
+    }
+
+    // Calculate Complaints Stats
+    let openC = 0;
+    let scheduledC = 0;
+    let rescheduledC = 0;
+    const storedComplaints = localStorage.getItem("prostruktion_complaints");
+    if (storedComplaints) {
+      const parsedC = JSON.parse(storedComplaints);
+      if (Array.isArray(parsedC)) {
+        openC = parsedC.filter(
+          (c: any) => c.status === "Open" || c.repairBy === "Open",
+        ).length;
+        scheduledC = parsedC.filter(
+          (c: any) => c.status === "Scheduled",
+        ).length;
+        rescheduledC = parsedC.filter(
+          (c: any) => c.status === "Rescheduled",
+        ).length;
+      }
+    } else {
+      // Default dummy data if no storage, to prevent empty zeros
+      openC = 3;
+      scheduledC = 5;
+      rescheduledC = 1;
+    }
+
+    // Calculate Expiring Docs
+    let expiring: any[] = [];
+    const storedSubcontractors = localStorage.getItem(
+      "prostruktion_subcontractors",
+    );
+    if (storedSubcontractors) {
+      const parsedSubs = JSON.parse(storedSubcontractors);
+      if (Array.isArray(parsedSubs)) {
+        expiring = parsedSubs
+          .filter((s: any) => {
+            // Check explicit status
+            if (
+              s.status === "Expiring" ||
+              s.docsExpired === true ||
+              (s.expiry && s.expiry.toString().includes("Expired"))
+            ) {
+              return true;
+            }
+
+            // Check if expiry is a date within 15 days
+            if (s.expiry) {
+              const expiryDate = new Date(s.expiry);
+              if (!isNaN(expiryDate.getTime())) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const diffTime = expiryDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                // Show if expired (< 0) or expiring soon (<= 15)
+                return diffDays <= 15;
+              }
+            }
+            return false;
+          })
+          .map((s: any) => ({
+            name: s.name,
+            expiry: s.expiry,
+          }));
+      }
+    }
+
+    // Stats Logic
+    const storedProjects = localStorage.getItem("prostruktion_projects");
+
+    // We will try to fetch projects from Supabase as well
+    const fetchSupabaseProjects = async () => {
+      let dbProjects: any[] | null = null;
+
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.from("projects").select("*");
+        dbProjects = data;
+      } catch (e) {
+        console.warn("Could not fetch projects from Supabase:", e);
       }
 
-      const cashOnHand = totalReceived - totalExpenses;
+      let activeCount = 0;
+      let activeVal = 0;
+      let abnahmeCount = 0;
+      let abnahmeVal = 0;
+      let parsedLocal: any[] = [];
 
-      // Calculate Stats
-      const active = parsed.filter(
-        (p: any) => p.status === "In Progress" || p.status === "Active",
-      );
-      const abnahme = parsed.filter((p: any) => p.status === "Abnahme");
-      const invoicing = parsed.filter(
-        (p: any) => p.status === "Invoicing" || p.status === "Ready",
-      );
+      if (storedProjects) {
+        parsedLocal = JSON.parse(storedProjects);
+      }
 
-      const getValue = (list: any[]) =>
+      const projectSource =
+        dbProjects && dbProjects.length > 0 ? dbProjects : parsedLocal;
+
+      // Calculate Active
+      const activeList = projectSource.filter((p: any) => {
+        const s = (p.status || "").toLowerCase();
+        return s === "active" || s === "in progress";
+      });
+
+      activeCount = activeList.length;
+      activeVal = activeList.reduce((acc: number, curr: any) => {
+        // Handle both numeric contract_value (DB) and string amount (Local)
+        let val = 0;
+        if (curr.contract_value !== undefined) {
+          val = Number(curr.contract_value) || 0;
+        } else {
+          val =
+            parseFloat(
+              (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0;
+        }
+        return acc + val;
+      }, 0);
+
+      // Calculate Abnahme
+      const abnahmeList = projectSource.filter((p: any) => {
+        const s = (p.status || "").toLowerCase();
+        return s === "abnahme";
+      });
+
+      abnahmeCount = abnahmeList.length;
+      abnahmeVal = abnahmeList.reduce((acc: number, curr: any) => {
+        let val = 0;
+        if (curr.contract_value !== undefined) {
+          val = Number(curr.contract_value) || 0;
+        } else {
+          val =
+            parseFloat(
+              (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0;
+        }
+        return acc + val;
+      }, 0);
+
+      // For Invoice: Load from 'prostruktion_invoices' storage where status is 'For Invoice'
+      let forInvoice: any[] = [];
+      const storedInvoicesForStats = localStorage.getItem(
+        "prostruktion_invoices",
+      );
+      if (storedInvoicesForStats) {
+        const parsedInv = JSON.parse(storedInvoicesForStats);
+        forInvoice = parsedInv.filter((p: any) => p.status === "For Invoice");
+      }
+
+      const getInvoiceValue = (list: any[]) =>
         list.reduce((acc, curr) => {
-          const val = parseFloat(curr.amount.replace(/[^0-9.-]+/g, "")) || 0;
+          const val =
+            parseFloat(
+              (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0;
           return acc + val;
         }, 0);
 
-      setStats({
-        active: active.length,
-        activeValue: getValue(active),
-        abnahme: abnahme.length,
-        invoicing: invoicing.length,
-        invoicingValue: getValue(invoicing),
-        totalValue: getValue(parsed),
-        cashOnHand: cashOnHand,
-      });
-    } else {
-      // Fallback calculation if no projects but maybe financial data exists
-      const storedInvoices = localStorage.getItem("prostruktion_invoices");
-      const storedExpenses = localStorage.getItem("prostruktion_expenses");
-
-      let totalReceived = 0;
-      let totalExpenses = 0;
-
-      if (storedInvoices) {
-        const invoices = JSON.parse(storedInvoices);
-        totalReceived = invoices.reduce(
-          (acc: number, curr: any) => acc + (Number(curr.amount) || 0),
-          0,
-        );
-      }
-
-      if (storedExpenses) {
-        const expenses = JSON.parse(storedExpenses);
-        totalExpenses = expenses.reduce(
-          (acc: number, curr: any) => acc + (Number(curr.amount) || 0),
-          0,
-        );
-      }
+      // Final Total Value (Sum of all active + abnahme + invoice logic?)
+      // Or just total of everything in source?
+      // Let's use activeVal + abnahmeVal + invoiceVal for now for the Total Value stat if needed,
+      // or iterate full list.
+      const totalVal = projectSource.reduce((acc: number, curr: any) => {
+        let val = 0;
+        if (curr.contract_value !== undefined) {
+          val = Number(curr.contract_value) || 0;
+        } else {
+          val =
+            parseFloat(
+              (curr.amount || "0").toString().replace(/[^0-9.-]+/g, ""),
+            ) || 0;
+        }
+        return acc + val;
+      }, 0);
 
       setStats((prev) => ({
         ...prev,
-        cashOnHand: totalReceived - totalExpenses,
+        active: activeCount,
+        activeValue: activeVal,
+        abnahme: abnahmeCount,
+        abnahmeValue: abnahmeVal,
+        invoicing: forInvoice.length,
+        invoicingValue: getInvoiceValue(forInvoice),
+        totalValue: totalVal,
+        cashOnHand: cashOnHand,
+        monthlyBurnRate: monthlyBurnRate,
+        awaitingPayment: awaitingTotal,
+        awaitingPaymentCount: awaitingCount,
+        totalOverdue: overdueTotal,
+        totalOverdueCount: overdueCount,
+        openComplaints: openC,
+        scheduledComplaints: scheduledC,
+        rescheduledComplaints: rescheduledC,
+        expiringDocs: expiring,
       }));
-    }
+    };
+
+    fetchSupabaseProjects();
+
+    // End Stats Logic
   }, []);
 
   return (
@@ -198,7 +505,7 @@ export default function AdminDashboard() {
               <Euro className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Money on hand
+              Cash on Hand
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -225,7 +532,13 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-red-600">€ 0</span>
+              <span className="text-2xl font-bold text-red-600">
+                €{" "}
+                {stats.monthlyBurnRate.toLocaleString(undefined, {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                })}
+              </span>
               <span className="text-muted-foreground text-sm">/ month</span>
             </div>
           </CardContent>
@@ -243,10 +556,10 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              € 0
+              € {stats.awaitingPayment.toLocaleString()}
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
-              0 Invoices pending
+              {stats.awaitingPaymentCount} Invoices pending
             </div>
           </CardContent>
         </Card>
@@ -263,12 +576,12 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              € 0
+              € {stats.totalOverdue.toLocaleString()}
             </div>
             <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
               <History className="h-3 w-3" />
               <span className="font-medium text-gray-700 dark:text-gray-300">
-                0 Overdue invoices
+                {stats.totalOverdueCount} Overdue invoices
               </span>
             </div>
           </CardContent>
@@ -348,9 +661,8 @@ export default function AdminDashboard() {
                       transform: "translate(-50%, -50%)",
                     }}
                   />
-                  {/* Tooltip */}
                   <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded shadow whitespace-nowrap z-20 transition-opacity pointer-events-none">
-                    € {(h * 1250).toLocaleString()}
+                    € {h.toLocaleString()}
                   </div>
                 </div>
               );
@@ -399,9 +711,8 @@ export default function AdminDashboard() {
                       Abnahme
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    Current
+                  <div className="text-sm font-semibold text-primary">
+                    € {stats.abnahmeValue.toLocaleString()}
                   </div>
                 </div>
                 <div className="px-4">
@@ -410,7 +721,7 @@ export default function AdminDashboard() {
                       {stats.invoicing}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      Invoicing
+                      For Invoice
                     </span>
                   </div>
                   <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -513,8 +824,39 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="px-0">
               <div className="divide-y">
-                <div className="p-8 text-center text-muted-foreground text-sm">
-                  No recent complaints.
+                <div className="grid grid-cols-2 gap-4 p-4">
+                  <div className="flex flex-col gap-1 p-3 bg-red-50 dark:bg-red-900/10 rounded-lg">
+                    <span className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {stats.openComplaints}
+                    </span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Open Total
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg">
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {stats.scheduledComplaints}
+                    </span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Scheduled Total
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 bg-orange-50 dark:bg-orange-900/10 rounded-lg">
+                    <span className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                      {stats.rescheduledComplaints}
+                    </span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Rescheduled Total
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 bg-green-50 dark:bg-green-900/10 rounded-lg">
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {stats.active}
+                    </span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      In Progress (Projects)
+                    </span>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -529,9 +871,32 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="px-0">
               <div className="divide-y">
-                <div className="p-8 text-center text-muted-foreground text-sm">
-                  No documents expiring soon.
-                </div>
+                {stats.expiringDocs.length > 0 ? (
+                  stats.expiringDocs.map((doc, i) => (
+                    <div
+                      key={i}
+                      className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                          {doc.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Document Expiry
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+                          {doc.expiry}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center text-muted-foreground text-sm">
+                    No documents expiring soon.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

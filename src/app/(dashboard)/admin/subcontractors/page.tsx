@@ -369,7 +369,12 @@ export default function SubcontractorsPage() {
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
-                        onClick={() => setSelectedSubcontractor(company)}
+                        onClick={() =>
+                          setSelectedSubcontractor({
+                            ...company,
+                            role: "subcontractor",
+                          })
+                        }
                       >
                         Manage
                       </Button>

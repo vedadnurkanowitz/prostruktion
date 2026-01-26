@@ -22,6 +22,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Euro,
   Receipt,
   AlertTriangle,
@@ -67,6 +74,16 @@ export default function FinancialDashboardPage() {
     amount: "",
     address: "",
   });
+  const [addExpenseOpen, setAddExpenseOpen] = useState(false);
+  const [newExpenseForm, setNewExpenseForm] = useState({
+    name: "",
+    date: "",
+    amount: "",
+    status: "Unpaid",
+    type: "Fixed",
+  });
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [filterType, setFilterType] = useState("All");
 
   useEffect(() => {
     // Load from LocalStorage
@@ -121,20 +138,73 @@ export default function FinancialDashboardPage() {
 
     // Load Expenses
     const storedExpenses = localStorage.getItem("prostruktion_expenses");
-    let totalExp = 27100; // Default dummy sum (2800 + 6200 + 18100)
+    let totalExp = 0;
 
     if (storedExpenses) {
       const parsedExpenses = JSON.parse(storedExpenses);
       if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
         setExpenses(parsedExpenses);
-        const storedTotal = parsedExpenses.reduce(
+        totalExp = parsedExpenses.reduce(
           (acc: number, curr: any) =>
             acc +
             (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) || 0),
           0,
         );
-        if (storedTotal > 0) totalExp = storedTotal;
+      } else {
+        // Fallback if empty array in storage
+        const defaults = [
+          {
+            name: "Office Rent",
+            status: "Unpaid",
+            date: "May 29, 24",
+            type: "Fixed",
+            amount: "€ 2,800",
+          },
+          {
+            name: "Travel Expenses",
+            status: "Unpaid",
+            date: "May 23, 24",
+            type: "Variable",
+            amount: "€ 6,200",
+          },
+          {
+            name: "Salaries",
+            status: "Paid",
+            date: "Apr 17, 24",
+            type: "Fixed",
+            amount: "€ 18,100",
+          },
+        ];
+        setExpenses(defaults);
+        totalExp = 27100;
       }
+    } else {
+      // Default dummy data if no storage
+      const defaults = [
+        {
+          name: "Office Rent",
+          status: "Unpaid",
+          date: "May 29, 24",
+          type: "Fixed",
+          amount: "€ 2,800",
+        },
+        {
+          name: "Travel Expenses",
+          status: "Unpaid",
+          date: "May 23, 24",
+          type: "Variable",
+          amount: "€ 6,200",
+        },
+        {
+          name: "Salaries",
+          status: "Paid",
+          date: "Apr 17, 24",
+          type: "Fixed",
+          amount: "€ 18,100",
+        },
+      ];
+      setExpenses(defaults);
+      totalExp = 27100;
     }
 
     setCashOnHand(totalRec - totalExp);
@@ -432,6 +502,54 @@ export default function FinancialDashboardPage() {
       JSON.stringify(updatedStorage),
     );
   };
+
+  const handleUpdateExpense = (index: number, field: string, value: string) => {
+    const newExpenses = [...expenses];
+    newExpenses[index] = { ...newExpenses[index], [field]: value };
+    setExpenses(newExpenses);
+    localStorage.setItem("prostruktion_expenses", JSON.stringify(newExpenses));
+  };
+
+  const handleAddExpense = () => {
+    if (!newExpenseForm.amount || !newExpenseForm.date || !newExpenseForm.name)
+      return;
+
+    const newExpense = {
+      name: newExpenseForm.name,
+      status: newExpenseForm.status,
+      date: new Date(newExpenseForm.date).toLocaleDateString("en-US", {
+        year: "2-digit",
+        month: "short",
+        day: "numeric",
+      }),
+      type: newExpenseForm.type,
+      amount: `€ ${parseFloat(newExpenseForm.amount).toLocaleString()}`,
+    };
+
+    const updatedExpenses = [newExpense, ...expenses];
+    setExpenses(updatedExpenses);
+    localStorage.setItem(
+      "prostruktion_expenses",
+      JSON.stringify(updatedExpenses),
+    );
+
+    setNewExpenseForm({
+      name: "",
+      date: "",
+      amount: "",
+      status: "Unpaid",
+      type: "Fixed",
+    });
+    setAddExpenseOpen(false);
+  };
+
+  const filteredExpenses = expenses.filter((expense) => {
+    const statusMatch =
+      filterStatus === "All" || expense.status === filterStatus;
+    const typeMatch =
+      filterType === "All" || (expense.type || "Fixed") === filterType;
+    return statusMatch && typeMatch;
+  });
 
   return (
     <div className="space-y-6">
@@ -1012,8 +1130,39 @@ export default function FinancialDashboardPage() {
         {/* Expenses Table */}
         <Card className="bg-white dark:bg-gray-950 border-none shadow-none ring-1 ring-gray-200 dark:ring-gray-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2 bg-red-50/50 dark:bg-red-900/10 rounded-t-lg">
-            <CardTitle className="text-base font-semibold">Expenses</CardTitle>
-            <Button variant="outline" size="sm" className="h-7 text-xs">
+            <div className="flex items-center gap-4">
+              <CardTitle className="text-base font-semibold">
+                Expenses
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-[100px] h-7 text-xs">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Status</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                    <SelectItem value="Unpaid">Unpaid</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterType} onValueChange={setFilterType}>
+                  <SelectTrigger className="w-[100px] h-7 text-xs">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Types</SelectItem>
+                    <SelectItem value="Fixed">Fixed</SelectItem>
+                    <SelectItem value="Variable">Variable</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setAddExpenseOpen(true)}
+            >
               <Plus className="mr-1 h-3 w-3" /> Add Expense
             </Button>
           </CardHeader>
@@ -1021,65 +1170,60 @@ export default function FinancialDashboardPage() {
             <Table>
               <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
                 <TableRow>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>F&V</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Expense #</TableHead>
-                  <TableHead>Category</TableHead>
                   <TableHead className="text-right">Amount €</TableHead>
-                  <TableHead className="text-right">Days Overdue</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(expenses.length > 0
-                  ? expenses
-                  : [
-                      {
-                        status: "Unpaid",
-                        date: "May 29, 24",
-                        exp: "EXP-1152",
-                        cat: "Accounting",
-                        amount: "€ 2,800",
-                        days: "7 days",
-                        overdue: false,
-                      },
-                      {
-                        status: "Overdue",
-                        date: "May 23, 24",
-                        exp: "EXP-1144",
-                        cat: "Travel",
-                        amount: "€ 6,200",
-                        days: "4 days",
-                        overdue: true,
-                      },
-                      {
-                        status: "Overdue",
-                        date: "Apr 17, 24",
-                        exp: "EXP-1140",
-                        cat: "Salaries",
-                        amount: "€ 18,100",
-                        days: "8 days",
-                        overdue: true,
-                      },
-                    ]
-                ).map((row: any, i: number) => (
+                {filteredExpenses.map((row: any, i: number) => (
                   <TableRow key={i}>
+                    <TableCell className="text-sm font-medium">
+                      {row.name || "Expense"}
+                    </TableCell>
                     <TableCell>
-                      <Badge
-                        className={`${row.overdue ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-green-100 text-green-700 hover:bg-green-200"} border-0 w-16 justify-center`}
+                      <Select
+                        value={row.type || "Fixed"}
+                        onValueChange={(val) =>
+                          handleUpdateExpense(i, "type", val)
+                        }
                       >
-                        {row.status}
-                      </Badge>
+                        <SelectTrigger className="w-[140px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Fixed">Fixed</SelectItem>
+                          <SelectItem value="Variable">Variable</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell className="text-xs">{row.date}</TableCell>
-                    <TableCell className="text-xs font-medium">
-                      {row.exp}
-                    </TableCell>
-                    <TableCell className="text-xs">{row.cat}</TableCell>
                     <TableCell className="text-right font-bold text-sm">
                       {row.amount}
                     </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {row.days}
+                    <TableCell>
+                      <Select
+                        value={row.status}
+                        onValueChange={(val) =>
+                          handleUpdateExpense(i, "status", val)
+                        }
+                      >
+                        <SelectTrigger
+                          className={`w-[110px] h-8 text-xs font-medium border-0 ring-1 ring-inset ring-gray-200 ${
+                            row.status === "Paid"
+                              ? "bg-green-50 text-green-700 ring-green-200"
+                              : "bg-orange-50 text-orange-700 ring-orange-200"
+                          }`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Paid">Paid</SelectItem>
+                          <SelectItem value="Unpaid">Unpaid</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1087,7 +1231,7 @@ export default function FinancialDashboardPage() {
             </Table>
             <div className="flex items-center justify-between p-3 border-t bg-gray-50 dark:bg-gray-900/20 rounded-b-lg">
               <div className="text-xs text-muted-foreground flex items-center gap-1">
-                {expenses.length > 0 ? expenses.length : 3} Entries
+                {filteredExpenses.length} Entries
               </div>
               <div className="flex items-center gap-2 text-sm font-bold">
                 <span className="text-xs text-muted-foreground font-normal flex items-center gap-1">
@@ -1095,14 +1239,7 @@ export default function FinancialDashboardPage() {
                 </span>
                 <span className="text-red-600">
                   €{" "}
-                  {(expenses.length > 0
-                    ? expenses
-                    : [
-                        { amount: "2800" },
-                        { amount: "6200" },
-                        { amount: "18100" },
-                      ]
-                  )
+                  {filteredExpenses
                     .reduce(
                       (acc, curr) =>
                         acc +
@@ -1295,6 +1432,115 @@ export default function FinancialDashboardPage() {
               className="bg-blue-600 hover:bg-blue-700"
             >
               Create Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Expense Modal */}
+      <Dialog open={addExpenseOpen} onOpenChange={setAddExpenseOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Expense</DialogTitle>
+            <DialogDescription>
+              Enter details for the new expense record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Name</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Office Rent"
+                value={newExpenseForm.name}
+                onChange={(e) =>
+                  setNewExpenseForm({
+                    ...newExpenseForm,
+                    name: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Date</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={newExpenseForm.date}
+                onChange={(e) =>
+                  setNewExpenseForm({
+                    ...newExpenseForm,
+                    date: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Amount (€)</label>
+              <input
+                type="number"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., 500"
+                value={newExpenseForm.amount}
+                onChange={(e) =>
+                  setNewExpenseForm({
+                    ...newExpenseForm,
+                    amount: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status</label>
+                <Select
+                  value={newExpenseForm.status}
+                  onValueChange={(val) =>
+                    setNewExpenseForm({ ...newExpenseForm, status: val })
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Unpaid">Unpaid</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Type</label>
+                <Select
+                  value={newExpenseForm.type}
+                  onValueChange={(val) =>
+                    setNewExpenseForm({ ...newExpenseForm, type: val })
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Fixed">Fixed</SelectItem>
+                    <SelectItem value="Variable">Variable</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setAddExpenseOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddExpense}
+              disabled={
+                !newExpenseForm.amount ||
+                !newExpenseForm.date ||
+                !newExpenseForm.name
+              }
+            >
+              Add Expense
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -180,9 +180,13 @@ export default function AdminProjects() {
     project: "",
     address: "",
     contractor: "",
+    contractorId: "",
     partner: "",
+    partnerId: "",
     mediator: "",
+    mediatorId: "",
     sub: "",
+    subId: "",
     start: new Date().toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -253,63 +257,156 @@ export default function AdminProjects() {
   );
 
   useEffect(() => {
-    // Fetch from Supabase
+    // Fetch from Supabase and localStorage
     const fetchDropdownUsers = async () => {
-      const supabase = createClient();
+      try {
+        const supabase = createClient();
 
-      // Fetch Partners
-      const { data: partnersData } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .eq("role", "partner");
+        // Fetch Partners from Supabase
+        let partnersData: any[] | null = null;
+        let mediatorsData: any[] | null = null;
 
-      // Mock Partners to ensure they are available for demo
-      const mockPartners = [
-        { id: "mp1", name: "Partner A" },
-        { id: "mp2", name: "Partner B" },
-        { id: "mp3", name: "Partner Beta" },
-        { id: "mp4", name: "Partner C" },
-      ];
+        try {
+          const { data: p } = await supabase
+            .from("profiles")
+            .select("id, full_name, email")
+            .eq("role", "partner");
+          partnersData = p;
+        } catch (e) {
+          console.warn("Could not fetch partners from Supabase:", e);
+        }
 
-      // Combine DB partners with mock partners (deduplicating by name if needed)
-      let combinedPartners = mockPartners;
-      if (partnersData) {
-        const dbPartners = partnersData.map((p) => ({
-          id: p.id,
-          name: p.full_name || p.email,
-        }));
-        // Merge, preferring DB if duplicates
-        combinedPartners = [
-          ...dbPartners,
-          ...mockPartners.filter(
-            (mp) => !dbPartners.find((dbp) => dbp.name === mp.name),
-          ),
+        // Mock Partners to ensure they are available for demo
+        const mockPartners = [
+          { id: "mp1", name: "Partner A" },
+          { id: "mp2", name: "Partner B" },
+          { id: "mp3", name: "Partner Beta" },
+          { id: "mp4", name: "Partner C" },
         ];
-      }
-      setPartners(combinedPartners);
 
-      // Fetch Mediators (Brokers)
-      const { data: mediatorsData } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .eq("role", "broker"); // Role in DB is technically 'broker'
+        // Combine DB partners with mock partners (deduplicating by name if needed)
+        let combinedPartners = [...mockPartners];
+        if (partnersData) {
+          const dbPartners = partnersData.map((p) => ({
+            id: p.id,
+            name: p.full_name || p.email,
+          }));
+          // Merge, preferring DB if duplicates
+          combinedPartners = [
+            ...dbPartners,
+            ...mockPartners.filter(
+              (mp) => !dbPartners.find((dbp) => dbp.name === mp.name),
+            ),
+          ];
+        }
 
-      if (mediatorsData) {
-        setMediators(
-          mediatorsData.map((m) => ({
+        // Also load Partners from localStorage
+        try {
+          const storedPartners = localStorage.getItem("prostruktion_partners");
+          if (storedPartners) {
+            const parsed = JSON.parse(storedPartners);
+            parsed.forEach((item: any) => {
+              if (!combinedPartners.some((p) => p.name === item.name)) {
+                combinedPartners.push({
+                  id: `local-partner-${item.name}`,
+                  name: item.name,
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.error("Error loading partners from localStorage:", e);
+        }
+        setPartners(combinedPartners);
+
+        // Fetch Mediators (Brokers) from Supabase
+        try {
+          const { data: m } = await supabase
+            .from("profiles")
+            .select("id, full_name, email")
+            .eq("role", "broker");
+          mediatorsData = m;
+        } catch (e) {
+          console.warn("Could not fetch mediators from Supabase:", e);
+        }
+
+        let combinedMediators: any[] = [];
+        if (mediatorsData) {
+          combinedMediators = mediatorsData.map((m) => ({
             id: m.id,
             name: m.full_name || m.email,
-          })),
-        );
-      }
+          }));
+        }
 
-      // Set Mock Subcontractors
-      setSubcontractors([
-        { id: "s1", name: "Sub Alpha" },
-        { id: "s2", name: "ConstructCo" },
-        { id: "s3", name: "Sub Y" },
-        { id: "s4", name: "Sub Z" },
-      ]);
+        // Also load Mediators from localStorage
+        try {
+          const storedMediators = localStorage.getItem(
+            "prostruktion_mediators",
+          );
+          if (storedMediators) {
+            const parsed = JSON.parse(storedMediators);
+            parsed.forEach((item: any) => {
+              if (!combinedMediators.some((m) => m.name === item.name)) {
+                combinedMediators.push({
+                  id: `local-mediator-${item.name}`,
+                  name: item.name,
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.error("Error loading mediators from localStorage:", e);
+        }
+        setMediators(combinedMediators);
+
+        // Load Subcontractors from localStorage (no mock data)
+        let combinedSubs: any[] = [];
+        try {
+          const storedSubs = localStorage.getItem(
+            "prostruktion_subcontractors",
+          );
+          if (storedSubs) {
+            const parsed = JSON.parse(storedSubs);
+            parsed.forEach((item: any) => {
+              combinedSubs.push({
+                id: `local-sub-${item.name}`,
+                name: item.name,
+                mediator: item.mediator || "", // Include associated mediator
+              });
+            });
+          }
+        } catch (e) {
+          console.error("Error loading subcontractors from localStorage:", e);
+        }
+        setSubcontractors(combinedSubs);
+
+        // Load Contractors from localStorage
+        let combinedContractors: any[] = [];
+        try {
+          const storedContractors = localStorage.getItem(
+            "prostruktion_contractors",
+          );
+          if (storedContractors) {
+            const parsed = JSON.parse(storedContractors);
+            parsed.forEach((item: any) => {
+              combinedContractors.push({
+                id: `local-contractor-${item.name}`,
+                name: item.name,
+              });
+            });
+          }
+        } catch (e) {
+          console.error("Error loading contractors from localStorage:", e);
+        }
+        setContractors(combinedContractors);
+      } catch (e) {
+        console.error("Error in fetchDropdownUsers:", e);
+        // Still set mock data so the UI works
+        setPartners([
+          { id: "mp1", name: "Partner A" },
+          { id: "mp2", name: "Partner B" },
+        ]);
+      }
     };
 
     fetchDropdownUsers();
@@ -591,7 +688,7 @@ export default function AdminProjects() {
     );
   };
 
-  const handleAddProject = () => {
+  const handleAddProject = async () => {
     // Basic validation
     if (!newProject.project) return; // Amount is auto-calc
 
@@ -614,14 +711,40 @@ export default function AdminProjects() {
       JSON.stringify(updatedProjects),
     );
 
+    // Save to Supabase (Best Effort)
+    try {
+      const supabase = createClient();
+
+      const metadata = `
+Address: ${newProject.address}
+Subcontractor: ${newProject.sub} (ID: ${newProject.subId || "N/A"})
+Contractor: ${newProject.contractor}
+      `.trim();
+
+      await supabase.from("projects").insert({
+        title: newProject.project,
+        description: metadata,
+        contract_value: calcState.calculation.total,
+        partner_id: newProject.partnerId || null,
+        broker_id: newProject.mediatorId || null,
+        status: "active", // Default status for DB
+      });
+    } catch (e) {
+      console.error("Failed to save project to Supabase:", e);
+    }
+
     setAddProjectOpen(false);
     setNewProject({
       project: "",
       address: "",
       contractor: "",
+      contractorId: "",
       partner: "",
+      partnerId: "",
       mediator: "",
+      mediatorId: "",
       sub: "",
+      subId: "",
       start: new Date().toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
@@ -1879,17 +2002,24 @@ export default function AdminProjects() {
                     Partner
                   </label>
                   <Select
-                    value={newProject.partner}
-                    onValueChange={(val) =>
-                      setNewProject({ ...newProject, partner: val })
-                    }
+                    value={newProject.partnerId}
+                    onValueChange={(val) => {
+                      const selected = partners.find((p) => p.id === val);
+                      if (selected) {
+                        setNewProject({
+                          ...newProject,
+                          partner: selected.name,
+                          partnerId: val,
+                        });
+                      }
+                    }}
                   >
                     <SelectTrigger id="partner">
                       <SelectValue placeholder="Select Partner" />
                     </SelectTrigger>
                     <SelectContent>
                       {partners.map((p) => (
-                        <SelectItem key={p.id} value={p.name}>
+                        <SelectItem key={p.id} value={p.id}>
                           {p.name}
                         </SelectItem>
                       ))}
@@ -1901,10 +2031,25 @@ export default function AdminProjects() {
                     Mediator (Optional)
                   </label>
                   <Select
-                    value={newProject.mediator}
-                    onValueChange={(val) =>
-                      setNewProject({ ...newProject, mediator: val })
-                    }
+                    value={newProject.mediatorId}
+                    onValueChange={(val) => {
+                      if (val === "-") {
+                        setNewProject({
+                          ...newProject,
+                          mediator: "",
+                          mediatorId: "",
+                        });
+                      } else {
+                        const selected = mediators.find((m) => m.id === val);
+                        if (selected) {
+                          setNewProject({
+                            ...newProject,
+                            mediator: selected.name,
+                            mediatorId: val,
+                          });
+                        }
+                      }
+                    }}
                   >
                     <SelectTrigger id="mediator">
                       <SelectValue placeholder="Select Mediator" />
@@ -1912,7 +2057,7 @@ export default function AdminProjects() {
                     <SelectContent>
                       <SelectItem value="-">None</SelectItem>
                       {mediators.map((m) => (
-                        <SelectItem key={m.id} value={m.name}>
+                        <SelectItem key={m.id} value={m.id}>
                           {m.name}
                         </SelectItem>
                       ))}
@@ -1924,10 +2069,40 @@ export default function AdminProjects() {
                     Subcontractor
                   </label>
                   <Select
-                    value={newProject.sub}
-                    onValueChange={(val) =>
-                      setNewProject({ ...newProject, sub: val })
-                    }
+                    value={newProject.subId}
+                    onValueChange={(val) => {
+                      if (val === "-") {
+                        setNewProject({ ...newProject, sub: "", subId: "" });
+                        return;
+                      }
+                      // Find the selected subcontractor
+                      const selectedSub = subcontractors.find(
+                        (s) => s.id === val,
+                      );
+                      if (!selectedSub) return;
+
+                      const associatedMediatorName = selectedSub.mediator || "";
+                      let associatedMediatorId = "";
+
+                      // Find mediator ID if name exists
+                      if (associatedMediatorName) {
+                        const med = mediators.find(
+                          (m) => m.name === associatedMediatorName,
+                        );
+                        if (med) associatedMediatorId = med.id;
+                      }
+
+                      // Update state
+                      setNewProject({
+                        ...newProject,
+                        sub: selectedSub.name,
+                        subId: val,
+                        // Only auto-fill mediator if one is associated and mediator field is empty
+                        mediator: associatedMediatorName || newProject.mediator,
+                        mediatorId:
+                          associatedMediatorId || newProject.mediatorId,
+                      });
+                    }}
                   >
                     <SelectTrigger id="sub">
                       <SelectValue placeholder="Select Sub" />
@@ -1935,7 +2110,7 @@ export default function AdminProjects() {
                     <SelectContent>
                       <SelectItem value="-">None</SelectItem>
                       {subcontractors.map((s) => (
-                        <SelectItem key={s.id} value={s.name}>
+                        <SelectItem key={s.id} value={s.id}>
                           {s.name}
                         </SelectItem>
                       ))}

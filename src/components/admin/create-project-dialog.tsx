@@ -28,20 +28,97 @@ export default function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
   const [partners, setPartners] = useState<any[]>([]);
   const [brokers, setBrokers] = useState<any[]>([]);
+  const [subcontractors, setSubcontractors] = useState<any[]>([]);
+  const [contractors, setContractors] = useState<any[]>([]);
   const [error, setError] = useState("");
 
   const fetchUsers = async () => {
     const supabase = createClient();
+
+    // Fetch from Supabase
     const { data: p } = await supabase
       .from("profiles")
-      .select("id, full_name, role")
+      .select("id, full_name, role, email")
       .eq("role", "partner");
     const { data: b } = await supabase
       .from("profiles")
-      .select("id, full_name, role")
+      .select("id, full_name, role, email")
       .eq("role", "broker");
-    if (p) setPartners(p);
-    if (b) setBrokers(b);
+
+    // Start with Supabase data
+    let allPartners = p || [];
+    let allBrokers = b || [];
+    let allSubs: any[] = [];
+    let allContractors: any[] = [];
+
+    // Also load from localStorage
+    try {
+      const storedPartners = localStorage.getItem("prostruktion_partners");
+      if (storedPartners) {
+        const parsed = JSON.parse(storedPartners);
+        parsed.forEach((item: any) => {
+          // Avoid duplicates by name
+          if (!allPartners.some((p: any) => p.full_name === item.name)) {
+            allPartners.push({
+              id: `local-partner-${item.name}`,
+              full_name: item.name,
+              email: item.email,
+              role: "partner",
+            });
+          }
+        });
+      }
+
+      const storedMediators = localStorage.getItem("prostruktion_mediators");
+      if (storedMediators) {
+        const parsed = JSON.parse(storedMediators);
+        parsed.forEach((item: any) => {
+          if (!allBrokers.some((b: any) => b.full_name === item.name)) {
+            allBrokers.push({
+              id: `local-broker-${item.name}`,
+              full_name: item.name,
+              email: item.email,
+              role: "broker",
+            });
+          }
+        });
+      }
+
+      const storedSubs = localStorage.getItem("prostruktion_subcontractors");
+      if (storedSubs) {
+        const parsed = JSON.parse(storedSubs);
+        parsed.forEach((item: any) => {
+          allSubs.push({
+            id: `local-sub-${item.name}`,
+            full_name: item.name,
+            email: item.email,
+            role: "subcontractor",
+          });
+        });
+      }
+
+      const storedContractors = localStorage.getItem(
+        "prostruktion_contractors",
+      );
+      if (storedContractors) {
+        const parsed = JSON.parse(storedContractors);
+        parsed.forEach((item: any) => {
+          allContractors.push({
+            id: `local-contractor-${item.name}`,
+            full_name: item.name,
+            email: item.email,
+            role: "contractor",
+          });
+        });
+      }
+    } catch (e) {
+      console.error("Error loading contacts from localStorage:", e);
+    }
+
+    setPartners(allPartners);
+    setBrokers(allBrokers);
+    setSubcontractors(allSubs);
+    setContractors(allContractors);
   };
 
   useEffect(() => {
@@ -131,6 +208,39 @@ export default function CreateProjectDialog() {
                   {brokers.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.full_name || b.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="subcontractorId">Assign Subcontractor</Label>
+              <Select name="subcontractorId">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {subcontractors.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.full_name || s.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="contractorId">Assign Contractor</Label>
+              <Select name="contractorId">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {contractors.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.full_name || c.email}
                     </SelectItem>
                   ))}
                 </SelectContent>

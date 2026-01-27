@@ -201,6 +201,7 @@ export default function AdminProjects() {
   const [calcState, setCalcState] = useState({
     units: 0,
     services: [] as string[],
+    quantityBonusTier: "none",
     calculation: {
       baseSum: 0,
       bonus1: 0,
@@ -424,10 +425,9 @@ export default function AdminProjects() {
     const bonus1 = PRICING_MATRIX.bonus1[unitIndex] || 0;
     const sumWithBonus1 = baseSum + bonus1;
 
-    // Bonus 2 (Quantity) - Simplified logic based on image ranges
-    // For single project add, we assume 0 or base level unless we add selector.
-    // Let's keep it 0 for now as requested for "create project" context (usually single)
-    const bonus2 = 0;
+    // Bonus 2 (Quantity)
+    // @ts-ignore - Indexing with string
+    const bonus2 = PRICING_MATRIX.bonus2[calcState.quantityBonusTier] || 0;
 
     // Additional Services
     const servicesSum = calcState.services.reduce((sum, serviceId) => {
@@ -757,6 +757,7 @@ Contractor: ${newProject.contractor}
     setCalcState({
       units: 0,
       services: [],
+      quantityBonusTier: "none",
       calculation: {
         baseSum: 0,
         bonus1: 0,
@@ -1986,16 +1987,30 @@ Contractor: ${newProject.contractor}
                   <label htmlFor="contractor" className="text-xs font-medium">
                     Contractor
                   </label>
-                  <Input
-                    id="contractor"
-                    value={newProject.contractor}
-                    onChange={(e) =>
-                      setNewProject({
-                        ...newProject,
-                        contractor: e.target.value,
-                      })
-                    }
-                  />
+                  <Select
+                    value={newProject.contractorId}
+                    onValueChange={(val) => {
+                      const selected = contractors.find((c) => c.id === val);
+                      if (selected) {
+                        setNewProject({
+                          ...newProject,
+                          contractor: selected.name,
+                          contractorId: val,
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="contractor">
+                      <SelectValue placeholder="Select Contractor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contractors.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="partner" className="text-xs font-medium">
@@ -2261,6 +2276,31 @@ Contractor: ${newProject.contractor}
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-xs font-medium">
+                    Mengenbonus (Quantity Bonus)
+                  </label>
+                  <Select
+                    value={calcState.quantityBonusTier}
+                    onValueChange={(val) =>
+                      setCalcState((prev) => ({
+                        ...prev,
+                        quantityBonusTier: val,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Bonus Tier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="08-12">Tier 08-12 (€150)</SelectItem>
+                      <SelectItem value="12-36">Tier 12-36 (€330)</SelectItem>
+                      <SelectItem value="36+">Tier 36+ (€600)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-xs font-medium block">
                     Zusatzleistungen (Additional Services)
                   </label>
@@ -2321,6 +2361,20 @@ Contractor: ${newProject.contractor}
                   </span>
                   <span>€ {calcState.calculation.bonus1.toLocaleString()}</span>
                 </div>
+
+                {calcState.calculation.bonus2 > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      + Quantity Bonus{" "}
+                      <span className="text-[10px] bg-green-100 px-1 rounded">
+                        2. Bonus
+                      </span>
+                    </span>
+                    <span>
+                      € {calcState.calculation.bonus2.toLocaleString()}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex justify-between border-t border-dashed pt-2 font-medium">
                   <span>Summe inkl. 1. Bonus:</span>

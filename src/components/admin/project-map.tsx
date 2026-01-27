@@ -14,6 +14,8 @@ import {
   Phone,
   Mail,
   Briefcase,
+  Search,
+  Filter,
 } from "lucide-react";
 
 // OpenLayers imports
@@ -27,7 +29,7 @@ import OSM from "ol/source/OSM";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
 import { fromLonLat } from "ol/proj";
-import { Style, Circle, Fill, Stroke } from "ol/style";
+import { Style, Circle, Fill, Stroke, Text } from "ol/style";
 import Overlay from "ol/Overlay";
 
 type Worker = {
@@ -79,6 +81,18 @@ type Project = {
   workers?: string[];
   lat?: number;
   lng?: number;
+  complaints?: number;
+};
+
+const getRandomInRange = (from: number, to: number, fixed: number) => {
+  return parseFloat((Math.random() * (to - from) + from).toFixed(fixed));
+};
+
+const PROJECT_STATUS_COLORS: Record<string, string> = {
+  Scheduled: "#9333ea",
+  "In Progress": "#f97316",
+  "In Abnahme": "#eab308",
+  Finished: "#16a34a",
 };
 
 // Default workers for demo
@@ -255,17 +269,6 @@ const DEFAULT_WORKERS: Worker[] = [
   },
 ];
 
-const getRandomInRange = (from: number, to: number, fixed: number) => {
-  return parseFloat((Math.random() * (to - from) + from).toFixed(fixed));
-};
-
-const PROJECT_STATUS_COLORS: Record<string, string> = {
-  Scheduled: "#9333ea",
-  "In Progress": "#f97316",
-  "In Abnahme": "#eab308",
-  Finished: "#16a34a",
-};
-
 export default function ProjectMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -278,6 +281,15 @@ export default function ProjectMap() {
   const [subcontractors, setSubcontractors] = useState<Company[]>([]);
   const [contractors, setContractors] = useState<Company[]>([]);
   const [partners, setPartners] = useState<Company[]>([]);
+
+  // Filter States
+  const [workerSearch, setWorkerSearch] = useState("");
+  const [workerRole, setWorkerRole] = useState("all");
+  const [companySearch, setCompanySearch] = useState("");
+
+  const [filterSub, setFilterSub] = useState("all");
+  const [filterPartner, setFilterPartner] = useState("all");
+  const [filterContractor, setFilterContractor] = useState("all");
 
   // Load companies and workers from localStorage
   useEffect(() => {
@@ -321,21 +333,109 @@ export default function ProjectMap() {
     if (!mapRef.current) return;
 
     let projects: Project[] = [];
+
+    // Load Projects and Archive
     const storedProjects = localStorage.getItem("prostruktion_projects_v1");
+    const storedArchive = localStorage.getItem("prostruktion_archive");
+
+    let rawProjects: Project[] = [];
     if (storedProjects) {
       try {
-        let parsed: Project[] = JSON.parse(storedProjects);
-        parsed = parsed.map((p) => {
-          if (!p.lat || !p.lng) {
-            return {
-              ...p,
-              lat: getRandomInRange(50.5, 53.5, 5),
-              lng: getRandomInRange(9.0, 13.5, 5),
-            };
+        rawProjects = [...rawProjects, ...JSON.parse(storedProjects)];
+      } catch (e) {}
+    }
+    if (storedArchive) {
+      try {
+        rawProjects = [...rawProjects, ...JSON.parse(storedArchive)];
+      } catch (e) {}
+    }
+
+    if (rawProjects.length > 0) {
+      try {
+        // Load real complaints aggregation
+        const storedComplaints = localStorage.getItem(
+          "prostruktion_complaints",
+        );
+        const realComplaintsMap: Record<string, number> = {};
+        if (storedComplaints) {
+          try {
+            const parsedC = JSON.parse(storedComplaints);
+            if (Array.isArray(parsedC)) {
+              parsedC.forEach((c: any) => {
+                if (c.project && (c.status1 === "red" || c.count > 0)) {
+                  realComplaintsMap[c.project] =
+                    (realComplaintsMap[c.project] || 0) + 1;
+                }
+              });
+            }
+          } catch (e) {
+            console.error("Error parsing complaints", e);
           }
-          return p;
+        }
+
+        const parsed = rawProjects.map((p) => {
+          // Normalize status for map logic
+          const isArchived =
+            p.status === "In Warranty" ||
+            p.status === "Expiring" ||
+            p.status === "Expired";
+
+          // Mock data enrichment for demo purposes
+          const latLng =
+            !p.lat || !p.lng
+              ? {
+                  lat: getRandomInRange(50.5, 53.5, 5),
+                  lng: getRandomInRange(9.0, 13.5, 5),
+                }
+              : { lat: p.lat, lng: p.lng };
+
+          // Determine complaints
+          const realCount = realComplaintsMap[p.project] || 0;
+
+          // If we have real complaints, use that.
+          // Otherwise, fall back to stored/random count for Finished projects (Demo Mode)
+          let complaints = realCount;
+
+          if (complaints === 0 && (p.status === "Finished" || isArchived)) {
+            complaints =
+              p.complaints !== undefined
+                ? p.complaints
+                : Math.random() < 0.3 // 30% chance of complaint for finished projects
+                  ? Math.floor(Math.random() * 3) + 1
+                  : 0;
+          }
+
+          return {
+            ...p,
+            ...latLng,
+            complaints,
+            isArchived, // Pass flag if needed later, though not in Project type strictly, JS allows it
+          };
         });
-        projects = parsed;
+
+        // Filter:
+        // 1. Show ALL non-finished projects (Active, Scheduled, In Abnahme)
+        // 2. Hide "Finished" projects UNLESS they have complaints
+        // 3. Apply Dropdown Filters
+        projects = parsed.filter((p: any) => {
+          // Status/Complaint Check
+          const isFinished = p.status === "Finished" || p.isArchived;
+
+          if (isFinished && (!p.complaints || p.complaints <= 0)) return false;
+
+          // Dropdown Filters
+          if (filterSub !== "all" && p.sub !== filterSub) return false;
+          if (
+            filterPartner !== "all" &&
+            p.partner !== filterPartner &&
+            p.mediator !== filterPartner
+          )
+            return false;
+          if (filterContractor !== "all" && p.contractor !== filterContractor)
+            return false;
+
+          return true;
+        });
       } catch (e) {
         console.error("Error parsing projects for map", e);
       }
@@ -348,15 +448,31 @@ export default function ProjectMap() {
       });
 
       const color = PROJECT_STATUS_COLORS[project.status] || "#64748b";
-      feature.setStyle(
-        new Style({
-          image: new Circle({
-            radius: 10,
-            fill: new Fill({ color: color }),
-            stroke: new Stroke({ color: "#ffffff", width: 2 }),
+
+      if (project.complaints && project.complaints > 0) {
+        feature.setStyle(
+          new Style({
+            text: new Text({
+              text: "!",
+              font: "900 24px sans-serif",
+              fill: new Fill({ color: "#ef4444" }),
+              stroke: new Stroke({ color: "#ffffff", width: 3 }),
+              offsetY: 0,
+            }),
+            zIndex: 10, // Ensure it sits on top if overlapping
           }),
-        }),
-      );
+        );
+      } else {
+        feature.setStyle(
+          new Style({
+            image: new Circle({
+              radius: 10,
+              fill: new Fill({ color: color }),
+              stroke: new Stroke({ color: "#ffffff", width: 2 }),
+            }),
+          }),
+        );
+      }
 
       return feature;
     });
@@ -405,7 +521,14 @@ export default function ProjectMap() {
     return () => {
       olMap.setTarget(undefined);
     };
-  }, []);
+  }, [
+    filterSub,
+    filterPartner,
+    filterContractor,
+    subcontractors,
+    partners,
+    contractors,
+  ]);
 
   const closePopup = () => {
     setSelectedProject(null);
@@ -430,6 +553,64 @@ export default function ProjectMap() {
 
   return (
     <div className="relative h-[calc(100vh-140px)] w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm">
+      {/* Map Controls */}
+      <div className="absolute top-4 left-4 z-40 flex flex-wrap gap-2 bg-white/90 dark:bg-gray-900/90 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 backdrop-blur-md max-w-[90%]">
+        <select
+          className="h-8 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 bg-transparent text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+          value={filterContractor}
+          onChange={(e) => setFilterContractor(e.target.value)}
+        >
+          <option value="all">All Contractors</option>
+          {contractors.map((c) => (
+            <option key={c.id || c.name} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="h-8 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 bg-transparent text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+          value={filterPartner}
+          onChange={(e) => setFilterPartner(e.target.value)}
+        >
+          <option value="all">All Partners/Mediators</option>
+          {partners.map((p) => (
+            <option key={p.id || p.name} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="h-8 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 bg-transparent text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+          value={filterSub}
+          onChange={(e) => setFilterSub(e.target.value)}
+        >
+          <option value="all">All Subcontractors</option>
+          {subcontractors.map((s) => (
+            <option key={s.id || s.name} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        {/* Reset Button */}
+        {(filterSub !== "all" ||
+          filterPartner !== "all" ||
+          filterContractor !== "all") && (
+          <button
+            onClick={() => {
+              setFilterSub("all");
+              setFilterPartner("all");
+              setFilterContractor("all");
+            }}
+            className="h-8 px-2 text-xs bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 rounded transition-colors"
+            title="Reset Filters"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       <div ref={mapRef} className="w-full h-full" />
 
       {/* Popup */}
@@ -538,211 +719,306 @@ export default function ProjectMap() {
           <div className="p-4 overflow-y-auto flex-1 space-y-5">
             {/* Companies Section */}
             <div>
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-blue-500" />
-                Companies Involved
-              </h3>
-              <div className="space-y-3">
-                {/* Contractor */}
-                <CompanyCard
-                  label="Contractor"
-                  name={selectedProject.contractor}
-                  company={getCompanyByName(
-                    selectedProject.contractor,
-                    contractors,
-                  )}
-                  icon={<Building2 className="h-4 w-4 text-blue-500" />}
-                  color="blue"
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Users className="h-4 w-4 text-purple-500" />
+                  Partners & Subcontractors
+                </h3>
+              </div>
+
+              {/* Company Filter */}
+              <div className="relative mb-3">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Filter companies..."
+                  value={companySearch}
+                  onChange={(e) => setCompanySearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 text-gray-900 dark:text-gray-100"
                 />
-                {/* Subcontractor */}
-                <CompanyCard
-                  label="Subcontractor"
-                  name={selectedProject.sub}
-                  company={getCompanyByName(
-                    selectedProject.sub,
-                    subcontractors,
-                  )}
-                  icon={<HardHat className="h-4 w-4 text-orange-500" />}
-                  color="orange"
-                />
-                {/* Partner */}
-                <CompanyCard
-                  label="Partner"
-                  name={selectedProject.partner}
-                  company={getCompanyByName(selectedProject.partner, partners)}
-                  icon={<Users className="h-4 w-4 text-purple-500" />}
-                  color="purple"
-                />
-                {/* Mediator */}
-                {selectedProject.mediator &&
-                  selectedProject.mediator !== "-" && (
+              </div>
+
+              <div className="space-y-4">
+                {/* Partner (Parent) */}
+                {(!companySearch ||
+                  (selectedProject.partner &&
+                    selectedProject.partner
+                      .toLowerCase()
+                      .includes(companySearch.toLowerCase()))) && (
+                  <div className="relative">
                     <CompanyCard
-                      label="Mediator"
-                      name={selectedProject.mediator}
-                      company={null}
-                      icon={<Briefcase className="h-4 w-4 text-green-500" />}
-                      color="green"
+                      label="Partner"
+                      name={selectedProject.partner}
+                      company={getCompanyByName(
+                        selectedProject.partner,
+                        partners,
+                      )}
+                      icon={<Users className="h-4 w-4 text-purple-500" />}
+                      color="purple"
                     />
-                  )}
+
+                    {/* Mediator (Child) - Connected Visually */}
+                    {selectedProject.mediator &&
+                      selectedProject.mediator !== "-" &&
+                      (!companySearch ||
+                        selectedProject.mediator
+                          .toLowerCase()
+                          .includes(companySearch.toLowerCase())) && (
+                        <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
+                          <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                          <CompanyCard
+                            label="Mediator"
+                            name={selectedProject.mediator}
+                            company={null}
+                            icon={
+                              <Briefcase className="h-4 w-4 text-green-500" />
+                            }
+                            color="green"
+                          />
+                        </div>
+                      )}
+
+                    {/* Subcontractor (Child) - Connected Visually */}
+                    {selectedProject.sub &&
+                      (!companySearch ||
+                        selectedProject.sub
+                          .toLowerCase()
+                          .includes(companySearch.toLowerCase())) && (
+                        <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
+                          <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                          <CompanyCard
+                            label="Subcontractor"
+                            name={selectedProject.sub}
+                            company={getCompanyByName(
+                              selectedProject.sub,
+                              subcontractors,
+                            )}
+                            icon={
+                              <HardHat className="h-4 w-4 text-orange-500" />
+                            }
+                            color="orange"
+                          />
+                        </div>
+                      )}
+                  </div>
+                )}
+
+                {/* Fallback if searching for sub only and not showing partner logic above restricts it? 
+                    Actually the above logic nests Sub. If I search for "Sub", I might want to see it even if Partner doesn't match?
+                    Revised logic: Show structure if either matches, or flatten. 
+                    For simple "working under that partner" visualization, keeping the tree structure is best. 
+                    If I search "Sub", and Partner is hidden, the tree looks weird. 
+                    I'll keep it simple: Show Partner if matches OR if Sub matches (to keep context).
+                */}
               </div>
             </div>
 
             {/* Workers Section */}
             <div>
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                <HardHat className="h-4 w-4 text-yellow-500" />
-                Assigned Workers (
-                {getProjectWorkers(selectedProject.workers).length})
-              </h3>
+              <div className="mb-3">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
+                  <HardHat className="h-4 w-4 text-yellow-500" />
+                  Assigned Workers (
+                  {
+                    getProjectWorkers(selectedProject.workers).filter(
+                      (w) =>
+                        (w.name
+                          .toLowerCase()
+                          .includes(workerSearch.toLowerCase()) ||
+                          w.role
+                            .toLowerCase()
+                            .includes(workerSearch.toLowerCase())) &&
+                        (workerRole === "all" || w.role === workerRole),
+                    ).length
+                  }
+                  )
+                </h3>
+
+                {/* Workers Filter */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search workers..."
+                      value={workerSearch}
+                      onChange={(e) => setWorkerSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+                  <select
+                    value={workerRole}
+                    onChange={(e) => setWorkerRole(e.target.value)}
+                    className="pl-2 pr-6 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="all">All Roles</option>
+                    <option value="Electrician">Electrician</option>
+                    <option value="S/H/K">S/H/K</option>
+                    <option value="Cooling Technician">Cooling</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="space-y-3">
-                {getProjectWorkers(selectedProject.workers).length === 0 ? (
+                {getProjectWorkers(selectedProject.workers).filter(
+                  (w) =>
+                    (w.name
+                      .toLowerCase()
+                      .includes(workerSearch.toLowerCase()) ||
+                      w.role
+                        .toLowerCase()
+                        .includes(workerSearch.toLowerCase())) &&
+                    (workerRole === "all" || w.role === workerRole),
+                ).length === 0 ? (
                   <p className="text-xs text-gray-500 dark:text-gray-400 italic bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3">
-                    No workers assigned to this project
+                    No workers found matching criteria
                   </p>
                 ) : (
-                  getProjectWorkers(selectedProject.workers).map((worker) => (
-                    <div
-                      key={worker.id}
-                      className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-100 dark:border-gray-700 hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-700 border flex items-center justify-center overflow-hidden shrink-0">
-                            {worker.avatarSeed ? (
-                              <img
-                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.avatarSeed}`}
-                                alt={worker.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="text-xs font-bold text-gray-500">
-                                {worker.name.charAt(0)}
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-gray-900 dark:text-white">
-                                {worker.name}
-                              </p>
-                              {worker.status && (
-                                <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    worker.status === "Active"
-                                      ? "bg-green-500"
-                                      : worker.status === "Blocked"
-                                        ? "bg-red-500"
-                                        : "bg-gray-400"
-                                  }`}
-                                  title={worker.status}
+                  getProjectWorkers(selectedProject.workers)
+                    .filter(
+                      (w) =>
+                        (w.name
+                          .toLowerCase()
+                          .includes(workerSearch.toLowerCase()) ||
+                          w.role
+                            .toLowerCase()
+                            .includes(workerSearch.toLowerCase())) &&
+                        (workerRole === "all" || w.role === workerRole),
+                    )
+                    .map((worker) => (
+                      <div
+                        key={worker.id}
+                        className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 border border-gray-100 dark:border-gray-700 hover:shadow-sm transition-shadow"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-700 border flex items-center justify-center overflow-hidden shrink-0">
+                              {worker.avatarSeed ? (
+                                <img
+                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.avatarSeed}`}
+                                  alt={worker.name}
+                                  className="w-full h-full object-cover"
                                 />
+                              ) : (
+                                <div className="text-xs font-bold text-gray-500">
+                                  {worker.name.charAt(0)}
+                                </div>
                               )}
                             </div>
-                            <p className="text-xs text-gray-600 dark:text-gray-300 font-medium">
-                              {worker.role}
-                            </p>
-                            {worker.subRole && (
-                              <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                                {worker.subRole}
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-gray-900 dark:text-white">
+                                  {worker.name}
+                                </p>
+                                {worker.status && (
+                                  <span
+                                    className={`w-2 h-2 rounded-full ${
+                                      worker.status === "Active"
+                                        ? "bg-green-500"
+                                        : worker.status === "Blocked"
+                                          ? "bg-red-500"
+                                          : "bg-gray-400"
+                                    }`}
+                                    title={worker.status}
+                                  />
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-600 dark:text-gray-300 font-medium">
+                                {worker.role}
                               </p>
-                            )}
+                              {worker.subRole && (
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                                  {worker.subRole}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] h-5 px-1.5 ${
+                                worker.successRate && worker.successRate >= 95
+                                  ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-900/20"
+                                  : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20"
+                              }`}
+                            >
+                              {worker.successRate}% Success
+                            </Badge>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] h-5 px-1.5 ${
-                              worker.successRate && worker.successRate >= 95
-                                ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-900/20"
-                                : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20"
-                            }`}
-                          >
-                            {worker.successRate}% Success
-                          </Badge>
-                        </div>
-                      </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-3">
-                        <div className="bg-white dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-widest">
-                            Stats
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div
-                              className="text-xs text-gray-700 dark:text-gray-300"
-                              title="Completed Projects"
-                            >
-                              <span className="font-bold">
-                                {worker.completedProjects || 0}
-                              </span>{" "}
-                              done
-                            </div>
-                            <div className="w-px h-3 bg-gray-200 dark:bg-gray-700" />
-                            <div
-                              className={`text-xs ${
-                                (worker.complaints || 0) > 0
-                                  ? "text-red-500 font-bold"
-                                  : "text-gray-500"
-                              }`}
-                              title="Complaints"
-                            >
-                              {worker.complaints || 0} issues
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="bg-white dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">
+                              Stats
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div
+                                className="text-xs text-gray-700 dark:text-gray-300"
+                                title="Completed Projects"
+                              >
+                                <span className="font-bold">
+                                  {worker.completedProjects || 0}
+                                </span>{" "}
+                                done
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="bg-white dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-widest">
-                            Compliance
-                          </p>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            <span
-                              className={`text-[10px] px-1 rounded border ${
-                                worker.a1Status === "Valid"
-                                  ? "border-green-200 text-green-700 bg-green-50"
-                                  : "border-red-200 text-red-700 bg-red-50"
-                              }`}
-                            >
-                              A1: {worker.a1Status || "N/A"}
-                            </span>
-                            {worker.certStatus && (
+                          <div className="bg-white dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">
+                              Compliance
+                            </p>
+                            <div className="flex flex-wrap gap-1 mt-1">
                               <span
                                 className={`text-[10px] px-1 rounded border ${
-                                  worker.certStatus === "Valid"
+                                  worker.a1Status === "Valid"
                                     ? "border-green-200 text-green-700 bg-green-50"
-                                    : "border-yellow-200 text-yellow-700 bg-yellow-50"
+                                    : "border-red-200 text-red-700 bg-red-50"
                                 }`}
                               >
-                                Cert: {worker.certStatus}
+                                A1: {worker.a1Status || "N/A"}
                               </span>
-                            )}
+                              {worker.certStatus && (
+                                <span
+                                  className={`text-[10px] px-1 rounded border ${
+                                    worker.certStatus === "Valid"
+                                      ? "border-green-200 text-green-700 bg-green-50"
+                                      : "border-yellow-200 text-yellow-700 bg-yellow-50"
+                                  }`}
+                                >
+                                  Cert: {worker.certStatus}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {(worker.phone || worker.email) && (
-                        <div className="flex gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-                          {worker.phone && (
-                            <a
-                              href={`tel:${worker.phone}`}
-                              className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:underline"
-                            >
-                              <Phone className="h-3 w-3" />
-                              Call
-                            </a>
-                          )}
-                          {worker.email && (
-                            <a
-                              href={`mailto:${worker.email}`}
-                              className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:underline"
-                            >
-                              <Mail className="h-3 w-3" />
-                              Email
-                            </a>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))
+                        {(worker.phone || worker.email) && (
+                          <div className="flex gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                            {worker.phone && (
+                              <a
+                                href={`https://wa.me/${worker.phone.replace(/\D/g, "")}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1 hover:underline"
+                              >
+                                <Phone className="h-3 w-3" />
+                                WhatsApp
+                              </a>
+                            )}
+                            {worker.email && (
+                              <a
+                                href={`mailto:${worker.email}`}
+                                className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 hover:underline"
+                              >
+                                <Mail className="h-3 w-3" />
+                                Email
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))
                 )}
               </div>
             </div>

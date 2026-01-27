@@ -19,7 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Archive,
   CheckCircle2,
@@ -167,6 +176,22 @@ export default function ArchivePage() {
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
+  // Complaint Dialog State
+  const [complaintOpen, setComplaintOpen] = useState(false);
+  const [selectedProjectForComplaint, setSelectedProjectForComplaint] =
+    useState<any>(null);
+
+  // Form State
+  const [complaintForm, setComplaintForm] = useState({
+    description: "",
+    category: "general",
+    priority: "medium",
+    location: "",
+    responsible: "sub",
+    deadline: "",
+    costEstimate: "",
+  });
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -182,19 +207,55 @@ export default function ArchivePage() {
   };
 
   const handleCreateComplaint = (project: any) => {
+    setSelectedProjectForComplaint(project);
+    setComplaintForm({
+      description: "",
+      category: "general",
+      priority: "medium",
+      location: "",
+      responsible: "sub", // Default to sub as they usually do the work
+      deadline: "",
+      costEstimate: "",
+    });
+    setComplaintOpen(true);
+  };
+
+  const submitComplaint = () => {
+    if (!selectedProjectForComplaint) return;
+
+    const project = selectedProjectForComplaint;
     const newComplaint = {
       id: Math.floor(10000 + Math.random() * 90000).toString(),
       project: project.project,
       address: project.address,
-      abnahmeDate: project.abnahme || project.start, // Fallback
+      abnahmeDate: project.abnahme || project.start,
       warrantyStatus: project.status,
+
+      // Assigned from form
+      category: complaintForm.category,
+      priority: complaintForm.priority,
+      description: complaintForm.description,
+      location: complaintForm.location,
+      dueDate: complaintForm.deadline,
+      costEstimate: complaintForm.costEstimate,
+
+      // Map responsible party logic
       contractor: project.contractor,
       partner: project.partner,
       subcontractor: project.sub,
-      repairBy: "Open", // Default
+
+      // Determine "Repair By" based on selection
+      repairBy:
+        complaintForm.responsible === "sub"
+          ? "SUB"
+          : complaintForm.responsible === "partner"
+            ? "Partner"
+            : "Contract",
+
       count: 1,
-      status1: "red",
-      status2: "yellow",
+      status1: "red", // Indicator
+      status2: "yellow", // Progress
+      createdAt: new Date().toISOString(),
     };
 
     const existingComplaints = JSON.parse(
@@ -205,7 +266,9 @@ export default function ArchivePage() {
       JSON.stringify([newComplaint, ...existingComplaints]),
     );
 
-    // Navigate to complaints page
+    setComplaintOpen(false);
+    // Optional: Navigate to complaints to see it, or stay here. User workflow implies staying or confirming.
+    // Let's navigate to complaints so they see the result.
     router.push("/admin/complaints");
   };
 
@@ -911,6 +974,177 @@ export default function ArchivePage() {
           </div>
         </div>
       </div>
+      {/* Complaint Dialog */}
+      <Dialog open={complaintOpen} onOpenChange={setComplaintOpen}>
+        <DialogContent className="max-w-2xl bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800">
+          <DialogHeader>
+            <DialogTitle>File a Complaint</DialogTitle>
+            <DialogDescription>
+              Create a formal defect report for{" "}
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {selectedProjectForComplaint?.project}
+              </span>
+              .
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-6 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="category">Defect Category</Label>
+                <Select
+                  value={complaintForm.category}
+                  onValueChange={(val) =>
+                    setComplaintForm({ ...complaintForm, category: val })
+                  }
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General Defect</SelectItem>
+                    <SelectItem value="structural">
+                      Structural / Shell
+                    </SelectItem>
+                    <SelectItem value="electrical">Electrical</SelectItem>
+                    <SelectItem value="plumbing">Plumbing / HVAC</SelectItem>
+                    <SelectItem value="finishing">Finishing / Paint</SelectItem>
+                    <SelectItem value="safety">Safety Hazard</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="priority">Severity / Priority</Label>
+                <Select
+                  value={complaintForm.priority}
+                  onValueChange={(val) =>
+                    setComplaintForm({ ...complaintForm, priority: val })
+                  }
+                >
+                  <SelectTrigger id="priority">
+                    <SelectValue placeholder="Select Priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low (Cosmetic)</SelectItem>
+                    <SelectItem value="medium">Medium (Standard)</SelectItem>
+                    <SelectItem value="high">
+                      High (Functional Issue)
+                    </SelectItem>
+                    <SelectItem value="critical">
+                      Critical (Immediate Action)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="description">Defect Description</Label>
+              <textarea
+                id="description"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Describe the defect in detail..."
+                value={complaintForm.description}
+                onChange={(e) =>
+                  setComplaintForm({
+                    ...complaintForm,
+                    description: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="location">Exact Location</Label>
+                <Input
+                  id="location"
+                  placeholder="e.g. 2nd Floor, Room 204"
+                  value={complaintForm.location}
+                  onChange={(e) =>
+                    setComplaintForm({
+                      ...complaintForm,
+                      location: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="deadline">Rectification Deadline</Label>
+                <Input
+                  id="deadline"
+                  type="date"
+                  value={complaintForm.deadline}
+                  onChange={(e) =>
+                    setComplaintForm({
+                      ...complaintForm,
+                      deadline: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="responsible">Responsible Party</Label>
+              <Select
+                value={complaintForm.responsible}
+                onValueChange={(val) =>
+                  setComplaintForm({ ...complaintForm, responsible: val })
+                }
+              >
+                <SelectTrigger id="responsible">
+                  <SelectValue placeholder="Select Party" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sub">
+                    Subcontractor ({selectedProjectForComplaint?.sub})
+                  </SelectItem>
+                  <SelectItem value="partner">
+                    Partner ({selectedProjectForComplaint?.partner})
+                  </SelectItem>
+                  <SelectItem value="contractor">
+                    Main Contractor ({selectedProjectForComplaint?.contractor})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Who is liable for fixing this defect?
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="cost">Est. Cost Impact (€)</Label>
+              <Input
+                id="cost"
+                type="number"
+                placeholder="0.00"
+                value={complaintForm.costEstimate}
+                onChange={(e) =>
+                  setComplaintForm({
+                    ...complaintForm,
+                    costEstimate: e.target.value,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setComplaintOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={submitComplaint}
+              className="bg-yellow-500 hover:bg-yellow-600 text-gray-900"
+              disabled={!complaintForm.description}
+            >
+              Submit Complaint
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

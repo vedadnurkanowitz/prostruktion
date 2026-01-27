@@ -26,10 +26,10 @@ export default async function DashboardLayout({
   const role = profile?.role || "broker"; // Default fallback
 
   return (
-    <div className="flex min-h-screen w-full bg-gray-50/50 dark:bg-gray-900/50 overflow-hidden">
+    <div className="flex min-h-screen w-full bg-gradient-to-br from-gray-100 via-white to-gray-200 dark:bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] dark:from-gray-800 dark:via-gray-950 dark:to-black overflow-hidden">
       <Sidebar role={role} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <header className="flex h-14 items-center gap-4 border-b bg-white dark:bg-gray-950 px-6 shrink-0">
+        <header className="flex h-14 items-center gap-4 border-b border-gray-200/50 dark:border-gray-800/50 bg-white/70 dark:bg-gray-900/70 backdrop-blur-md px-6 shrink-0 z-10">
           <h1 className="font-semibold text-lg">Dashboard</h1>
           {/* Add UserNav or other topbar items here */}
         </header>

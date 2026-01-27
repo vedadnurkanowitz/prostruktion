@@ -41,14 +41,13 @@ import {
 } from "lucide-react";
 
 export default function ComplaintsPage() {
-  const [createOpen, setCreateOpen] = useState(false);
-
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // State for complaints
   const [complaints, setComplaints] = useState<any[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
 
   useEffect(() => {
     // Initial Mock Data
@@ -186,6 +185,16 @@ export default function ComplaintsPage() {
     );
     // Combine stored first (newest)
     setComplaints([...storedComplaints, ...initialComplaints]);
+
+    // Load available projects
+    const storedProjects = localStorage.getItem("prostruktion_projects_v1");
+    if (storedProjects) {
+      try {
+        setAvailableProjects(JSON.parse(storedProjects));
+      } catch (e) {
+        console.error("Error loading projects", e);
+      }
+    }
   }, []);
 
   const getWarrantyBadge = (status: string) => {
@@ -235,12 +244,6 @@ export default function ComplaintsPage() {
         <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
           Complaints
         </h2>
-        <Button
-          onClick={() => setCreateOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white"
-        >
-          <Plus className="mr-2 h-4 w-4" /> Create Complaint
-        </Button>
       </div>
 
       <Card className="bg-white dark:bg-gray-950 border-none shadow-sm ring-1 ring-gray-200 dark:ring-gray-800">
@@ -404,38 +407,6 @@ export default function ComplaintsPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Create Modal */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Complaint</DialogTitle>
-            <DialogDescription>
-              Record a new complaint for a project.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label htmlFor="project" className="text-sm font-medium">
-                Project
-              </label>
-              <Input id="project" placeholder="Select Project" />
-            </div>
-            <div className="grid gap-2">
-              <label htmlFor="description" className="text-sm font-medium">
-                Description
-              </label>
-              <Input id="description" placeholder="Issue details..." />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => setCreateOpen(false)}>Create</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

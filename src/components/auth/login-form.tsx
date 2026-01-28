@@ -96,8 +96,8 @@ export function LoginForm() {
 
   return (
     <div className="relative group w-full max-w-md">
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-400/30 to-amber-600/30 rounded-2xl blur-xl opacity-50 transition duration-1000"></div>
-      <Card className="relative w-full bg-neutral-950/80 backdrop-blur-2xl border-white/5 text-white shadow-2xl rounded-2xl p-6 sm:p-8">
+      <div className="absolute -inset-1 bg-gradient-to-r from-gray-700/20 to-gray-900/20 rounded-2xl blur-2xl opacity-60"></div>
+      <Card className="relative w-full bg-gray-900/60 backdrop-blur-2xl border-gray-700/30 text-white shadow-2xl rounded-2xl p-6 sm:p-8">
         <CardHeader className="space-y-4 pb-8 p-0">
           <div className="flex justify-center">
             <div className="h-16 w-16 rounded-2xl bg-yellow-400/10 flex items-center justify-center border border-yellow-400/20 shadow-[0_0_20px_rgba(250,204,21,0.15)] backdrop-blur-md">

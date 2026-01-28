@@ -596,7 +596,7 @@ export function TodoList() {
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-yellow-500 text-gray-900 hover:bg-yellow-400 font-semibold shadow-sm w-full sm:w-auto">
+              <Button className="backdrop-blur-md bg-yellow-400/80 hover:bg-yellow-400/90 text-gray-900 font-semibold border border-yellow-300/50 hover:border-yellow-300/70 shadow-sm hover:shadow-md transition-all duration-200 w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Add New Task
               </Button>

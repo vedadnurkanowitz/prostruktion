@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
+import { DashboardHeader } from "@/components/layout/dashboard-header";
 
 export default async function DashboardLayout({
   children,
@@ -23,16 +24,29 @@ export default async function DashboardLayout({
     .eq("id", user.id)
     .single();
 
-  const role = profile?.role || "broker"; // Default fallback
+  // Auto-recovery: If profile is missing (e.g. accidental deletion), recreate it
+  if (!profile) {
+    console.log("Profile missing. Attempting to recreate Admin profile...");
+    const { error: insertError } = await supabase.from("profiles").insert({
+      id: user.id,
+      email: user.email,
+      full_name: "Admin User",
+      role: "super_admin",
+      company_name: "Headquarters",
+    });
+
+    if (insertError) {
+      console.error("Failed to recover profile:", insertError);
+    }
+  }
+
+  const role = profile?.role || "super_admin"; // Default fallbacks
 
   return (
-    <div className="flex min-h-screen w-full bg-gradient-to-br from-gray-100 via-white to-gray-200 dark:bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] dark:from-gray-800 dark:via-gray-950 dark:to-black overflow-hidden">
+    <div className="flex h-screen w-full bg-gradient-to-br from-gray-100 via-white to-gray-200 dark:bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] dark:from-gray-800 dark:via-gray-950 dark:to-black overflow-hidden">
       <Sidebar role={role} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <header className="flex h-14 items-center gap-4 border-b border-gray-200/50 dark:border-gray-800/50 bg-white/70 dark:bg-gray-900/70 backdrop-blur-md px-6 shrink-0 z-10">
-          <h1 className="font-semibold text-lg">Dashboard</h1>
-          {/* Add UserNav or other topbar items here */}
-        </header>
+        <DashboardHeader />
         <main className="flex-1 p-6 overflow-auto">{children}</main>
       </div>
     </div>

@@ -96,178 +96,8 @@ const PROJECT_STATUS_COLORS: Record<string, string> = {
 };
 
 // Default workers for demo
-const DEFAULT_WORKERS: Worker[] = [
-  {
-    id: "w1",
-    name: "John Doe",
-    role: "Electrician",
-    subRole: "Senior Electrician",
-    subcontractor: "Sub Y",
-    status: "Active",
-    a1Status: "Valid",
-    certStatus: "Valid",
-    successRate: 100,
-    complaints: 0,
-    completedProjects: 45,
-    activeProjects: 1,
-    phone: "+49 171 1234567",
-    email: "john@example.com",
-    avatarSeed: "John",
-  },
-  {
-    id: "w2",
-    name: "Jane Smith",
-    role: "S/H/K",
-    subRole: "HVAC Specialist",
-    subcontractor: "Sub Y",
-    status: "Active",
-    a1Status: "Valid",
-    certStatus: "Expiring Soon",
-    successRate: 98,
-    complaints: 1,
-    completedProjects: 28,
-    activeProjects: 2,
-    phone: "+49 172 2345678",
-    email: "jane@example.com",
-    avatarSeed: "Jane",
-  },
-  {
-    id: "w3",
-    name: "Bob Johnson",
-    role: "Cooling Technician",
-    subRole: "Assistant",
-    subcontractor: "Sub Z",
-    status: "Active",
-    a1Status: "Valid",
-    certStatus: "Valid",
-    successRate: 100,
-    complaints: 0,
-    completedProjects: 12,
-    activeProjects: 1,
-    phone: "+49 173 3456789",
-    email: "bob@example.com",
-    avatarSeed: "Bob",
-  },
-  {
-    id: "w4",
-    name: "Alice Brown",
-    role: "S/H/K",
-    subRole: "Plumber",
-    subcontractor: "Sub Y",
-    status: "On Leave",
-    a1Status: "Expired",
-    certStatus: "Valid",
-    successRate: 92,
-    complaints: 2,
-    completedProjects: 34,
-    activeProjects: 0,
-    phone: "+49 174 4567890",
-    email: "alice@example.com",
-    avatarSeed: "Alice",
-  },
-  {
-    id: "w5",
-    name: "Mike Davis",
-    role: "Electrician",
-    subRole: "Wiring Expert",
-    subcontractor: "Sub Z",
-    status: "Blocked",
-    a1Status: "Expired",
-    certStatus: "Expired",
-    successRate: 86,
-    complaints: 4,
-    completedProjects: 15,
-    activeProjects: 0,
-    phone: "+49 175 5678901",
-    email: "mike@example.com",
-    avatarSeed: "Mike",
-  },
-  {
-    id: "w6",
-    name: "Tom Wilson",
-    role: "S/H/K",
-    subRole: "Pipe Fitter",
-    subcontractor: "Sub Alpha",
-    status: "Active",
-    a1Status: "Expired",
-    certStatus: "Valid",
-    successRate: 98,
-    complaints: 1,
-    completedProjects: 22,
-    activeProjects: 1,
-    phone: "+49 176 6789012",
-    email: "tom@example.com",
-    avatarSeed: "Tom",
-  },
-  {
-    id: "w7",
-    name: "Sarah Lee",
-    role: "Cooling Technician",
-    subRole: "Maintenance",
-    subcontractor: "Sub Alpha",
-    status: "Active",
-    a1Status: "Valid",
-    certStatus: "Valid",
-    successRate: 100,
-    complaints: 0,
-    completedProjects: 8,
-    activeProjects: 1,
-    phone: "+49 177 7890123",
-    email: "sarah@example.com",
-    avatarSeed: "Sarah",
-  },
-  {
-    id: "w8",
-    name: "David Miller",
-    role: "Electrician",
-    subRole: "General",
-    subcontractor: "Partner Beta",
-    status: "Active",
-    a1Status: "Valid",
-    certStatus: "None",
-    successRate: 99,
-    complaints: 0,
-    completedProjects: 56,
-    activeProjects: 2,
-    phone: "+49 178 8901234",
-    email: "david@example.com",
-    avatarSeed: "David",
-  },
-  {
-    id: "w9",
-    name: "Emily Clark",
-    role: "S/H/K",
-    subRole: "Sanitary",
-    subcontractor: "ConstructCo",
-    status: "Active",
-    a1Status: "Valid",
-    certStatus: "Valid",
-    successRate: 100,
-    complaints: 0,
-    completedProjects: 19,
-    activeProjects: 1,
-    phone: "+49 179 9012345",
-    email: "emily@example.com",
-    avatarSeed: "Emily",
-  },
-  {
-    id: "w10",
-    name: "James White",
-    role: "Cooling Technician",
-    subRole: "Systems",
-    subcontractor: "ConstructCo",
-    status: "Inactive",
-    a1Status: "Expired",
-    certStatus: "Expired",
-    successRate: 95,
-    complaints: 1,
-    completedProjects: 14,
-    activeProjects: 0,
-    phone: "+49 170 0123456",
-    email: "james@example.com",
-    avatarSeed: "James",
-  },
-];
+// Default workers removed for clean slate
+const DEFAULT_WORKERS: Worker[] = [];
 
 export default function ProjectMap() {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -277,7 +107,8 @@ export default function ProjectMap() {
   const [showDetails, setShowDetails] = useState(false);
 
   // Data from localStorage
-  const [allWorkers, setAllWorkers] = useState<Worker[]>(DEFAULT_WORKERS);
+  // Data from localStorage
+  const [allWorkers, setAllWorkers] = useState<Worker[]>([]); // Cleared defaults
   const [subcontractors, setSubcontractors] = useState<Company[]>([]);
   const [contractors, setContractors] = useState<Company[]>([]);
   const [partners, setPartners] = useState<Company[]>([]);
@@ -397,12 +228,7 @@ export default function ProjectMap() {
           let complaints = realCount;
 
           if (complaints === 0 && (p.status === "Finished" || isArchived)) {
-            complaints =
-              p.complaints !== undefined
-                ? p.complaints
-                : Math.random() < 0.3 // 30% chance of complaint for finished projects
-                  ? Math.floor(Math.random() * 3) + 1
-                  : 0;
+            complaints = p.complaints !== undefined ? p.complaints : 0;
           }
 
           return {
@@ -554,7 +380,7 @@ export default function ProjectMap() {
   return (
     <div className="relative h-[calc(100vh-140px)] w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm">
       {/* Map Controls */}
-      <div className="absolute top-4 left-4 z-40 flex flex-wrap gap-2 bg-white/90 dark:bg-gray-900/90 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 backdrop-blur-md max-w-[90%]">
+      <div className="absolute top-4 left-4 z-40 flex flex-wrap gap-2 liquid-glass p-3 rounded-xl max-w-[90%]">
         <select
           className="h-8 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 bg-transparent text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500"
           value={filterContractor}
@@ -616,7 +442,7 @@ export default function ProjectMap() {
       {/* Popup */}
       <div ref={popupRef} className="absolute z-50">
         {selectedProject && !showDetails && (
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-4 min-w-[240px] transform -translate-x-1/2">
+          <div className="liquid-glass rounded-xl p-4 min-w-[240px] transform -translate-x-1/2">
             <div className="flex justify-between items-start mb-2">
               <h3 className="font-bold text-sm text-gray-900 dark:text-white pr-4">
                 {selectedProject.project}
@@ -656,29 +482,29 @@ export default function ProjectMap() {
                 View Details
               </Button>
             </div>
-            <div className="absolute left-1/2 -bottom-2 transform -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-white dark:border-t-gray-900" />
+            <div className="absolute left-1/2 -bottom-2 transform -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-white/40 dark:border-t-black/40" />
           </div>
         )}
       </div>
 
       {/* Detail Panel */}
       {showDetails && selectedProject && (
-        <div className="absolute top-4 right-4 w-[420px] max-h-[calc(100%-32px)] bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50 flex flex-col">
+        <div className="absolute top-4 right-4 w-[420px] max-h-[calc(100%-32px)] liquid-glass rounded-xl overflow-hidden z-50 flex flex-col">
           {/* Header */}
-          <div className="bg-gradient-to-r from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 p-4 shrink-0">
+          <div className="bg-black/5 dark:bg-white/5 p-4 shrink-0 border-b border-white/10">
             <div className="flex justify-between items-start">
               <div>
-                <h2 className="text-lg font-bold text-white mb-1">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
                   {selectedProject.project}
                 </h2>
-                <p className="text-xs text-gray-300 flex items-center gap-1">
+                <p className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
                   {selectedProject.address}
                 </p>
               </div>
               <button
                 onClick={closePopup}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>

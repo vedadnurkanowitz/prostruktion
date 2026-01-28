@@ -56,119 +56,6 @@ import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
 
-const DUMMY_WORKERS = [
-  {
-    id: "w1",
-    name: "John Doe",
-    role: "Electrician",
-    subcontractor: "Sub Y",
-    avatarSeed: "John",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w2",
-    name: "Jane Smith",
-    role: "S/H/K",
-    subcontractor: "Sub Y",
-    avatarSeed: "Jane",
-    a1Status: "Valid",
-    coolingStatus: "Expiring Soon",
-    complaints: 1,
-    successRate: 98,
-  },
-  {
-    id: "w3",
-    name: "Bob Johnson",
-    role: "Cooling Technician",
-    subcontractor: "Sub Z",
-    avatarSeed: "Bob",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w4",
-    name: "Alice Brown",
-    role: "S/H/K",
-    subcontractor: "Sub Y",
-    avatarSeed: "Alice",
-    a1Status: "Expired",
-    coolingStatus: "Valid",
-    complaints: 2,
-    successRate: 92,
-  },
-  {
-    id: "w5",
-    name: "Mike Davis",
-    role: "Electrician",
-    subcontractor: "Sub Z",
-    avatarSeed: "Mike",
-    a1Status: "Expired",
-    coolingStatus: "Valid",
-    complaints: 1,
-    successRate: 96,
-  },
-  {
-    id: "w6",
-    name: "Tom Wilson",
-    role: "S/H/K",
-    subcontractor: "Sub Alpha",
-    avatarSeed: "Tom",
-    a1Status: "Expired",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 98,
-  },
-  {
-    id: "w7",
-    name: "Sarah Lee",
-    role: "Cooling Technician",
-    subcontractor: "Sub Alpha",
-    avatarSeed: "Sarah",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w8",
-    name: "David Miller",
-    role: "Electrician",
-    subcontractor: "Partner Beta",
-    avatarSeed: "David",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 99,
-  },
-  {
-    id: "w9",
-    name: "Emily Clark",
-    role: "S/H/K",
-    subcontractor: "ConstructCo",
-    avatarSeed: "Emily",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w10",
-    name: "James White",
-    role: "Cooling Technician",
-    subcontractor: "ConstructCo",
-    avatarSeed: "James",
-    a1Status: "Expired",
-    coolingStatus: "None",
-    complaints: 1,
-    successRate: 95,
-  },
-];
-
 export default function AdminProjects() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
@@ -278,27 +165,17 @@ export default function AdminProjects() {
         }
 
         // Mock Partners to ensure they are available for demo
-        const mockPartners = [
-          { id: "mp1", name: "Partner A" },
-          { id: "mp2", name: "Partner B" },
-          { id: "mp3", name: "Partner Beta" },
-          { id: "mp4", name: "Partner C" },
-        ];
+        // Mock Partners to ensure they are available for demo
 
         // Combine DB partners with mock partners (deduplicating by name if needed)
-        let combinedPartners = [...mockPartners];
+        // Combine DB partners with mock partners (deduplicating by name if needed)
+        // Cleanup: Removed hardcoded mock partners.
+        let combinedPartners: any[] = [];
         if (partnersData) {
-          const dbPartners = partnersData.map((p) => ({
+          combinedPartners = partnersData.map((p) => ({
             id: p.id,
             name: p.full_name || p.email,
           }));
-          // Merge, preferring DB if duplicates
-          combinedPartners = [
-            ...dbPartners,
-            ...mockPartners.filter(
-              (mp) => !dbPartners.find((dbp) => dbp.name === mp.name),
-            ),
-          ];
         }
 
         // Also load Partners from localStorage
@@ -422,7 +299,9 @@ export default function AdminProjects() {
     const baseSum = Object.values(costs).reduce((a, b) => a + b, 0);
 
     // Bonus 1 (Quality & Deadline)
-    const bonus1 = PRICING_MATRIX.bonus1[unitIndex] || 0;
+    // Only apply if a contractor/partner is assigned
+    const hasAssignee = !!newProject.contractor || !!newProject.partner;
+    const bonus1 = hasAssignee ? PRICING_MATRIX.bonus1[unitIndex] || 0 : 0;
     const sumWithBonus1 = baseSum + bonus1;
 
     // Bonus 2 (Quantity)
@@ -435,7 +314,7 @@ export default function AdminProjects() {
       return sum + (service ? service.price : 0);
     }, 0);
 
-    const total = sumWithBonus1 + servicesSum;
+    const total = sumWithBonus1 + bonus2 + servicesSum;
 
     setCalcState((prev) => ({
       ...prev,
@@ -451,7 +330,13 @@ export default function AdminProjects() {
 
     // Update the main form amount
     setNewProject((prev) => ({ ...prev, amount: total.toString() }));
-  }, [calcState.units, calcState.services]);
+  }, [
+    calcState.units,
+    calcState.services,
+    calcState.quantityBonusTier,
+    newProject.contractor,
+    newProject.partner,
+  ]);
 
   // Calculate Penalty Helper
   const calculatePenalty = (amountStr: string, startDateStr: string) => {
@@ -498,31 +383,76 @@ export default function AdminProjects() {
   };
 
   useEffect(() => {
-    // Force clear old data for this session to ensure new colors show up
-    // In a real app we'd migrate data, but for this dev session:
-    const storedProjects = localStorage.getItem("prostruktion_projects_v1");
-    // We check if we need to migrate colors or just re-seed
-    // Simple approach: just re-seed if it exists to force update colors
-    seedDummyData();
-    // Logic below is bypassed to force update
-    /* 
-    if (storedProjects) {
-      const parsed = JSON.parse(storedProjects);
-        if (parsed.length === 0) {
-           seedDummyData();
-        } else {
-          setProjects(parsed);
-        }
-    } else {
-      seedDummyData();
-    }
-    */
+    const fetchProjects = async () => {
+      const supabase = createClient();
+      try {
+        // Fetch projects with joined Profiles for Partner and Broker names
+        // Note: Supabase join syntax requires correct foreign key setup.
+        // Assuming 'partner_id' references 'profiles.id' and 'broker_id' references 'profiles.id'.
+        // We use alias 'partner:partner_id' and 'broker:broker_id' if relations are set up.
+        // If not, we might fail. But let's try standard relation select.
 
-    // Fetch archived count
-    // One-time clear of archive to fix warranty date calculation data
-    if (!localStorage.getItem("archive_cleared_fix_v2")) {
-      localStorage.removeItem("prostruktion_archive");
-      localStorage.setItem("archive_cleared_fix_v2", "true");
+        // "partner:partner_id(full_name)" maps the relation to a 'partner' object
+        const { data, error } = await supabase.from("projects").select(`
+            *,
+            partner_profile:partner_id(full_name, email, company_name),
+            broker_profile:broker_id(full_name, email)
+          `);
+
+        if (data && !error) {
+          // Map DB projects to UI shape
+          const mappedProjects = data.map((p: any) => ({
+            project: p.title,
+            address: p.description
+              ? p.description.split("\n")[0].replace("Address: ", "")
+              : "",
+            contractor: p.description
+              ? p.description.match(/Contractor: (.*)/)?.[1] || ""
+              : "",
+            // Use the joined profile name, fallback to generic if missing but ID exists
+            partner:
+              p.partner_profile?.company_name ||
+              p.partner_profile?.full_name ||
+              (p.partner_id ? "Partner" : ""),
+            mediator:
+              p.broker_profile?.full_name || (p.broker_id ? "Mediator" : ""),
+            sub: p.description
+              ? p.description.match(/Subcontractor: (.*?) \(/)?.[1] || ""
+              : "",
+            start: new Date(p.created_at || Date.now()).toLocaleDateString(
+              "en-US",
+              { year: "numeric", month: "short", day: "numeric" },
+            ),
+            amount: `€ ${p.contract_value?.toLocaleString() || "0"}`,
+            status: p.status === "active" ? "Scheduled" : p.status,
+            statusColor: "bg-purple-600", // Default
+            abnahme: "No",
+            invoiceHeader: "Create Invoice",
+            invoiceStatus: "Ready",
+            workers: [],
+            id: p.id,
+          }));
+
+          setProjects((prev) => {
+            return mappedProjects.length > 0 ? mappedProjects : prev;
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching projects from Supabase:", error);
+      }
+    };
+
+    fetchProjects();
+
+    const storedProjects = localStorage.getItem("prostruktion_projects_v1");
+    if (storedProjects) {
+      try {
+        setProjects(JSON.parse(storedProjects));
+      } catch (e) {
+        setProjects([]);
+      }
+    } else {
+      setProjects([]);
     }
 
     const storedArchive = localStorage.getItem("prostruktion_archive");
@@ -540,153 +470,70 @@ export default function AdminProjects() {
   }, []);
 
   const seedDummyData = () => {
-    // Helper to get date string relative to now
-    const getRelativeDate = (days: number) => {
-      const d = new Date();
-      d.setDate(d.getDate() + days);
-      return d.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    };
-
-    const dummyProjects = [
-      {
-        project: "Delayed Villa",
-        address: "Historical Lane 1, Oldtown",
-        contractor: "SlowBuilders Inc.",
-        partner: "Partner A",
-        mediator: "Mediator X",
-        sub: "Sub Y",
-        start: getRelativeDate(-10), // 10 days late
-        amount: "€ 100,000",
-        status: "Scheduled",
-        statusColor: "bg-purple-600",
-        abnahme: "No",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Pending",
-        workers: ["w1", "w2"],
-      },
-      {
-        project: "Future Office",
-        address: "NextGen St 20, TechCity",
-        contractor: "FastConstruct",
-        partner: "Partner B",
-        mediator: "-",
-        sub: "Sub Z",
-        start: getRelativeDate(5), // 5 days in future
-        amount: "€ 200,000",
-        status: "Scheduled",
-        statusColor: "bg-purple-600",
-        abnahme: "No",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Pending",
-        workers: ["w3", "w5"],
-      },
-      {
-        project: "City Center Reno",
-        address: "Market Square 5, Downtown",
-        contractor: "UrbanDev",
-        partner: "Partner A",
-        mediator: "Mediator Y",
-        sub: "Sub Alpha",
-        start: getRelativeDate(-15), // 15 days late
-        amount: "€ 350,000",
-        status: "Scheduled",
-        statusColor: "bg-purple-600",
-        abnahme: "No",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Pending",
-        workers: ["w6", "w7"],
-      },
-      {
-        project: "Suburban House",
-        address: "Oak Drive 42, Suburbia",
-        contractor: "HomeSweetHome",
-        partner: "Partner Beta",
-        mediator: "-",
-        sub: "Partner Beta",
-        start: getRelativeDate(2), // 2 days future
-        amount: "€ 180,000",
-        status: "Scheduled",
-        statusColor: "bg-purple-600",
-        abnahme: "No",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Pending",
-        workers: ["w8"],
-      },
-      {
-        project: "Industrial Park",
-        address: "Factory Rd 99, Zone B",
-        contractor: "MegaStruct",
-        partner: "Partner C",
-        mediator: "Mediator Z",
-        sub: "ConstructCo",
-        start: getRelativeDate(-30), // 30 days late!
-        amount: "€ 1,200,000",
-        status: "Scheduled",
-        statusColor: "bg-purple-600",
-        abnahme: "No",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Pending",
-        workers: ["w9", "w10"],
-      },
-      {
-        project: "Villa Sunshine",
-        address: "Sunny Lane 12, Miami",
-        contractor: "BuildRight LLC",
-        partner: "Partner A",
-        mediator: "Mediator X",
-        sub: "Sub Y",
-        start: "Jan 10, 2024",
-        amount: "€ 150,000",
-        status: "In Progress",
-        statusColor: "bg-orange-500 text-white", // Added text-white
-        abnahme: "No",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Ready",
-        workers: ["w1", "w4"],
-      },
-      {
-        project: "Lakeside Cottage",
-        address: "Lake View 3, Austin",
-        contractor: "HomeMakers",
-        partner: "Partner C",
-        mediator: "Mediator Z",
-        sub: "Sub A",
-        start: "Mar 01, 2024",
-        amount: "€ 80,000",
-        status: "In Abnahme",
-        statusColor: "bg-yellow-500 text-black",
-        abnahme: "Yes",
-        invoiceHeader: "Create Invoice",
-        invoiceStatus: "Sent",
-        workers: ["w2", "w3"],
-      },
-      {
-        project: "Uptown Loft",
-        address: "High St 10, Chicago",
-        contractor: "ModernBuilders",
-        partner: "Partner D",
-        mediator: "-",
-        sub: "Sub B",
-        start: "Apr 05, 2024",
-        amount: "€ 120,000",
-        status: "Finished",
-        statusColor: "bg-green-600 text-white", // Added text-white
-        abnahme: "Yes",
-        invoiceHeader: "Invoice Sent",
-        invoiceStatus: "Paid",
-        workers: ["w5"],
-      },
-    ];
-    setProjects(dummyProjects);
-    localStorage.setItem(
-      "prostruktion_projects_v1",
-      JSON.stringify(dummyProjects),
-    );
+    // Cleared for clean slate
+    setProjects([]);
+    localStorage.removeItem("prostruktion_projects_v1");
   };
+
+  // Auto-calculate Quantity Bonus based on Monthly Projects for selected Contractor OR Partner
+  useEffect(() => {
+    // Priority: Partner > Contractor
+    // If a partner is selected, we count based on Partner's total volume (aggregated across all their subs)
+    // If no partner, we count based on Contractor's volume.
+    const targetEntity = newProject.partner || newProject.contractor;
+    const isPartner = !!newProject.partner; // Check if partner exists
+
+    if (!targetEntity) {
+      setCalcState((prev) => ({ ...prev, quantityBonusTier: "none" }));
+      return;
+    }
+
+    // Parse current project start date
+    const currentStartDate = new Date(newProject.start);
+    const textMonth = currentStartDate.toLocaleString("default", {
+      month: "short",
+    });
+    const textYear = currentStartDate.getFullYear();
+
+    // Filter projects for this entity in the same month/year
+    const monthlyCount = projects.filter((p) => {
+      // Check Date match
+      const pDate = new Date(p.start);
+      const pMonth = pDate.toLocaleString("default", { month: "short" });
+      const pYear = pDate.getFullYear();
+
+      if (pMonth !== textMonth || pYear !== textYear) return false;
+
+      // Check Entity match
+      if (isPartner) {
+        // Match Partner Name
+        // Note: p.partner is now populated with real names thanks to the join update
+        return p.partner === targetEntity;
+      } else {
+        // Match Contractor Name
+        return p.contractor === targetEntity;
+      }
+    }).length;
+
+    console.log(
+      `Entity: ${targetEntity} (${isPartner ? "Partner" : "Contractor"}) | Monthly Count: ${monthlyCount} | Month: ${textMonth} ${textYear}`,
+    );
+
+    // Determine Tier
+    // Tiers based on PRICING_MATRIX keys: "08-12", "12-36", "36+"
+    const currentCount = monthlyCount + 1; // Include current project
+
+    let tier = "none";
+    if (currentCount >= 36) {
+      tier = "36+";
+    } else if (currentCount >= 12) {
+      tier = "12-36";
+    } else if (currentCount >= 8) {
+      tier = "08-12";
+    }
+
+    setCalcState((prev) => ({ ...prev, quantityBonusTier: tier }));
+  }, [newProject.contractor, newProject.partner, newProject.start, projects]);
 
   const handleAddProject = async () => {
     // Basic validation
@@ -1360,10 +1207,7 @@ Contractor: ${newProject.contractor}
                                       <TableBody>
                                         {project.workers.map(
                                           (workerId: string) => {
-                                            const worker = DUMMY_WORKERS.find(
-                                              (w) => w.id === workerId,
-                                            );
-                                            if (!worker) return null;
+                                            // Worker lookup removed. Using placeholder.
                                             return (
                                               <TableRow
                                                 key={workerId}
@@ -1373,91 +1217,40 @@ Contractor: ${newProject.contractor}
                                                   <div className="flex items-center gap-3">
                                                     <Avatar className="h-8 w-8 border bg-gray-100">
                                                       <AvatarImage
-                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.avatarSeed || worker.name}`}
+                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
                                                       />
                                                       <AvatarFallback>
-                                                        {worker.name.charAt(0)}
+                                                        {workerId.charAt(0)}
                                                       </AvatarFallback>
                                                     </Avatar>
                                                     <div className="flex flex-col">
                                                       <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                                        {worker.name}
+                                                        Worker {workerId}
                                                       </span>
                                                       <span className="text-[10px] text-muted-foreground">
-                                                        {worker.role ===
-                                                        "Electrician"
-                                                          ? "Senior Electrician"
-                                                          : worker.role}
+                                                        Role N/A
                                                       </span>
                                                     </div>
                                                   </div>
                                                 </TableCell>
                                                 <TableCell className="py-2 text-xs">
-                                                  {worker.role}
+                                                  N/A
                                                 </TableCell>
                                                 <TableCell className="py-2">
-                                                  <div className="flex items-center h-5 rounded overflow-hidden border border-gray-200 w-fit">
-                                                    <span className="bg-yellow-400 text-yellow-950 text-[9px] font-bold px-1 h-full flex items-center justify-center">
-                                                      A1
-                                                    </span>
-                                                    <span className="bg-yellow-300/50 text-yellow-700 px-1 h-full flex items-center justify-center border-l border-yellow-200">
-                                                      <RotateCw className="h-3 w-3" />
-                                                    </span>
-                                                    <span
-                                                      className={`h-full flex items-center gap-1 px-1.5 text-[10px] font-medium ${
-                                                        (worker.a1Status ||
-                                                          "Valid") === "Valid"
-                                                          ? "bg-green-100 text-green-700"
-                                                          : "bg-red-100 text-red-700"
-                                                      }`}
-                                                    >
-                                                      {worker.a1Status ||
-                                                        "Valid"}
-                                                    </span>
-                                                  </div>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    N/A
+                                                  </span>
                                                 </TableCell>
                                                 <TableCell className="py-2">
-                                                  {(worker.coolingStatus ||
-                                                    "Valid") !== "None" && (
-                                                    <Badge
-                                                      variant="outline"
-                                                      className={`border-0 gap-1 pl-1 pr-2 py-0 text-[10px] h-5 font-normal ${
-                                                        (worker.coolingStatus ||
-                                                          "Valid") === "Valid"
-                                                          ? "bg-green-50 text-green-700 ring-1 ring-green-200"
-                                                          : worker.coolingStatus ===
-                                                              "Expiring Soon"
-                                                            ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
-                                                            : "bg-red-50 text-red-700 ring-1 ring-red-200"
-                                                      }`}
-                                                    >
-                                                      <CheckCircle2
-                                                        className={`h-3 w-3 ${
-                                                          (worker.coolingStatus ||
-                                                            "Valid") === "Valid"
-                                                            ? "fill-green-200 text-green-600"
-                                                            : worker.coolingStatus ===
-                                                                "Expiring Soon"
-                                                              ? "fill-amber-200 text-amber-600"
-                                                              : "fill-red-200 text-red-600"
-                                                        }`}
-                                                      />
-                                                      {worker.coolingStatus ||
-                                                        "Valid"}
-                                                    </Badge>
-                                                  )}
+                                                  <span className="text-xs text-muted-foreground">
+                                                    N/A
+                                                  </span>
                                                 </TableCell>
                                                 <TableCell className="py-2 text-center">
-                                                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                                                    <Users className="h-3 w-3" />{" "}
-                                                    {worker.complaints || 0}
-                                                  </div>
+                                                  0
                                                 </TableCell>
                                                 <TableCell className="py-2 text-center">
-                                                  <div className="flex items-center justify-center gap-1 text-xs font-medium text-green-600">
-                                                    <CheckCircle2 className="h-3 w-3" />{" "}
-                                                    {worker.successRate || 100}%
-                                                  </div>
+                                                  0%
                                                 </TableCell>
                                               </TableRow>
                                             );
@@ -1698,10 +1491,7 @@ Contractor: ${newProject.contractor}
                                     </TableHeader>
                                     <TableBody>
                                       {item.workers.map((workerId: string) => {
-                                        const worker = DUMMY_WORKERS.find(
-                                          (w) => w.id === workerId,
-                                        );
-                                        if (!worker) return null;
+                                        // Placeholder for worker logic
                                         return (
                                           <TableRow
                                             key={workerId}
@@ -1711,90 +1501,40 @@ Contractor: ${newProject.contractor}
                                               <div className="flex items-center gap-3">
                                                 <Avatar className="h-8 w-8 border bg-gray-100">
                                                   <AvatarImage
-                                                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.avatarSeed || worker.name}`}
+                                                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
                                                   />
                                                   <AvatarFallback>
-                                                    {worker.name.charAt(0)}
+                                                    {workerId.charAt(0)}
                                                   </AvatarFallback>
                                                 </Avatar>
                                                 <div className="flex flex-col">
                                                   <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                                    {worker.name}
+                                                    Worker {workerId}
                                                   </span>
                                                   <span className="text-[10px] text-muted-foreground">
-                                                    {worker.role ===
-                                                    "Electrician"
-                                                      ? "Senior Electrician"
-                                                      : worker.role}
+                                                    Role N/A
                                                   </span>
                                                 </div>
                                               </div>
                                             </TableCell>
                                             <TableCell className="py-2 text-xs">
-                                              {worker.role}
+                                              N/A
                                             </TableCell>
                                             <TableCell className="py-2">
-                                              <div className="flex items-center h-5 rounded overflow-hidden border border-gray-200 w-fit">
-                                                <span className="bg-yellow-400 text-yellow-950 text-[9px] font-bold px-1 h-full flex items-center justify-center">
-                                                  A1
-                                                </span>
-                                                <span className="bg-yellow-300/50 text-yellow-700 px-1 h-full flex items-center justify-center border-l border-yellow-200">
-                                                  <RotateCw className="h-3 w-3" />
-                                                </span>
-                                                <span
-                                                  className={`h-full flex items-center gap-1 px-1.5 text-[10px] font-medium ${
-                                                    (worker.a1Status ||
-                                                      "Valid") === "Valid"
-                                                      ? "bg-green-100 text-green-700"
-                                                      : "bg-red-100 text-red-700"
-                                                  }`}
-                                                >
-                                                  {worker.a1Status || "Valid"}
-                                                </span>
-                                              </div>
+                                              <span className="text-xs text-muted-foreground">
+                                                N/A
+                                              </span>
                                             </TableCell>
                                             <TableCell className="py-2">
-                                              {(worker.coolingStatus ||
-                                                "Valid") !== "None" && (
-                                                <Badge
-                                                  variant="outline"
-                                                  className={`border-0 gap-1 pl-1 pr-2 py-0 text-[10px] h-5 font-normal ${
-                                                    (worker.coolingStatus ||
-                                                      "Valid") === "Valid"
-                                                      ? "bg-green-50 text-green-700 ring-1 ring-green-200"
-                                                      : worker.coolingStatus ===
-                                                          "Expiring Soon"
-                                                        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
-                                                        : "bg-red-50 text-red-700 ring-1 ring-red-200"
-                                                  }`}
-                                                >
-                                                  <CheckCircle2
-                                                    className={`h-3 w-3 ${
-                                                      (worker.coolingStatus ||
-                                                        "Valid") === "Valid"
-                                                        ? "fill-green-200 text-green-600"
-                                                        : worker.coolingStatus ===
-                                                            "Expiring Soon"
-                                                          ? "fill-amber-200 text-amber-600"
-                                                          : "fill-red-200 text-red-600"
-                                                    }`}
-                                                  />
-                                                  {worker.coolingStatus ||
-                                                    "Valid"}
-                                                </Badge>
-                                              )}
+                                              <span className="text-xs text-muted-foreground">
+                                                N/A
+                                              </span>
                                             </TableCell>
                                             <TableCell className="py-2 text-center">
-                                              <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                                                <Users className="h-3 w-3" />{" "}
-                                                {worker.complaints || 0}
-                                              </div>
+                                              0
                                             </TableCell>
                                             <TableCell className="py-2 text-center">
-                                              <div className="flex items-center justify-center gap-1 text-xs font-medium text-green-600">
-                                                <CheckCircle2 className="h-3 w-3" />{" "}
-                                                {worker.successRate || 100}%
-                                              </div>
+                                              0%
                                             </TableCell>
                                           </TableRow>
                                         );
@@ -2169,64 +1909,12 @@ Contractor: ${newProject.contractor}
                     : ""}
                 </label>
                 <div className="border rounded-md p-2 max-h-[150px] overflow-y-auto space-y-1 bg-gray-50/50">
-                  {DUMMY_WORKERS.filter((worker) => {
-                    // If neither partner nor sub selected, show all (or none? showing all for now)
-                    if (!newProject.partner && !newProject.sub) return true;
-                    // Show worker if they belong to selected Partner OR selected Sub
-                    return (
-                      (newProject.partner &&
-                        worker.subcontractor === newProject.partner) ||
-                      (newProject.sub &&
-                        worker.subcontractor === newProject.sub)
-                    );
-                  }).map((worker) => (
-                    <div
-                      key={worker.id}
-                      className="flex items-center space-x-2 p-1 hover:bg-gray-100 rounded"
-                    >
-                      <Checkbox
-                        id={`worker-${worker.id}`}
-                        checked={(newProject.workers || []).includes(worker.id)}
-                        onCheckedChange={(checked) => {
-                          setNewProject((prev) => {
-                            const currentWorkers = prev.workers || [];
-                            const updatedWorkers = checked
-                              ? [...currentWorkers, worker.id]
-                              : currentWorkers.filter((id) => id !== worker.id);
-                            return { ...prev, workers: updatedWorkers };
-                          });
-                        }}
-                      />
-                      <label
-                        htmlFor={`worker-${worker.id}`}
-                        className="text-xs cursor-pointer flex-1 flex items-center justify-between"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`mt-0.5 ${worker.role === "Electrician" ? "text-yellow-600" : worker.role === "Cooling Technician" ? "text-blue-600" : "text-red-600"}`}
-                          >
-                            {worker.role === "Electrician" && (
-                              <Zap className="h-4 w-4" />
-                            )}
-                            {worker.role === "Cooling Technician" && (
-                              <ThermometerSun className="h-4 w-4" />
-                            )}
-                            {worker.role === "S/H/K" && (
-                              <Wrench className="h-4 w-4" />
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                              {worker.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {worker.role}
-                            </div>
-                          </div>
-                        </div>
-                      </label>
-                    </div>
-                  ))}
+                  {/* Workers selection removed as DUMMY_WORKERS are cleaned up. 
+                      Ideally this should fetch real workers from Supabase or be removed if not needed yet. 
+                  */}
+                  <div className="text-center text-sm text-muted-foreground p-4">
+                    Worker selection requires backend integration.
+                  </div>
                 </div>
               </div>
             </div>
@@ -2274,68 +1962,41 @@ Contractor: ${newProject.contractor}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium">
-                    Mengenbonus (Quantity Bonus)
-                  </label>
-                  <Select
-                    value={calcState.quantityBonusTier}
-                    onValueChange={(val) =>
-                      setCalcState((prev) => ({
-                        ...prev,
-                        quantityBonusTier: val,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Bonus Tier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="08-12">Tier 08-12 (€150)</SelectItem>
-                      <SelectItem value="12-36">Tier 12-36 (€330)</SelectItem>
-                      <SelectItem value="36+">Tier 36+ (€600)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-medium block">
-                    Zusatzleistungen (Additional Services)
-                  </label>
-                  <div className="border rounded-md p-2 h-[220px] overflow-y-auto space-y-1 bg-gray-50/50">
-                    {ADDITIONAL_SERVICES.map((service) => (
-                      <div
-                        key={service.id}
-                        className="flex items-start space-x-2 p-1 hover:bg-gray-100 rounded"
+              <div className="space-y-2">
+                <label className="text-xs font-medium block">
+                  Zusatzleistungen (Additional Services)
+                </label>
+                <div className="border rounded-md p-2 h-[220px] overflow-y-auto space-y-1 bg-gray-50/50">
+                  {ADDITIONAL_SERVICES.map((service) => (
+                    <div
+                      key={service.id}
+                      className="flex items-start space-x-2 p-1 hover:bg-gray-100 rounded"
+                    >
+                      <Checkbox
+                        id={service.id}
+                        checked={calcState.services.includes(service.id)}
+                        onCheckedChange={(checked) => {
+                          setCalcState((prev) => {
+                            const newServices = checked
+                              ? [...prev.services, service.id]
+                              : prev.services.filter((id) => id !== service.id);
+                            return { ...prev, services: newServices };
+                          });
+                        }}
+                      />
+                      <label
+                        htmlFor={service.id}
+                        className="text-xs font-medium leading-tight cursor-pointer pt-0.5"
                       >
-                        <Checkbox
-                          id={service.id}
-                          checked={calcState.services.includes(service.id)}
-                          onCheckedChange={(checked) => {
-                            setCalcState((prev) => {
-                              const newServices = checked
-                                ? [...prev.services, service.id]
-                                : prev.services.filter(
-                                    (id) => id !== service.id,
-                                  );
-                              return { ...prev, services: newServices };
-                            });
-                          }}
-                        />
-                        <label
-                          htmlFor={service.id}
-                          className="text-xs font-medium leading-tight cursor-pointer pt-0.5"
-                        >
-                          {service.label}{" "}
-                          <span className="text-muted-foreground ml-1 font-normal">
-                            (€{service.price})
-                          </span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
+                        {service.label}{" "}
+                        <span className="text-muted-foreground ml-1 font-normal">
+                          (€{service.price})
+                        </span>
+                      </label>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -2362,7 +2023,15 @@ Contractor: ${newProject.contractor}
                   <span>€ {calcState.calculation.bonus1.toLocaleString()}</span>
                 </div>
 
-                {calcState.calculation.bonus2 > 0 && (
+                <div className="flex justify-between border-t border-dashed pt-2 font-medium">
+                  <span>Summe inkl. 1. Bonus:</span>
+                  <span>
+                    € {calcState.calculation.sumWithBonus1.toLocaleString()}
+                  </span>
+                </div>
+
+                {/* Quantity Bonus moved here in breakdown */}
+                <div className="flex flex-col gap-1 border-t border-dashed pt-2">
                   <div className="flex justify-between text-green-600">
                     <span className="flex items-center gap-1">
                       + Quantity Bonus{" "}
@@ -2374,13 +2043,24 @@ Contractor: ${newProject.contractor}
                       € {calcState.calculation.bonus2.toLocaleString()}
                     </span>
                   </div>
-                )}
-
-                <div className="flex justify-between border-t border-dashed pt-2 font-medium">
-                  <span>Summe inkl. 1. Bonus:</span>
-                  <span>
-                    € {calcState.calculation.sumWithBonus1.toLocaleString()}
-                  </span>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] text-muted-foreground ml-4">
+                      Tier:{" "}
+                      {calcState.quantityBonusTier === "none"
+                        ? "None (<8)"
+                        : calcState.quantityBonusTier === "08-12"
+                          ? "08-12 (8-11)"
+                          : calcState.quantityBonusTier === "12-36"
+                            ? "12-36 (12-35)"
+                            : "36+ (>36)"}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] h-4 px-1 border-green-200 bg-green-50 text-green-700"
+                    >
+                      Auto-Calc
+                    </Badge>
+                  </div>
                 </div>
 
                 {calcState.services.length > 0 && (

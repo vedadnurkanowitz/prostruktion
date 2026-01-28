@@ -403,38 +403,10 @@ export default function ContactsPage() {
       let storedSubs = localStorage.getItem("prostruktion_subcontractors");
 
       // Seed Subcontractors if empty
+      // Seed Subcontractors if empty - REMOVED for clean slate
       if (!storedSubs) {
-        const defaultSubs = [
-          {
-            name: "Sub Alpha",
-            email: "contact@subalpha.com",
-            phone: "+49 151 1111 2222",
-            status: "Active",
-          },
-          {
-            name: "ConstructCo",
-            email: "info@constructco.de",
-            phone: "+49 152 3333 4444",
-            status: "Active",
-          },
-          {
-            name: "Sub Y",
-            email: "hello@suby.com",
-            phone: "+49 157 5555 6666",
-            status: "Active",
-          },
-          {
-            name: "Sub Z",
-            email: "office@subz.net",
-            phone: "+49 160 7777 8888",
-            status: "Inactive",
-          },
-        ];
-        localStorage.setItem(
-          "prostruktion_subcontractors",
-          JSON.stringify(defaultSubs),
-        );
-        storedSubs = JSON.stringify(defaultSubs); // Use the seeded data
+        localStorage.setItem("prostruktion_subcontractors", JSON.stringify([]));
+        storedSubs = "[]";
       }
 
       if (storedSubs) {
@@ -489,56 +461,10 @@ export default function ContactsPage() {
         localStorage.setItem("prostruktion_contractors", JSON.stringify([]));
       }
 
-      // 4. Inject Mock Partners (for demo consistency)
-      const mockPartners = [
-        {
-          name: "Partner A",
-          companyName: "Partner A Solutions",
-          email: "partner.a@example.com",
-          status: "Active",
-        },
-        {
-          name: "Partner B",
-          companyName: "Partner B Group",
-          email: "partner.b@example.com",
-          status: "Active",
-        },
-        {
-          name: "Partner Beta",
-          companyName: "Beta Partners GmbH",
-          email: "beta@partners.de",
-          status: "Active",
-        },
-        {
-          name: "Partner C",
-          companyName: "Partner C & Co.",
-          email: "partner.c@example.com",
-          status: "Inactive",
-        },
-      ];
+      // 4. Inject Mock Partners - Removed
 
-      mockPartners.forEach((p, i) => {
-        // Prevent duplicates if Supabase loaded them (simple name check)
-        if (!allContacts.some((c) => c.name === p.name)) {
-          allContacts.push({
-            id: `mock-partner-${i}`,
-            name: p.name,
-            companyName: p.companyName,
-            role: "partner",
-            jobTitle: "Partner",
-            email: p.email,
-            phone: "+49 222 3333",
-            status: p.status as any,
-            regWorkers: 0,
-            activeProjects: 0,
-            complaints: 0,
-            activeComplaints: 0,
-            completedProjects: 0,
-            successRate: 0,
-            // documents: [] // Mock partners have no storage unless saved to localstorage later (which uses name key)
-          });
-        }
-      });
+      // 4. Inject Mock Partners - Removed
+      // Mock partners array removed.
 
       // 5. Fetch Partners from LocalStorage (New)
       const storedPartners = localStorage.getItem("prostruktion_partners");

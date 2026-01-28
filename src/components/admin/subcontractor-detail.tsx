@@ -125,113 +125,7 @@ export function SubcontractorDetail({
   onBack,
 }: SubcontractorDetailProps) {
   // Generate consistent mock data
-  const [workers, setWorkers] = useState<Worker[]>([
-    {
-      id: "1",
-      name: "Mark Weber",
-      role: "Electrician",
-      subRole: "Senior Electrician",
-      status: "Active",
-      a1Status: "Valid",
-      certStatus: "Valid",
-      activeProjects: 3,
-      completedProjects: 45,
-      complaints: 0,
-      successRate: 0, // Calculated automatically
-      joinedDate: "2024-01-15",
-      avatarSeed: "Mark",
-    },
-    {
-      id: "2",
-      name: "Ralf König",
-      role: "Cooling Technician",
-      subRole: "HVAC Specialist",
-      status: "Active",
-      a1Status: "Valid",
-      certStatus: "Expiring Soon",
-      activeProjects: 1,
-      completedProjects: 12,
-      complaints: 1,
-      successRate: 0,
-      joinedDate: "2024-02-01",
-      avatarSeed: "Ralf",
-    },
-    {
-      id: "3",
-      name: "Simone Fischer",
-      role: "S/H/K",
-      subRole: "Sanitary Expert",
-      status: "Active",
-      a1Status: "Valid",
-      certStatus: "Valid",
-      activeProjects: 2,
-      completedProjects: 8,
-      complaints: 0,
-      successRate: 0,
-      joinedDate: "2024-03-10",
-      avatarSeed: "Simone",
-    },
-    {
-      id: "4",
-      name: "Stefan Bauer",
-      role: "S/H/K",
-      subRole: "Plumber",
-      status: "Active",
-      a1Status: "Expired",
-      certStatus: "Valid",
-      activeProjects: 1,
-      completedProjects: 32,
-      complaints: 3,
-      successRate: 0,
-      joinedDate: "2023-11-05",
-      avatarSeed: "Stefan",
-    },
-    {
-      id: "5",
-      name: "Patrick Wagner",
-      role: "S/H/K",
-      subRole: "Plumber",
-      status: "Active",
-      a1Status: "Expired",
-      certStatus: "Valid",
-      activeProjects: 2,
-      completedProjects: 15,
-      complaints: 1,
-      successRate: 0,
-      joinedDate: "2024-01-20",
-      avatarSeed: "Patrick",
-    },
-    {
-      id: "6",
-      name: "Tim Roth",
-      role: "S/H/K",
-      subRole: "Pipe Fitter",
-      status: "Active",
-      a1Status: "Expired",
-      certStatus: "Valid",
-      activeProjects: 2,
-      completedProjects: 6,
-      complaints: 1,
-      successRate: 0,
-      joinedDate: "2024-02-15",
-      avatarSeed: "Tim",
-    },
-    {
-      id: "7",
-      name: "Marco Schmidt",
-      role: "Electrician",
-      subRole: "Assistant",
-      status: "Active",
-      a1Status: "Expired",
-      certStatus: "None",
-      activeProjects: 1,
-      completedProjects: 21,
-      complaints: 0,
-      successRate: 0,
-      joinedDate: "2023-10-01",
-      avatarSeed: "Marco",
-    },
-  ]);
+  const [workers, setWorkers] = useState<Worker[]>([]); // Initialized as empty, waiting for real data
 
   // Managers State
   const [managers, setManagers] = useState<Manager[]>([
@@ -517,7 +411,7 @@ export function SubcontractorDetail({
         return { ...w, successRate: Math.max(0, Math.min(100, calculated)) };
       });
     });
-  }, []); // Run once on mount to recalc mock data. In real app, run on [workers] dependency with care or separate calculation from state.
+  }, []); // Run once on mount. Real implementations should fetch from API.
 
   const handleStatusUpdate = (workerId: string, newStatus: any) => {
     setWorkers((prev) =>

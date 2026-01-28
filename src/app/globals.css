@@ -123,3 +123,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .liquid-glass {
+    @apply backdrop-blur-xl bg-white/40 dark:bg-black/40 border border-white/20 dark:border-white/10 shadow-xl;
+    /* Advanced glass properties */
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow:
+      0 8px 32px 0 rgba(0, 0, 0, 0.15),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  }
+
+  .dark .liquid-glass {
+    box-shadow:
+      0 8px 32px 0 rgba(0, 0, 0, 0.45),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+}

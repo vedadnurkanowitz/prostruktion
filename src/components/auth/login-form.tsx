@@ -66,6 +66,34 @@ export function LoginForm() {
     }
   };
 
+  const handleSignUp = async () => {
+    setLoading(true);
+    setError(null);
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: "New User",
+        },
+      },
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
+      // Auto-login or verify email message?
+      // Usually signUp auto-logs in if email confirmation is disabled or if configured.
+      // If enabled, they need to verify. Assuming dev env might be loose.
+      // Let's try to sign in immediately after, or just let them try.
+      setError("Account created! Please Sign In.");
+      setLoading(false);
+    }
+  };
+
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
@@ -98,15 +126,34 @@ export function LoginForm() {
             />
           </div>
           {error && (
-            <div className="flex items-center gap-2 text-sm text-red-500 bg-red-50 p-2 rounded">
+            <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded border border-blue-200">
               <AlertCircle className="h-4 w-4" />
               <span>{error}</span>
             </div>
           )}
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex flex-col gap-2">
           <Button className="w-full" type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Processing..." : "Sign in"}
+          </Button>
+          <div className="relative w-full">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleSignUp}
+            disabled={loading}
+          >
+            Create Account (Recovery)
           </Button>
         </CardFooter>
       </form>

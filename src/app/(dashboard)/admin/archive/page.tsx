@@ -49,119 +49,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Fragment } from "react";
 
-const DUMMY_WORKERS = [
-  {
-    id: "w1",
-    name: "John Doe",
-    role: "Electrician",
-    subcontractor: "Sub Y",
-    avatarSeed: "John",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w2",
-    name: "Jane Smith",
-    role: "S/H/K",
-    subcontractor: "Sub Y",
-    avatarSeed: "Jane",
-    a1Status: "Valid",
-    coolingStatus: "Expiring Soon",
-    complaints: 1,
-    successRate: 98,
-  },
-  {
-    id: "w3",
-    name: "Bob Johnson",
-    role: "Cooling Technician",
-    subcontractor: "Sub Z",
-    avatarSeed: "Bob",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w4",
-    name: "Alice Brown",
-    role: "S/H/K",
-    subcontractor: "Sub Y",
-    avatarSeed: "Alice",
-    a1Status: "Expired",
-    coolingStatus: "Valid",
-    complaints: 2,
-    successRate: 92,
-  },
-  {
-    id: "w5",
-    name: "Mike Davis",
-    role: "Electrician",
-    subcontractor: "Sub Z",
-    avatarSeed: "Mike",
-    a1Status: "Expired",
-    coolingStatus: "Valid",
-    complaints: 1,
-    successRate: 96,
-  },
-  {
-    id: "w6",
-    name: "Tom Wilson",
-    role: "S/H/K",
-    subcontractor: "Sub Alpha",
-    avatarSeed: "Tom",
-    a1Status: "Expired",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 98,
-  },
-  {
-    id: "w7",
-    name: "Sarah Lee",
-    role: "Cooling Technician",
-    subcontractor: "Sub Alpha",
-    avatarSeed: "Sarah",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w8",
-    name: "David Miller",
-    role: "Electrician",
-    subcontractor: "Partner Beta",
-    avatarSeed: "David",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 99,
-  },
-  {
-    id: "w9",
-    name: "Emily Clark",
-    role: "S/H/K",
-    subcontractor: "ConstructCo",
-    avatarSeed: "Emily",
-    a1Status: "Valid",
-    coolingStatus: "Valid",
-    complaints: 0,
-    successRate: 100,
-  },
-  {
-    id: "w10",
-    name: "James White",
-    role: "Cooling Technician",
-    subcontractor: "ConstructCo",
-    avatarSeed: "James",
-    a1Status: "Expired",
-    coolingStatus: "None",
-    complaints: 1,
-    successRate: 95,
-  },
-];
-
 import { useRouter } from "next/navigation";
 
 export default function ArchivePage() {
@@ -278,162 +165,7 @@ export default function ArchivePage() {
     let initialData = storedArchive ? JSON.parse(storedArchive) : [];
 
     // Seed dummy data if empty for testing warranty statuses
-    if (initialData.length === 0) {
-      const now = new Date();
-
-      // Helper to format date
-      const formatDate = (d: Date) =>
-        d.toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        });
-
-      // Project 1: In Warranty (ends in 2 years)
-      const inWarrantyDate = new Date();
-      inWarrantyDate.setFullYear(inWarrantyDate.getFullYear() + 2);
-
-      // Project 2: Expiring (ends in 3 months)
-      const expiringDate = new Date();
-      expiringDate.setMonth(expiringDate.getMonth() + 3);
-
-      // Project 3: Expired (ended 1 month ago)
-      const expiredDate = new Date();
-      expiredDate.setMonth(expiredDate.getMonth() - 1);
-
-      // Project 4: Expiring (ends in 5 months)
-      const expiringDate2 = new Date();
-      expiringDate2.setMonth(expiringDate2.getMonth() + 5);
-
-      // Project 5: Expired (ended 6 months ago)
-      const expiredDate2 = new Date();
-      expiredDate2.setMonth(expiredDate2.getMonth() - 6);
-
-      initialData = [
-        {
-          project: "Riverside Apartments",
-          address: "River St 45, Hamburg",
-          contractor: "BuildRight GmbH",
-          partner: "Partner A",
-          mediator: "Mediator X",
-          sub: "Sub Alpha",
-          abnahme: "Jan 15, 2021",
-          warrantyEnd: formatDate(inWarrantyDate),
-          amount: "€ 450,000",
-          workers: ["w1", "w3", "w5"],
-          status: "In Warranty",
-          statusColor: "bg-orange-100 text-orange-700",
-        },
-        {
-          project: "City Mall Renovation",
-          address: "Market Plaza 10, Berlin",
-          contractor: "UrbanDev AG",
-          partner: "Partner B",
-          mediator: "-",
-          sub: "Sub Y",
-          abnahme: "Aug 20, 2020",
-          warrantyEnd: formatDate(expiringDate),
-          amount: "€ 1,200,000",
-          workers: ["w2", "w4"],
-          status: "Expiring",
-          statusColor: "bg-purple-100 text-purple-700",
-        },
-        {
-          project: "Old Factory Lofts",
-          address: "Industrial Ave 88, Munich",
-          contractor: "Heritage Builders",
-          partner: "Partner C",
-          mediator: "Mediator Y",
-          sub: "Sub Z",
-          abnahme: "Mar 10, 2019",
-          warrantyEnd: formatDate(expiredDate),
-          amount: "€ 780,000",
-          workers: ["w6", "w7", "w8"],
-          status: "Expired",
-          statusColor: "bg-green-100 text-green-700",
-        },
-        {
-          project: "Tech Campus Building",
-          address: "Silicon Str 22, Frankfurt",
-          contractor: "TechBuild Inc",
-          partner: "Partner A",
-          mediator: "Mediator Z",
-          sub: "Sub Alpha",
-          abnahme: "May 05, 2020",
-          warrantyEnd: formatDate(expiringDate2),
-          amount: "€ 2,500,000",
-          workers: ["w9", "w10"],
-          status: "Expiring",
-          statusColor: "bg-purple-100 text-purple-700",
-        },
-        {
-          project: "Downtown Office Tower",
-          address: "Business District 1, Cologne",
-          contractor: "MetroConstruct",
-          partner: "Partner D",
-          mediator: "-",
-          sub: "ConstructCo",
-          abnahme: "Nov 12, 2018",
-          warrantyEnd: formatDate(expiredDate2),
-          amount: "€ 3,200,000",
-          workers: ["w1", "w2", "w3"],
-          status: "Expired",
-          statusColor: "bg-green-100 text-green-700",
-        },
-        {
-          project: "TEST WARRANTY EXPIRING",
-          address: "Test Street 123",
-          contractor: "Test Construct",
-          partner: "Partner A",
-          mediator: "-",
-          sub: "Sub Alpha",
-          abnahme: "Old Date",
-          warrantyEnd: formatDate(expiringDate),
-          amount: "€ 500,000",
-          workers: ["w1"],
-          status: "Expiring",
-          statusColor: "bg-purple-100 text-purple-700",
-        },
-      ];
-    }
-
-    // Calculate warranty status dynamically based on current date
-    const now = new Date();
-    const sixMonthsFromNow = new Date();
-    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
-
-    const processedData = initialData.map((project: any) => {
-      // Parse the warranty end date
-      const warrantyEnd = project.warrantyEnd
-        ? new Date(project.warrantyEnd)
-        : null;
-
-      let status = project.status;
-      let statusColor = project.statusColor;
-
-      if (warrantyEnd) {
-        if (now > warrantyEnd) {
-          // Warranty has expired
-          status = "Expired";
-          statusColor = "bg-green-100 text-green-700";
-        } else if (warrantyEnd <= sixMonthsFromNow) {
-          // Within last 6 months of warranty (Expiring)
-          status = "Expiring";
-          statusColor = "bg-purple-100 text-purple-700";
-        } else {
-          // Still in warranty (more than 6 months remaining)
-          status = "In Warranty";
-          statusColor = "bg-orange-100 text-orange-700";
-        }
-      }
-
-      return {
-        ...project,
-        status,
-        statusColor,
-      };
-    });
-
+    const processedData = initialData;
     setArchivedProjects(processedData);
     setStats({
       total: processedData.length,
@@ -777,10 +509,9 @@ export default function ArchivePage() {
                                 <TableBody>
                                   {(item.workers || ["w1", "w2"]).map(
                                     (workerId: string) => {
-                                      const worker = DUMMY_WORKERS.find(
-                                        (w) => w.id === workerId,
-                                      );
-                                      if (!worker) return null;
+                                      // Worker details logic removed as DUMMY_WORKERS are cleaned up.
+                                      // For now, we'll just display the worker ID as a placeholder.
+                                      // In a real application, you would fetch worker details from an API or a different data source.
                                       return (
                                         <TableRow
                                           key={workerId}
@@ -790,26 +521,24 @@ export default function ArchivePage() {
                                             <div className="flex items-center gap-3">
                                               <Avatar className="h-8 w-8 border bg-gray-100">
                                                 <AvatarImage
-                                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.avatarSeed || worker.name}`}
+                                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
                                                 />
                                                 <AvatarFallback>
-                                                  {worker.name.charAt(0)}
+                                                  {workerId.charAt(0)}
                                                 </AvatarFallback>
                                               </Avatar>
                                               <div className="flex flex-col">
                                                 <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                                  {worker.name}
+                                                  Worker {workerId}
                                                 </span>
                                                 <span className="text-[10px] text-muted-foreground">
-                                                  {worker.role === "Electrician"
-                                                    ? "Senior Electrician"
-                                                    : worker.role}
+                                                  Role N/A
                                                 </span>
                                               </div>
                                             </div>
                                           </TableCell>
                                           <TableCell className="py-2 text-xs">
-                                            {worker.role}
+                                            N/A
                                           </TableCell>
                                           <TableCell className="py-2">
                                             <div className="flex items-center h-5 rounded overflow-hidden border border-gray-200 w-fit">
@@ -820,59 +549,32 @@ export default function ArchivePage() {
                                                 <RotateCw className="h-3 w-3" />
                                               </span>
                                               <span
-                                                className={`h-full flex items-center gap-1 px-1.5 text-[10px] font-medium ${
-                                                  (worker.a1Status ||
-                                                    "Valid") === "Valid"
-                                                    ? "bg-green-100 text-green-700"
-                                                    : "bg-red-100 text-red-700"
-                                                }`}
+                                                className={`h-full flex items-center gap-1 px-1.5 text-[10px] font-medium bg-gray-100 text-gray-700`}
                                               >
-                                                {worker.a1Status || "Valid"}
+                                                Unknown
                                               </span>
                                             </div>
                                           </TableCell>
                                           <TableCell className="py-2">
-                                            {(worker.coolingStatus ||
-                                              "Valid") !== "None" && (
-                                              <Badge
-                                                variant="outline"
-                                                className={`border-0 gap-1 pl-1 pr-2 py-0 text-[10px] h-5 font-normal ${
-                                                  (worker.coolingStatus ||
-                                                    "Valid") === "Valid"
-                                                    ? "bg-green-50 text-green-700 ring-1 ring-green-200"
-                                                    : worker.coolingStatus ===
-                                                        "Expiring Soon"
-                                                      ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
-                                                      : "bg-red-50 text-red-700 ring-1 ring-red-200"
-                                                }`}
-                                              >
-                                                <CheckCircle2
-                                                  className={`h-3 w-3 ${
-                                                    (worker.coolingStatus ||
-                                                      "Valid") === "Valid"
-                                                      ? "fill-green-200 text-green-600"
-                                                      : worker.coolingStatus ===
-                                                          "Expiring Soon"
-                                                        ? "fill-amber-200 text-amber-600"
-                                                        : "fill-red-200 text-red-600"
-                                                  }`}
-                                                />
-                                                {worker.coolingStatus ||
-                                                  "Valid"}
-                                              </Badge>
-                                            )}
+                                            <Badge
+                                              variant="outline"
+                                              className={`border-0 gap-1 pl-1 pr-2 py-0 text-[10px] h-5 font-normal bg-gray-50 text-gray-700 ring-1 ring-gray-200`}
+                                            >
+                                              <CheckCircle2
+                                                className={`h-3 w-3 fill-gray-200 text-gray-600`}
+                                              />
+                                              Unknown
+                                            </Badge>
                                           </TableCell>
                                           <TableCell className="py-2 text-center">
                                             <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                                              <Users className="h-3 w-3" />{" "}
-                                              {worker.complaints || 0}
+                                              <Users className="h-3 w-3" /> 0
                                             </div>
                                           </TableCell>
                                           <TableCell className="py-2 text-center">
-                                            <div className="flex items-center justify-center gap-1 text-xs font-medium text-green-600">
-                                              <CheckCircle2 className="h-3 w-3" />{" "}
-                                              {worker.successRate || 100}%
-                                            </div>
+                                            <span className="text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
+                                              0%
+                                            </span>
                                           </TableCell>
                                         </TableRow>
                                       );

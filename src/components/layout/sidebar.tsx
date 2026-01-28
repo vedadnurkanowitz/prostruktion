@@ -66,7 +66,7 @@ export function Sidebar({ role }: SidebarProps) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col border-r border-white/5 bg-gray-900/90 backdrop-blur-3xl w-64 shrink-0 shadow-2xl z-20 transition-all duration-300 relative overflow-hidden">
+    <div className="flex h-full flex-col border-r border-white/5 bg-gray-950/95 backdrop-blur-3xl w-64 shrink-0 shadow-2xl z-20 transition-all duration-300 relative overflow-hidden">
       {/* Top Gloss Reflection */}
       <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none z-0" />
 
@@ -78,9 +78,14 @@ export function Sidebar({ role }: SidebarProps) {
           height={40}
           className="object-contain rounded-xl shadow-lg ring-1 ring-white/10"
         />
-        <span className="relative z-10 drop-shadow-sm tracking-wide">
-          Prostruktion
-        </span>
+        <div className="flex flex-col relative z-10">
+          <span className="drop-shadow-sm tracking-wide leading-none">
+            Prostruktion
+          </span>
+          <span className="text-xs text-gray-400 font-normal leading-tight mt-0.5">
+            Wärmepumpen Montage
+          </span>
+        </div>
       </div>
       <div className="flex-1 overflow-auto py-4 scrollbar-thin scrollbar-thumb-gray-600/50 scrollbar-track-transparent relative z-10">
         <nav className="grid items-start px-4 text-sm font-medium gap-2">

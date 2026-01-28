@@ -158,16 +158,12 @@ export default function AdminDashboard() {
           0,
         );
       } else {
-        // Fallback if empty array in storage (Default dummy sum)
-        totalExpenses = 27100;
+        // Fallback if empty array in storage
+        totalExpenses = 0;
       }
     } else {
-      // Default dummy data if no storage
-      totalExpenses = 27100;
-      // Default dummy time duration approx 2 months for the dummy data implies:
-      // May 29, 24 -> May 23, 24 -> Apr 17, 24.
-      // That is April and May. So 2 months.
-      // 27100 / 2 = 13550
+      // 0 if no storage
+      totalExpenses = 0;
     }
 
     const cashOnHand = totalReceived - totalExpenses;
@@ -212,18 +208,16 @@ export default function AdminDashboard() {
           numberOfMonths = Math.max(1, months);
         }
       } else {
-        // Default dummy data (Apr, May)
-        // Fixed: 2800 + 18100 = 20900
-        // Variable: 6200
-        totalFixed = 20900;
-        totalVariable = 6200;
-        numberOfMonths = 2;
+        // Default 0
+        totalFixed = 0;
+        totalVariable = 0;
+        numberOfMonths = 1;
       }
     } else {
-      // Default dummy data fallback
-      totalFixed = 20900;
-      totalVariable = 6200;
-      numberOfMonths = 2;
+      // Default 0
+      totalFixed = 0;
+      totalVariable = 0;
+      numberOfMonths = 1;
     }
 
     const monthlyBurnRate = totalFixed + totalVariable / numberOfMonths;
@@ -316,10 +310,10 @@ export default function AdminDashboard() {
         ).length;
       }
     } else {
-      // Default dummy data if no storage, to prevent empty zeros
-      openC = 3;
-      scheduledC = 5;
-      rescheduledC = 1;
+      // 0 if no storage
+      openC = 0;
+      scheduledC = 0;
+      rescheduledC = 0;
     }
 
     // Calculate Expiring Docs
@@ -363,7 +357,7 @@ export default function AdminDashboard() {
     }
 
     // Stats Logic
-    const storedProjects = localStorage.getItem("prostruktion_projects");
+    const storedProjects = localStorage.getItem("prostruktion_projects_v1");
 
     // We will try to fetch projects from Supabase as well
     const fetchSupabaseProjects = async () => {
@@ -757,53 +751,14 @@ export default function AdminDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[
-                    { name: "Elektro-Hofmann GmbH", rate: 98, rating: "A+" },
-                    { name: "Schmidt Bauunternehmung", rate: 92, rating: "A" },
-                    { name: "Müller Sanitärtechnik", rate: 88, rating: "B+" },
-                    { name: "Fischer Bedachungen", rate: 85, rating: "B" },
-                    { name: "Weber Trockenbau", rate: 78, rating: "C+" },
-                  ].map((sub, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="py-3">
-                        <div className="font-medium text-sm flex items-center gap-2">
-                          <div className="h-6 w-6 bg-blue-100 dark:bg-blue-900 rounded flex items-center justify-center text-blue-600 dark:text-blue-400">
-                            <span className="text-xs font-bold">
-                              {sub.name.charAt(0)}
-                            </span>
-                          </div>
-                          <div>{sub.name}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-24 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-green-500 rounded-full"
-                              style={{ width: `${sub.rate}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-muted-foreground">
-                            {sub.rate}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3 text-right">
-                        <Badge
-                          variant="secondary"
-                          className={`${
-                            sub.rating.startsWith("A")
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                              : sub.rating.startsWith("B")
-                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                          }`}
-                        >
-                          {sub.rating}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  <TableRow>
+                    <TableCell
+                      colSpan={3}
+                      className="text-center text-muted-foreground py-8"
+                    >
+                      No performance data available
+                    </TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
             </CardContent>

@@ -151,108 +151,19 @@ export default function FinancialDashboardPage() {
           0,
         );
       } else {
-        // Fallback if empty array in storage
-        const defaults = [
-          {
-            name: "Office Rent",
-            status: "Unpaid",
-            date: "May 29, 24",
-            type: "Fixed",
-            amount: "€ 2,800",
-          },
-          {
-            name: "Travel Expenses",
-            status: "Unpaid",
-            date: "May 23, 24",
-            type: "Variable",
-            amount: "€ 6,200",
-          },
-          {
-            name: "Salaries",
-            status: "Paid",
-            date: "Apr 17, 24",
-            type: "Fixed",
-            amount: "€ 18,100",
-          },
-        ];
-        setExpenses(defaults);
-        totalExp = 27100;
+        // Empty if no storage
+        setExpenses([]);
+        totalExp = 0;
       }
     } else {
-      // Default dummy data if no storage
-      const defaults = [
-        {
-          name: "Office Rent",
-          status: "Unpaid",
-          date: "May 29, 24",
-          type: "Fixed",
-          amount: "€ 2,800",
-        },
-        {
-          name: "Travel Expenses",
-          status: "Unpaid",
-          date: "May 23, 24",
-          type: "Variable",
-          amount: "€ 6,200",
-        },
-        {
-          name: "Salaries",
-          status: "Paid",
-          date: "Apr 17, 24",
-          type: "Fixed",
-          amount: "€ 18,100",
-        },
-      ];
-      setExpenses(defaults);
-      totalExp = 27100;
+      // Empty if no storage
+      setExpenses([]);
+      totalExp = 0;
     }
 
     setCashOnHand(totalRec - totalExp);
 
-    // Seed dummy overdue invoice for testing
-    const dummyOverdue = {
-      id: "dummy-overdue-1",
-      project: "TEST OVERDUE PROJECT",
-      partner: "Test Partner",
-      amount: "€ 15,000",
-      date: "Jan 01, 2024", // Definitely > 7 days old
-      status: "Unpaid",
-      inv: "INV-TEST-001",
-      overdue: true,
-    };
-
-    // Check if we already have it to avoid duplicates
-    const storedGen = JSON.parse(
-      localStorage.getItem("prostruktion_generated_invoices") || "[]",
-    );
-    if (!storedGen.find((i: any) => i.id === "dummy-overdue-1")) {
-      localStorage.setItem(
-        "prostruktion_generated_invoices",
-        JSON.stringify([dummyOverdue, ...storedGen]),
-      );
-      window.location.reload();
-    }
-    // Seed dummy "For Invoice" project > 14 days old
-    const dummyPending = {
-      id: "dummy-pending-14",
-      project: "TEST PENDING OLD",
-      partner: "Test Partner",
-      amount: 5000, // Number for this table logic usually
-      date: "Jan 01, 2024",
-      status: "For Invoice",
-      address: "Historical Lane 1, Oldtown",
-    };
-
-    const storedProjs = JSON.parse(
-      localStorage.getItem("prostruktion_invoices") || "[]",
-    );
-    if (!storedProjs.find((p: any) => p.id === "dummy-pending-14")) {
-      localStorage.setItem(
-        "prostruktion_invoices",
-        JSON.stringify([...storedProjs, dummyPending]),
-      );
-      window.location.reload();
-    }
+    // Dummy seeding blocks removed for clean slate.
   }, []);
 
   const handleMoveToReady = (project: any) => {

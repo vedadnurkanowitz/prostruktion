@@ -141,7 +141,7 @@ function SortableTaskCard({
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-all hover:border-gray-300 dark:hover:border-gray-700 cursor-default"
+      className="group relative backdrop-blur-md bg-white/60 dark:bg-gray-900/40 p-4 rounded-xl border border-white/20 dark:border-white/10 shadow-sm hover:shadow-md transition-all hover:border-white/30 dark:hover:border-white/15 cursor-default"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <span
@@ -256,7 +256,7 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800"
+      className="flex flex-col h-full backdrop-blur-xl bg-white/30 dark:bg-gray-900/30 p-4 rounded-2xl border border-white/20 dark:border-white/10 shadow-sm"
     >
       <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800/50">
         <column.icon className={cn("h-4 w-4", column.color)} />
@@ -577,7 +577,7 @@ export function TodoList() {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 shadow-sm border-0 bg-transparent shadow-none">
+      <Card className="backdrop-blur-xl bg-white/40 dark:bg-gray-900/30 border border-white/20 dark:border-white/10 shadow-sm rounded-2xl p-6">
         {/* Header and Add Button Area */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
           <div className="flex items-center gap-2">
@@ -859,7 +859,7 @@ export function TodoList() {
             {/* Drag Overlay for smooth preview */}
             <DragOverlay dropAnimation={dropAnimation}>
               {activeDragItem ? (
-                <div className="group relative bg-white dark:bg-gray-900 p-4 rounded-lg border border-yellow-400 shadow-xl cursor-grabbing rotate-2 w-[300px]">
+                <div className="group relative backdrop-blur-xl bg-white/80 dark:bg-gray-900/80 p-4 rounded-xl border border-yellow-400/50 shadow-lg cursor-grabbing rotate-2 w-[300px]">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span
                       className={cn(

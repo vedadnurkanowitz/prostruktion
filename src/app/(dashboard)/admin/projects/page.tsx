@@ -1935,7 +1935,7 @@ Contractor: ${newProject.contractor}
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Inputs */}
+              {/* Left Column - Inputs */}
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-medium">
@@ -1962,41 +1962,43 @@ Contractor: ${newProject.contractor}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-medium block">
-                  Zusatzleistungen (Additional Services)
-                </label>
-                <div className="border rounded-md p-2 h-[220px] overflow-y-auto space-y-1 bg-gray-50/50">
-                  {ADDITIONAL_SERVICES.map((service) => (
-                    <div
-                      key={service.id}
-                      className="flex items-start space-x-2 p-1 hover:bg-gray-100 rounded"
-                    >
-                      <Checkbox
-                        id={service.id}
-                        checked={calcState.services.includes(service.id)}
-                        onCheckedChange={(checked) => {
-                          setCalcState((prev) => {
-                            const newServices = checked
-                              ? [...prev.services, service.id]
-                              : prev.services.filter((id) => id !== service.id);
-                            return { ...prev, services: newServices };
-                          });
-                        }}
-                      />
-                      <label
-                        htmlFor={service.id}
-                        className="text-xs font-medium leading-tight cursor-pointer pt-0.5"
+                <div className="space-y-2">
+                  <label className="text-xs font-medium block">
+                    Zusatzleistungen (Additional Services)
+                  </label>
+                  <div className="border rounded-md p-2 h-[220px] overflow-y-auto space-y-1 bg-gray-50/50">
+                    {ADDITIONAL_SERVICES.map((service) => (
+                      <div
+                        key={service.id}
+                        className="flex items-start space-x-2 p-1 hover:bg-gray-100 rounded"
                       >
-                        {service.label}{" "}
-                        <span className="text-muted-foreground ml-1 font-normal">
-                          (€{service.price})
-                        </span>
-                      </label>
-                    </div>
-                  ))}
+                        <Checkbox
+                          id={service.id}
+                          checked={calcState.services.includes(service.id)}
+                          onCheckedChange={(checked) => {
+                            setCalcState((prev) => {
+                              const newServices = checked
+                                ? [...prev.services, service.id]
+                                : prev.services.filter(
+                                    (id) => id !== service.id,
+                                  );
+                              return { ...prev, services: newServices };
+                            });
+                          }}
+                        />
+                        <label
+                          htmlFor={service.id}
+                          className="text-xs font-medium leading-tight cursor-pointer pt-0.5"
+                        >
+                          {service.label}{" "}
+                          <span className="text-muted-foreground ml-1 font-normal">
+                            (€{service.price})
+                          </span>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 

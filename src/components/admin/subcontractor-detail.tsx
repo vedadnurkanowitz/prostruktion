@@ -128,22 +128,7 @@ export function SubcontractorDetail({
   const [workers, setWorkers] = useState<Worker[]>([]); // Initialized as empty, waiting for real data
 
   // Managers State
-  const [managers, setManagers] = useState<Manager[]>([
-    {
-      id: "1",
-      name: "Klaus Webber",
-      role: "CEO",
-      email: "klaus.webber@construction-co.de",
-      phone: "+49 151 1234 5678",
-    },
-    {
-      id: "2",
-      name: "Maria Stiegler",
-      role: "Project Manager",
-      email: "m.stiegler@construction-co.de",
-      phone: "+49 151 8765 4321",
-    },
-  ]);
+  const [managers, setManagers] = useState<Manager[]>([]);
 
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddManagerOpen, setIsAddManagerOpen] = useState(false);
@@ -420,15 +405,15 @@ export function SubcontractorDetail({
   };
 
   // Stats
-  const displayTotalWorkers = subcontractor.regWorkers || 28;
-  const displayActiveProjects = subcontractor.activeProjects || 12;
-  const displayCompletedProjects = subcontractor.completedProjects || 41;
-  const displayInWarranty = subcontractor.inWarranty || 28;
-  const displayExpiredWarranty = subcontractor.expiredWarranty || 13;
-  const displayComplaints = subcontractor.complaints || 6;
-  const displayResolvedComplaints = subcontractor.resolvedComplaints || 4;
-  const displayTransferedComplaints = subcontractor.transferedComplaints || 2;
-  const displaySuccessRate = subcontractor.successRate || 94; // Restored
+  const displayTotalWorkers = subcontractor.regWorkers || 0;
+  const displayActiveProjects = subcontractor.activeProjects || 0;
+  const displayCompletedProjects = subcontractor.completedProjects || 0;
+  const displayInWarranty = subcontractor.inWarranty || 0;
+  const displayExpiredWarranty = subcontractor.expiredWarranty || 0;
+  const displayComplaints = subcontractor.complaints || 0;
+  const displayResolvedComplaints = subcontractor.resolvedComplaints || 0;
+  const displayTransferedComplaints = subcontractor.transferedComplaints || 0;
+  const displaySuccessRate = subcontractor.successRate || 0;
 
   return (
     <div className="space-y-6">

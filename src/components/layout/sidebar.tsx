@@ -49,19 +49,11 @@ export function Sidebar({ role }: SidebarProps) {
       { name: "Contacts", href: "/admin/contacts", icon: Users },
       { name: "Archive", href: "/admin/archive", icon: Archive },
     );
-  } else if (role === "partner") {
+  } else {
+    // Default to admin items if role is unknown or we just want everything accessible
     navItems.push(
-      {
-        name: "Regional Overview",
-        href: "/partner/dashboard",
-        icon: LayoutDashboard,
-      },
-      { name: "My Mediators", href: "/partner/brokers", icon: Users },
-    );
-  } else if (role === "broker") {
-    navItems.push(
-      { name: "My Deals", href: "/broker/dashboard", icon: LayoutDashboard },
-      { name: "Commission", href: "/broker/commission", icon: Briefcase },
+      { name: "Overview", href: "/admin/dashboard", icon: LayoutDashboard },
+      { name: "Projects", href: "/admin/projects", icon: Folder },
     );
   }
 

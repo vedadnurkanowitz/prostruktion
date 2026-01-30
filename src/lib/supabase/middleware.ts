@@ -38,17 +38,12 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Protect Dashboard Routes
-  if (
-    request.nextUrl.pathname.startsWith("/admin") ||
-    request.nextUrl.pathname.startsWith("/partner") ||
-    request.nextUrl.pathname.startsWith("/broker")
-  ) {
+  if (request.nextUrl.pathname.startsWith("/admin")) {
     if (!user) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
     // Role-Based Access Control logic
-    // Fetch user profile role
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -56,36 +51,23 @@ export async function updateSession(request: NextRequest) {
       .single();
 
     const role = profile?.role;
-    const path = request.nextUrl.pathname;
 
-    if (path.startsWith("/admin") && role !== "super_admin") {
-      return NextResponse.redirect(new URL("/unauthorized", request.url));
-    }
-    if (path.startsWith("/partner") && role !== "partner") {
-      // Allow Admin to potentially view partner pages? No, strict separation for now or Admin dashboard covers it.
-      // Strict for MVP.
-      return NextResponse.redirect(new URL("/unauthorized", request.url));
-    }
-    if (path.startsWith("/broker") && role !== "broker") {
+    if (role !== "super_admin") {
       return NextResponse.redirect(new URL("/unauthorized", request.url));
     }
   }
 
   // Auth Redirects
   if (user && request.nextUrl.pathname === "/login") {
-    // Redirect to appropriate dashboard
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single();
 
-    if (profile?.role === "super_admin")
+    if (profile?.role === "super_admin") {
       return NextResponse.redirect(new URL("/admin/dashboard", request.url));
-    if (profile?.role === "partner")
-      return NextResponse.redirect(new URL("/partner/dashboard", request.url));
-    if (profile?.role === "broker")
-      return NextResponse.redirect(new URL("/broker/dashboard", request.url));
+    }
   }
 
   // Root Redirect
@@ -97,14 +79,9 @@ export async function updateSession(request: NextRequest) {
         .eq("id", user.id)
         .single();
 
-      if (profile?.role === "super_admin")
+      if (profile?.role === "super_admin") {
         return NextResponse.redirect(new URL("/admin/dashboard", request.url));
-      if (profile?.role === "partner")
-        return NextResponse.redirect(
-          new URL("/partner/dashboard", request.url),
-        );
-      if (profile?.role === "broker")
-        return NextResponse.redirect(new URL("/broker/dashboard", request.url));
+      }
     } else {
       return NextResponse.redirect(new URL("/login", request.url));
     }

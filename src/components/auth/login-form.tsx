@@ -55,42 +55,10 @@ export function LoginForm() {
 
         if (role === "super_admin") {
           router.push("/admin/dashboard");
-        } else if (role === "partner") {
-          router.push("/partner/dashboard");
-        } else if (role === "broker") {
-          router.push("/broker/dashboard");
         } else {
           router.push("/");
         }
       }
-    }
-  };
-
-  const handleSignUp = async () => {
-    setLoading(true);
-    setError(null);
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: "New User",
-        },
-      },
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
-      // Auto-login or verify email message?
-      // Usually signUp auto-logs in if email confirmation is disabled or if configured.
-      // If enabled, they need to verify. Assuming dev env might be loose.
-      // Let's try to sign in immediately after, or just let them try.
-      setError("Account created! Please Sign In.");
-      setLoading(false);
     }
   };
 
@@ -194,27 +162,6 @@ export function LoginForm() {
               )}
             </Button>
           </CardContent>
-          <CardFooter className="flex flex-col gap-6 p-0 mt-8">
-            <div className="relative w-full">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-white/10" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-neutral-950 px-4 text-neutral-500 font-medium tracking-wider">
-                  Or continue with
-                </span>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full h-11 border-white/10 bg-white/5 text-neutral-300 hover:bg-white/10 hover:text-white rounded-xl transition-all duration-300"
-              onClick={handleSignUp}
-              disabled={loading}
-            >
-              Create Account
-            </Button>
-          </CardFooter>
         </form>
       </Card>
     </div>

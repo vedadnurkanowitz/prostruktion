@@ -601,56 +601,78 @@ export function TodoList() {
                 Add New Task
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Add New Task</DialogTitle>
-                <DialogDescription>
+            <DialogContent className="sm:max-w-[480px] backdrop-blur-xl bg-white/95 dark:bg-gray-900/95 border border-gray-200/50 dark:border-white/10 shadow-xl">
+              <DialogHeader className="pb-2">
+                <DialogTitle className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Add New Task
+                </DialogTitle>
+                <DialogDescription className="text-sm text-gray-500 dark:text-gray-400">
                   Create a new task card for your board.
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={addTodo} className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="task">Task Name</Label>
+              <form onSubmit={addTodo} className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="task"
+                    className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Task Name
+                  </Label>
                   <Input
                     id="task"
                     placeholder="What needs to be done?"
                     value={task}
                     onChange={(e) => setTask(e.target.value)}
-                    className="bg-white dark:bg-gray-900"
+                    className="h-9 bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus-visible:ring-yellow-400/50"
                     required
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="description">Detailed Description</Label>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="description"
+                    className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Description
+                  </Label>
                   <Textarea
                     id="description"
                     placeholder="Provide more context..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="bg-white dark:bg-gray-900 resize-none h-24"
+                    className="bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus-visible:ring-yellow-400/50 resize-none h-16"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="deadline">Deadline</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="deadline"
+                      className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      Deadline
+                    </Label>
                     <Input
                       id="deadline"
                       type="date"
                       value={deadline}
                       onChange={(e) => setDeadline(e.target.value)}
-                      className="bg-white dark:bg-gray-900"
+                      className="h-9 bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white focus-visible:ring-yellow-400/50"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="priority">Priority Limit</Label>
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="priority"
+                      className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      Priority
+                    </Label>
                     <Select
                       value={priority}
                       onValueChange={(v: Priority) => setPriority(v)}
                     >
-                      <SelectTrigger className="bg-white dark:bg-gray-900">
-                        <SelectValue placeholder="Select priority" />
+                      <SelectTrigger className="h-9 bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white">
+                        <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
@@ -662,66 +684,71 @@ export function TodoList() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="status">Initial Status</Label>
-                  <Select
-                    value={status}
-                    onValueChange={(v: TodoStatus) => setStatus(v)}
-                  >
-                    <SelectTrigger className="bg-white dark:bg-gray-900">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todo">To Do</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="done">Done</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Beneficiary Selection Section */}
-                <div className="space-y-3 pt-2">
-                  <Label>Beneficiary Type</Label>
-                  {/* Custom Toggle using standard Buttons since RadioGroup might be missing */}
-                  <div className="flex items-center gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-max">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBeneficiaryType("contact");
-                        setBeneficiary("");
-                      }}
-                      className={cn(
-                        "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
-                        beneficiaryType === "contact"
-                          ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
-                          : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300",
-                      )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="status"
+                      className="text-xs font-medium text-gray-700 dark:text-gray-300"
                     >
-                      Select Contact
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBeneficiaryType("manual");
-                        setBeneficiary("");
-                      }}
-                      className={cn(
-                        "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
-                        beneficiaryType === "manual"
-                          ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
-                          : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300",
-                      )}
+                      Status
+                    </Label>
+                    <Select
+                      value={status}
+                      onValueChange={(v: TodoStatus) => setStatus(v)}
                     >
-                      Manual Entry
-                    </button>
+                      <SelectTrigger className="h-9 bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todo">To Do</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="done">Done</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Beneficiary
+                    </Label>
+                    <div className="flex items-center gap-1 p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-md">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBeneficiaryType("contact");
+                          setBeneficiary("");
+                        }}
+                        className={cn(
+                          "flex-1 px-2 py-1 text-[10px] font-medium rounded transition-all cursor-pointer",
+                          beneficiaryType === "contact"
+                            ? "bg-white dark:bg-yellow-400/20 text-gray-900 dark:text-yellow-400 shadow-sm"
+                            : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+                        )}
+                      >
+                        Contact
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBeneficiaryType("manual");
+                          setBeneficiary("");
+                        }}
+                        className={cn(
+                          "flex-1 px-2 py-1 text-[10px] font-medium rounded transition-all cursor-pointer",
+                          beneficiaryType === "manual"
+                            ? "bg-white dark:bg-yellow-400/20 text-gray-900 dark:text-yellow-400 shadow-sm"
+                            : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+                        )}
+                      >
+                        Manual
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="beneficiary">Beneficiary</Label>
+                <div className="space-y-1.5">
                   {beneficiaryType === "contact" ? (
                     <Select value={beneficiary} onValueChange={setBeneficiary}>
-                      <SelectTrigger className="bg-white dark:bg-gray-900">
+                      <SelectTrigger className="h-9 bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white">
                         <SelectValue placeholder="Select a contact" />
                       </SelectTrigger>
                       <SelectContent>
@@ -738,7 +765,7 @@ export function TodoList() {
                           if (roleContacts.length === 0) return null;
                           return (
                             <SelectGroup key={role}>
-                              <SelectLabel className="capitalize pl-2 text-xs text-muted-foreground">
+                              <SelectLabel className="capitalize pl-2 text-xs text-gray-500">
                                 {role === "broker" ? "Mediator" : role}
                               </SelectLabel>
                               {roleContacts.map((c) => (
@@ -760,7 +787,7 @@ export function TodoList() {
                             ].includes(c.role),
                         ).length > 0 && (
                           <SelectGroup>
-                            <SelectLabel className="pl-2 text-xs text-muted-foreground">
+                            <SelectLabel className="pl-2 text-xs text-gray-500">
                               Others
                             </SelectLabel>
                             {contacts
@@ -782,7 +809,7 @@ export function TodoList() {
                           </SelectGroup>
                         )}
                         {contacts.length === 0 && (
-                          <div className="p-2 text-xs text-center text-muted-foreground">
+                          <div className="p-2 text-xs text-center text-gray-500">
                             No contacts found
                           </div>
                         )}
@@ -794,23 +821,24 @@ export function TodoList() {
                       placeholder="Enter beneficiary name"
                       value={beneficiary}
                       onChange={(e) => setBeneficiary(e.target.value)}
-                      className="bg-white dark:bg-gray-900"
+                      className="h-9 bg-gray-50/80 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus-visible:ring-yellow-400/50"
                     />
                   )}
                 </div>
 
-                <DialogFooter className="pt-4">
+                <DialogFooter className="pt-3 gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
+                    className="h-9 bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10"
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={isAdding || !task.trim()}
-                    className="bg-yellow-500 text-gray-900 hover:bg-yellow-400 font-semibold"
+                    className="h-9 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold shadow-sm"
                   >
                     {isAdding ? (
                       <>

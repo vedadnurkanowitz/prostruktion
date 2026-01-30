@@ -43,3 +43,39 @@ export async function deleteUser(userId: string) {
     return { error: error.message };
   }
 }
+
+export async function createUserProfile(data: {
+  userId: string;
+  email: string;
+  fullName: string;
+  companyName?: string;
+  phone?: string;
+  role: "partner" | "broker";
+}) {
+  try {
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
+    // Insert profile using admin client (bypasses RLS)
+    const { error } = await supabaseAdmin.from("profiles").insert({
+      id: data.userId,
+      email: data.email,
+      full_name: data.fullName,
+      company_name: data.companyName || null,
+      phone: data.phone || null,
+      role: data.role,
+    });
+
+    if (error) {
+      console.error("Profile insert error:", error);
+      return { error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Create profile exception:", error);
+    return { error: error.message };
+  }
+}

@@ -592,12 +592,27 @@ export default function AdminDashboard() {
             <Tabs
               value={trendPeriod}
               onValueChange={setTrendPeriod}
-              className="w-[400px]"
+              className="w-auto"
             >
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="weekly">Weekly</TabsTrigger>
-                <TabsTrigger value="monthly">Monthly</TabsTrigger>
-                <TabsTrigger value="yearly">Yearly</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-3 gap-1 p-1 bg-gray-100/80 dark:bg-white/5 backdrop-blur-md border border-gray-200/50 dark:border-white/10 rounded-lg h-auto">
+                <TabsTrigger
+                  value="weekly"
+                  className="cursor-pointer px-4 py-1.5 text-xs font-medium rounded-md transition-all data-[state=active]:bg-white data-[state=active]:dark:bg-yellow-400/20 data-[state=active]:text-gray-900 data-[state=active]:dark:text-yellow-400 data-[state=active]:shadow-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                >
+                  Weekly
+                </TabsTrigger>
+                <TabsTrigger
+                  value="monthly"
+                  className="cursor-pointer px-4 py-1.5 text-xs font-medium rounded-md transition-all data-[state=active]:bg-white data-[state=active]:dark:bg-yellow-400/20 data-[state=active]:text-gray-900 data-[state=active]:dark:text-yellow-400 data-[state=active]:shadow-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                >
+                  Monthly
+                </TabsTrigger>
+                <TabsTrigger
+                  value="yearly"
+                  className="cursor-pointer px-4 py-1.5 text-xs font-medium rounded-md transition-all data-[state=active]:bg-white data-[state=active]:dark:bg-yellow-400/20 data-[state=active]:text-gray-900 data-[state=active]:dark:text-yellow-400 data-[state=active]:shadow-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                >
+                  Yearly
+                </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>

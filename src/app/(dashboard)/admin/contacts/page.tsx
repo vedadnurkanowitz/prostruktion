@@ -533,13 +533,12 @@ export default function ContactsPage() {
       // Add mock metrics for contacts (Not needed for mediators per requirement "it's information" - likely standard)
       const contactsWithMetrics = filteredRaw.map((c) => ({
         ...c,
-        regWorkers: Math.floor(Math.random() * 50) + 5,
-        activeProjects: Math.floor(Math.random() * 8) + 1,
-        complaints: Math.floor(Math.random() * 5),
-        activeComplaints:
-          Math.random() > 0.7 ? Math.floor(Math.random() * 2) + 1 : 0,
-        completedProjects: Math.floor(Math.random() * 100) + 10,
-        successRate: Math.floor(Math.random() * 15) + 85, // 85-100%
+        regWorkers: 0,
+        activeProjects: 0,
+        complaints: 0,
+        activeComplaints: 0,
+        completedProjects: 0,
+        successRate: 0,
         documents: c.documents || [], // Preserve documents!
       }));
 

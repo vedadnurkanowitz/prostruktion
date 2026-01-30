@@ -132,6 +132,53 @@ export function SubcontractorDetail({
 
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddManagerOpen, setIsAddManagerOpen] = useState(false);
+  const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
+  const [newManager, setNewManager] = useState({
+    name: "",
+    role: "",
+    email: "",
+    phone: "",
+  });
+
+  const handleSaveManager = () => {
+    if (!newManager.name) return;
+
+    if (editingManagerId) {
+      setManagers((prev) =>
+        prev.map((m) =>
+          m.id === editingManagerId ? { ...m, ...newManager } : m,
+        ),
+      );
+    } else {
+      setManagers((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          ...newManager,
+        },
+      ]);
+    }
+    setNewManager({ name: "", role: "", email: "", phone: "" });
+    setEditingManagerId(null);
+    setIsAddManagerOpen(false);
+  };
+
+  const handleEditManager = (manager: Manager) => {
+    setNewManager({
+      name: manager.name,
+      role: manager.role,
+      email: manager.email,
+      phone: manager.phone,
+    });
+    setEditingManagerId(manager.id);
+    setIsAddManagerOpen(true);
+  };
+
+  const handleDeleteManager = (id: string) => {
+    setManagers((prev) => prev.filter((m) => m.id !== id));
+  };
+  // ... rest of imports
+
   const [a1Na, setA1Na] = useState(false);
   const [certNa, setCertNa] = useState(false);
   const [a1Files, setA1Files] = useState<File[]>([]);
@@ -1216,21 +1263,38 @@ export function SubcontractorDetail({
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Add Management Personnel</DialogTitle>
+                  <DialogTitle>
+                    {editingManagerId
+                      ? "Edit Management Personnel"
+                      : "Add Management Personnel"}
+                  </DialogTitle>
                   <DialogDescription>
-                    Add a key contact person for this subcontractor.
+                    {editingManagerId
+                      ? "Edit the details of this contact person."
+                      : "Add a new key contact person for this subcontractor."}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
                     <Label htmlFor="m-name">Full Name</Label>
-                    <Input id="m-name" placeholder="Unknown" />
+                    <Input
+                      id="m-name"
+                      placeholder="e.g. Klaus Webber"
+                      value={newManager.name}
+                      onChange={(e) =>
+                        setNewManager({ ...newManager, name: e.target.value })
+                      }
+                    />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="m-role">Role / Position</Label>
                     <Input
                       id="m-role"
                       placeholder="e.g. CEO, Project Manager"
+                      value={newManager.role}
+                      onChange={(e) =>
+                        setNewManager({ ...newManager, role: e.target.value })
+                      }
                     />
                   </div>
                   <div className="grid gap-2">
@@ -1239,22 +1303,42 @@ export function SubcontractorDetail({
                       id="m-email"
                       type="email"
                       placeholder="name@company.com"
+                      value={newManager.email}
+                      onChange={(e) =>
+                        setNewManager({ ...newManager, email: e.target.value })
+                      }
                     />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="m-phone">Phone Number</Label>
-                    <Input id="m-phone" placeholder="+49..." />
+                    <Input
+                      id="m-phone"
+                      placeholder="+49..."
+                      value={newManager.phone}
+                      onChange={(e) =>
+                        setNewManager({ ...newManager, phone: e.target.value })
+                      }
+                    />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button
                     variant="outline"
-                    onClick={() => setIsAddManagerOpen(false)}
+                    onClick={() => {
+                      setIsAddManagerOpen(false);
+                      setEditingManagerId(null);
+                      setNewManager({
+                        name: "",
+                        role: "",
+                        email: "",
+                        phone: "",
+                      });
+                    }}
                   >
                     Cancel
                   </Button>
-                  <Button onClick={() => setIsAddManagerOpen(false)}>
-                    Add Contact
+                  <Button onClick={handleSaveManager}>
+                    {editingManagerId ? "Save Changes" : "Add Contact"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -1308,6 +1392,7 @@ export function SubcontractorDetail({
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-gray-500 hover:text-primary-foreground"
+                                  onClick={() => handleEditManager(manager)}
                                 >
                                   <UserCog className="h-4 w-4" />
                                 </Button>
@@ -1325,6 +1410,9 @@ export function SubcontractorDetail({
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-gray-500 hover:text-red-600"
+                                  onClick={() =>
+                                    handleDeleteManager(manager.id)
+                                  }
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>

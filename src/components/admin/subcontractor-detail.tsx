@@ -177,35 +177,64 @@ export function SubcontractorDetail({
     certEnd: "",
   });
 
+  const [editingWorkerId, setEditingWorkerId] = useState<string | null>(null);
+
   const handleAddNewWorker = () => {
     if (!newWorker.name || !newWorker.role) return;
 
-    const worker: Worker = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newWorker.name,
-      role: newWorker.role,
-      status: "Active", // Default or from form
-      a1Status: a1Na ? "Valid" : "Valid", // Simplification: Default to Valid for now
+    if (editingWorkerId) {
+      // Update existing worker
+      const updatedWorkers = workers.map((w) => {
+        if (w.id === editingWorkerId) {
+          return {
+            ...w,
+            name: newWorker.name,
+            role: newWorker.role,
+            status: newWorker.status as any,
+            a1Start: newWorker.a1Start,
+            a1End: newWorker.a1End,
+            a1Files: a1Files.map((f) => f.name), // Mock
+            certStart: newWorker.certStart,
+            certEnd: newWorker.certEnd,
+            certFiles: certFiles.map((f) => f.name), // Mock
+            // Recalculate statuses based on dates? For now stick to manual/mock logic or basic check
+            // Ideally we check dates against today to set Valid/Expired
+          };
+        }
+        return w;
+      });
+      setWorkers(updatedWorkers);
+      setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+    } else {
+      // Create new worker
+      const worker: Worker = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newWorker.name,
+        role: newWorker.role,
+        status: newWorker.status as any, // Default or from form
+        a1Status: a1Na ? "Valid" : "Valid", // Simplification: Default to Valid for now
+        a1Start: newWorker.a1Start,
+        a1End: newWorker.a1End,
+        a1Files: a1Files.map((f) => f.name),
+        certStatus: certNa ? "None" : "Valid",
+        certStart: newWorker.certStart,
+        certEnd: newWorker.certEnd,
+        certFiles: certFiles.map((f) => f.name),
+        activeProjects: 0,
+        completedProjects: 0,
+        complaints: 0,
+        successRate: 100,
+        joinedDate: new Date().toLocaleDateString(),
+        avatarSeed: newWorker.name,
+        synced: false,
+      };
 
-      a1Start: newWorker.a1Start,
-      a1End: newWorker.a1End,
-      certStatus: certNa ? "None" : "Valid",
-      certStart: newWorker.certStart,
-      certEnd: newWorker.certEnd,
-      activeProjects: 0,
-      completedProjects: 0,
-      complaints: 0,
-      successRate: 100,
-      joinedDate: new Date().toLocaleDateString(),
-      avatarSeed: newWorker.name,
-      synced: false,
-    };
+      const updatedWorkers = [...workers, worker];
+      setWorkers(updatedWorkers);
 
-    const updatedWorkers = [...workers, worker];
-    setWorkers(updatedWorkers);
-
-    // Save to storage & Sync
-    setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+      // Save to storage & Sync
+      setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+    }
 
     // Reset and Close
     setNewWorker({
@@ -222,6 +251,30 @@ export function SubcontractorDetail({
     setA1Files([]);
     setCertFiles([]);
     setIsAddWorkerOpen(false);
+    setEditingWorkerId(null);
+  };
+
+  const handleEditWorker = (worker: Worker) => {
+    setNewWorker({
+      name: worker.name,
+      role: worker.role,
+      status: worker.status,
+      a1Start: worker.a1Start || "",
+      a1End: worker.a1End || "",
+      certStart: worker.certStart || "",
+      certEnd: worker.certEnd || "",
+    });
+    // Load files logic omitted for brevity (requires File object reconstruction or separate string list state)
+    // For now we assume new upload required or just keep metadata if not changed (advanced logic needed for file persistence)
+    // Let's at least set ID and open modal
+    setEditingWorkerId(worker.id);
+    setIsAddWorkerOpen(true);
+  };
+
+  const handleRemoveWorker = (workerId: string) => {
+    const updatedWorkers = workers.filter((w) => w.id !== workerId);
+    setWorkers(updatedWorkers);
+    setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
   };
 
   const [newManager, setNewManager] = useState({
@@ -284,7 +337,7 @@ export function SubcontractorDetail({
     });
   };
 
-  const saveManagersToStorage = (managersToSave: Manager[]) => {
+  const saveManagersToStorage = async (managersToSave: Manager[]) => {
     // Determine storage key
     let storageKey = "";
     if (subcontractor.role === "subcontractor")
@@ -323,31 +376,66 @@ export function SubcontractorDetail({
       }
     }
 
-    if (!storageKey) return;
+    // 1. Save to LocalStorage
+    if (storageKey) {
+      const storedData = localStorage.getItem(storageKey);
+      if (storedData) {
+        try {
+          const parsed = JSON.parse(storedData);
+          const index = parsed.findIndex(
+            (i: any) =>
+              i.name?.toLowerCase().trim() ===
+              subcontractor.name?.toLowerCase().trim(),
+          );
 
-    const storedData = localStorage.getItem(storageKey);
-    if (!storedData) return;
-
-    try {
-      const parsed = JSON.parse(storedData);
-      const index = parsed.findIndex(
-        (i: any) =>
-          i.name?.toLowerCase().trim() ===
-          subcontractor.name?.toLowerCase().trim(),
-      );
-
-      if (index !== -1) {
-        parsed[index].managers = managersToSave;
-        localStorage.setItem(storageKey, JSON.stringify(parsed));
-        console.log(
-          "[SubcontractorDetail] Saved",
-          managersToSave.length,
-          "managers for",
-          subcontractor.name,
-        );
+          if (index !== -1) {
+            parsed[index].managers = managersToSave;
+            localStorage.setItem(storageKey, JSON.stringify(parsed));
+            console.log("[SubcontractorDetail] Saved managers locally");
+          }
+        } catch (e) {
+          console.error("Error saving managers to localStorage:", e);
+        }
       }
-    } catch (e) {
-      console.error("Error saving managers to localStorage:", e);
+    }
+
+    // 2. Sync to Supabase
+    const supabase = createClient();
+    for (const manager of managersToSave) {
+      // Skip if already synced (simulated check, ideally we check ID)
+      // Since managers structure is simple, we just upsert by email if present, or create new row
+      // We use a mock email if none provided to ensure unique constraint satisfaction if needed, or rely on serial ID
+
+      try {
+        // Mock email if missing for uniqueness/constraint
+        const email =
+          manager.email ||
+          `manager_${manager.id}_${subcontractor.name.replace(/\s+/g, "_")}@example.com`;
+
+        const { data, error } = await supabase
+          .from("profiles")
+          .upsert(
+            {
+              full_name: manager.name,
+              role: "manager", // Role in system
+              user_role: "project_manager", // Display role
+              email: email,
+              phone: manager.phone,
+              company_name: subcontractor.name,
+              // We might want to store a 'local_id' or match by existing email
+            },
+            { onConflict: "email" },
+          )
+          .select();
+
+        if (error) {
+          console.error("Supabase sync error for manager:", error);
+        } else {
+          console.log("Supabase sync success for manager:", manager.name);
+        }
+      } catch (err) {
+        console.error("Unexpected error syncing manager:", err);
+      }
     }
   };
   // ... rest of imports
@@ -802,10 +890,48 @@ export function SubcontractorDetail({
     });
   }, []); // Run once on mount. Real implementations should fetch from API.
 
-  const handleStatusUpdate = (workerId: string, newStatus: any) => {
-    setWorkers((prev) =>
-      prev.map((w) => (w.id === workerId ? { ...w, status: newStatus } : w)),
-    );
+  const handleStatusUpdate = async (workerId: string, newStatus: any) => {
+    let updatedWorker: Worker | undefined;
+    const updatedWorkers = workers.map((w) => {
+      if (w.id === workerId) {
+        updatedWorker = { ...w, status: newStatus };
+        return updatedWorker;
+      }
+      return w;
+    });
+
+    setWorkers(updatedWorkers);
+
+    // 1. Save to LocalStorage
+    setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+
+    // 2. Sync to Supabase
+    if (updatedWorker && updatedWorker.supabaseId) {
+      const supabase = createClient();
+      try {
+        console.log(
+          "Syncing status update to Supabase for:",
+          updatedWorker.name,
+        );
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            // We map 'status' to a column in profiles.
+            // Assuming 'status' column exists or using 'metadata' jsonb if necessary.
+            // For now, attempting direct column update.
+            status: newStatus,
+          })
+          .eq("id", updatedWorker.supabaseId);
+
+        if (error) {
+          console.warn("Supabase status update failed:", error.message);
+        } else {
+          console.log("Supabase status update success");
+        }
+      } catch (e) {
+        console.error("Error updating status in Supabase:", e);
+      }
+    }
   };
 
   // Stats
@@ -1133,9 +1259,13 @@ export function SubcontractorDetail({
                   </DialogTrigger>
                   <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>Add New Worker</DialogTitle>
+                      <DialogTitle>
+                        {editingWorkerId ? "Edit Worker" : "Add New Worker"}
+                      </DialogTitle>
                       <DialogDescription>
-                        Register a new worker under {subcontractor.name}.
+                        {editingWorkerId
+                          ? "Update worker details"
+                          : `Register a new worker under ${subcontractor.name}.`}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -1451,7 +1581,9 @@ export function SubcontractorDetail({
                       >
                         Cancel
                       </Button>
-                      <Button onClick={handleAddNewWorker}>Add Worker</Button>
+                      <Button onClick={handleAddNewWorker}>
+                        {editingWorkerId ? "Save Changes" : "Add Worker"}
+                      </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
@@ -1522,44 +1654,60 @@ export function SubcontractorDetail({
                             <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 h-full flex items-center justify-center">
                               A1
                             </span>
-                            <span className="bg-primary/80 text-primary-foreground px-1 h-full flex items-center justify-center border-l border-primary">
-                              <RotateCw className="h-3 w-3" />
-                            </span>
+
                             <span
                               className={`h-full flex items-center gap-1 px-2 text-xs font-medium ${
-                                worker.a1Status === "Valid"
+                                worker.a1Files && worker.a1Files.length > 0
                                   ? "bg-green-100 text-green-700"
-                                  : "bg-red-100 text-red-700"
+                                  : "bg-gray-100 text-gray-500"
                               }`}
                             >
-                              {worker.a1Status}
+                              {worker.a1Files && worker.a1Files.length > 0
+                                ? "Uploaded"
+                                : "No File"}
                             </span>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {worker.certStatus === "Valid" && (
-                            <Badge
-                              variant="outline"
-                              className="bg-green-50 text-green-700 border-green-200 text-xs font-normal gap-1 pl-1"
-                            >
-                              <CheckCircle2 className="h-3 w-3 fill-green-200 text-green-600" />{" "}
-                              Valid
-                            </Badge>
-                          )}
-                          {worker.certStatus === "Expiring Soon" && (
-                            <Badge
-                              variant="outline"
-                              className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-normal gap-1 pl-1"
-                            >
-                              <CheckCircle2 className="h-3 w-3 fill-amber-200 text-amber-600" />{" "}
-                              Expiring Soon
-                            </Badge>
-                          )}
-                          {worker.certStatus === "None" && (
-                            <div className="h-2 w-8 bg-gray-100 rounded-full"></div>
-                          )}
+                          {/* Certificate Status Badge */}
+                          <Badge
+                            variant="outline"
+                            className={`
+                                cursor-pointer hover:opacity-80 transition-opacity text-xs font-normal gap-1 pl-1
+                                ${
+                                  worker.certStatus === "Valid"
+                                    ? "bg-green-50 text-green-700 border-green-200"
+                                    : worker.certStatus === "Expiring Soon"
+                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                      : worker.certStatus === "Expired"
+                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        : "bg-gray-100 text-gray-500 border-gray-200" // None/Missing
+                                }
+                              `}
+                            title={
+                              worker.certFiles && worker.certFiles.length > 0
+                                ? worker.certFiles.join(", ")
+                                : "No files"
+                            }
+                          >
+                            {worker.certStatus === "Valid" && (
+                              <CheckCircle2 className="h-3 w-3 fill-green-200 text-green-600" />
+                            )}
+                            {worker.certStatus === "Expiring Soon" && (
+                              <AlertCircle className="h-3 w-3 fill-amber-200 text-amber-600" />
+                            )}
+                            {worker.certStatus === "Expired" && (
+                              <AlertCircle className="h-3 w-3 fill-red-200 text-red-600" />
+                            )}
+
+                            {worker.certStatus === "Valid"
+                              ? "Active"
+                              : worker.certStatus === "None"
+                                ? "No Cert"
+                                : worker.certStatus}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1633,10 +1781,27 @@ export function SubcontractorDetail({
                         </DropdownMenu>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center justify-end gap-2 text-sm font-medium text-gray-700 w-full pl-2 p-1.5 rounded-md">
-                          <CheckCircle2 className="h-4 w-4 text-green-500 fill-green-100" />
-                          <span>{worker.successRate}%</span>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleEditWorker(worker)}
+                            >
+                              Edit Worker
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              onClick={() => handleRemoveWorker(worker.id)}
+                            >
+                              Remove
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}

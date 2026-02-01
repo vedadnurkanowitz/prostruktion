@@ -1645,6 +1645,16 @@ export function SubcontractorDetail({
               <Button
                 variant="outline"
                 onClick={async () => {
+                  // Debug: Check if env vars are loaded
+                  console.log(
+                    "Supabase URL:",
+                    process.env.NEXT_PUBLIC_SUPABASE_URL,
+                  );
+                  console.log(
+                    "Supabase Key exists:",
+                    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+                  );
+
                   const supabase = createClient();
                   const testId = self.crypto.randomUUID();
                   try {

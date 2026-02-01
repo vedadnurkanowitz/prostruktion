@@ -402,34 +402,40 @@ export function SubcontractorDetail({
     // 2. Sync to Supabase
     const supabase = createClient();
     for (const manager of managersToSave) {
-      // Skip if already synced (simulated check, ideally we check ID)
-      // Since managers structure is simple, we just upsert by email if present, or create new row
-      // We use a mock email if none provided to ensure unique constraint satisfaction if needed, or rely on serial ID
-
       try {
         // Mock email if missing for uniqueness/constraint
+        // Use a consistent email based on name+company if possible to allow updates,
+        // OR rely on the stored random ID if we persist it (we don't persist supabaseId yet).
+        // For now, we generate a UUID for the ROW ID to satisfy table constraints if 'id' is PK.
+        const rowId = self.crypto.randomUUID();
+
         const email =
-          manager.email ||
-          `manager_${manager.id}_${subcontractor.name.replace(/\s+/g, "_")}@example.com`;
+          manager.email && manager.email.trim() !== ""
+            ? manager.email
+            : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
 
         const { data, error } = await supabase
           .from("profiles")
           .upsert(
             {
+              id: rowId, // Provide ID in case it's required and not auto-gen
               full_name: manager.name,
-              role: "manager", // Role in system
-              user_role: "project_manager", // Display role
+              role: "manager",
+              user_role: "project_manager",
               email: email,
               phone: manager.phone,
               company_name: subcontractor.name,
-              // We might want to store a 'local_id' or match by existing email
             },
-            { onConflict: "email" },
+            { onConflict: "email", ignoreDuplicates: false },
           )
           .select();
 
         if (error) {
-          console.error("Supabase sync error for manager:", error);
+          console.error(
+            "Supabase sync error for manager:",
+            manager.name,
+            error,
+          );
         } else {
           console.log("Supabase sync success for manager:", manager.name);
         }
@@ -673,14 +679,19 @@ export function SubcontractorDetail({
           // We use a fake email since we might not have one, or generate one.
           const fakeEmail = `${w.name.replace(/\s+/g, ".").toLowerCase()}@prostruktion-worker.local`;
 
-          await supabase.from("profiles").insert({
-            id: supabaseId,
-            full_name: w.name,
-            email: fakeEmail,
-            role: "subcontractor", // or 'worker' if enum supports, fallback to sub
-            company_name: subcontractor.name, // Link to parent company name
-            phone: null,
-          });
+          await supabase.from("profiles").upsert(
+            {
+              id: supabaseId,
+              full_name: w.name,
+              email: fakeEmail,
+              role: "subcontractor", // or 'worker'
+              company_name: subcontractor.name,
+              phone: null,
+              // If we want to store status/etc, we need columns or jsonb.
+              // For now, ensuring the record exists is the priority.
+            },
+            { onConflict: "email", ignoreDuplicates: false },
+          );
 
           // Update local state to mark as synced
           w.supabaseId = supabaseId;
@@ -1612,7 +1623,9 @@ export function SubcontractorDetail({
                     <TableHead className="font-semibold w-[100px]">
                       Complaints
                     </TableHead>
-                    <TableHead className="w-[50px]">Sync</TableHead>
+                    <TableHead className="font-semibold w-[80px]">
+                      Success
+                    </TableHead>
                     <TableHead className="font-semibold w-[140px]">
                       Status
                     </TableHead>
@@ -1649,25 +1662,17 @@ export function SubcontractorDetail({
                       </TableCell>
                       <TableCell className="text-sm">{worker.role}</TableCell>
                       <TableCell>
-                        <div className="flex items-center">
-                          <div className="flex items-center h-6 rounded overflow-hidden border border-gray-200">
-                            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 h-full flex items-center justify-center">
-                              A1
-                            </span>
-
-                            <span
-                              className={`h-full flex items-center gap-1 px-2 text-xs font-medium ${
-                                worker.a1Files && worker.a1Files.length > 0
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-gray-100 text-gray-500"
-                              }`}
-                            >
-                              {worker.a1Files && worker.a1Files.length > 0
-                                ? "Uploaded"
-                                : "No File"}
-                            </span>
-                          </div>
-                        </div>
+                        <span
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium w-fit ${
+                            worker.a1Files && worker.a1Files.length > 0
+                              ? "bg-green-100 text-green-700"
+                              : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {worker.a1Files && worker.a1Files.length > 0
+                            ? "Uploaded"
+                            : "No File"}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -1702,11 +1707,16 @@ export function SubcontractorDetail({
                               <AlertCircle className="h-3 w-3 fill-red-200 text-red-600" />
                             )}
 
-                            {worker.certStatus === "Valid"
+                            {/* Only show Active if there is a file, OR if logic dictates otherwise. User requested: "active although there is now certificate uploaded -> fix" implying No File = No Active */}
+                            {worker.certStatus === "Valid" &&
+                            worker.certFiles &&
+                            worker.certFiles.length > 0
                               ? "Active"
-                              : worker.certStatus === "None"
+                              : worker.certStatus === "Valid" // Status is valid but NO file -> "No Cert"
                                 ? "No Cert"
-                                : worker.certStatus}
+                                : worker.certStatus === "None"
+                                  ? "No Cert"
+                                  : worker.certStatus}
                           </Badge>
                         </div>
                       </TableCell>
@@ -1722,18 +1732,14 @@ export function SubcontractorDetail({
                           <span>{worker.complaints}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="w-[50px]">
-                        {worker.synced ? (
-                          <div
-                            className="h-2 w-2 rounded-full bg-emerald-500 mx-auto"
-                            title="Synced to Supabase"
-                          ></div>
-                        ) : (
-                          <div
-                            className="h-2 w-2 rounded-full bg-gray-300 mx-auto"
-                            title="Local Only"
-                          ></div>
-                        )}
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm font-medium">
+                          <span
+                            className={`${worker.successRate >= 90 ? "text-green-600" : worker.successRate >= 70 ? "text-amber-600" : "text-red-600"}`}
+                          >
+                            {worker.successRate}%
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -1886,19 +1892,6 @@ export function SubcontractorDetail({
                   >
                     Next Page <ChevronRight className="h-3 w-3" />
                   </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 p-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-100 dark:border-blue-800">
-              <div className="text-xs text-muted-foreground flex gap-2 items-center">
-                <div className="flex items-center gap-1">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
-                  <span>Synced to Database</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="h-2 w-2 rounded-full bg-gray-300"></div>
-                  <span>Local Only</span>
                 </div>
               </div>
             </div>

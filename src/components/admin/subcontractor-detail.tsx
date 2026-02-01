@@ -1532,7 +1532,7 @@ export function SubcontractorDetail({
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">

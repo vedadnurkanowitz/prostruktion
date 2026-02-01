@@ -476,14 +476,33 @@ export default function AdminProjects() {
   };
 
   // Auto-calculate Quantity Bonus based on Monthly Projects for selected Contractor OR Partner
+  // Auto-calculate Quantity Bonus based on Monthly Projects for selected entity
+  // Performance Logic:
+  // - Partner: Sum of all projects done by their subcontractors.
+  // - Mediator: Sum of all projects done by their subcontractors (assigned to this mediator).
+  // - Contractor: Individual project count.
+  // Bonus applies only if monthly count >= 8 (e.g., 5 projects = No Bonus).
   useEffect(() => {
-    // Priority: Partner > Contractor
-    // If a partner is selected, we count based on Partner's total volume (aggregated across all their subs)
-    // If no partner, we count based on Contractor's volume.
-    const targetEntity = newProject.partner || newProject.contractor;
-    const isPartner = !!newProject.partner; // Check if partner exists
+    // Priority: Partner > Mediator > Contractor
+    // If a partner is selected, we count based on Partner's total volume
+    // If no partner but Mediator is selected, we count based on Mediator's volume
+    // If neither, we count based on Contractor's volume (individual stats)
 
-    if (!targetEntity) {
+    let targetEntity = "";
+    let entityType: "partner" | "mediator" | "contractor" | "none" = "none";
+
+    if (newProject.partner) {
+      targetEntity = newProject.partner;
+      entityType = "partner";
+    } else if (newProject.mediator) {
+      targetEntity = newProject.mediator;
+      entityType = "mediator";
+    } else if (newProject.contractor) {
+      targetEntity = newProject.contractor;
+      entityType = "contractor";
+    }
+
+    if (entityType === "none" || !targetEntity) {
       setCalcState((prev) => ({ ...prev, quantityBonusTier: "none" }));
       return;
     }
@@ -505,18 +524,17 @@ export default function AdminProjects() {
       if (pMonth !== textMonth || pYear !== textYear) return false;
 
       // Check Entity match
-      if (isPartner) {
-        // Match Partner Name
-        // Note: p.partner is now populated with real names thanks to the join update
+      if (entityType === "partner") {
         return p.partner === targetEntity;
+      } else if (entityType === "mediator") {
+        return p.mediator === targetEntity;
       } else {
-        // Match Contractor Name
         return p.contractor === targetEntity;
       }
     }).length;
 
     console.log(
-      `Entity: ${targetEntity} (${isPartner ? "Partner" : "Contractor"}) | Monthly Count: ${monthlyCount} | Month: ${textMonth} ${textYear}`,
+      `Entity: ${targetEntity} (${entityType}) | Monthly Count: ${monthlyCount} | Month: ${textMonth} ${textYear}`,
     );
 
     // Determine Tier
@@ -533,7 +551,13 @@ export default function AdminProjects() {
     }
 
     setCalcState((prev) => ({ ...prev, quantityBonusTier: tier }));
-  }, [newProject.contractor, newProject.partner, newProject.start, projects]);
+  }, [
+    newProject.contractor,
+    newProject.partner,
+    newProject.mediator,
+    newProject.start,
+    projects,
+  ]);
 
   const handleAddProject = async () => {
     // Basic validation

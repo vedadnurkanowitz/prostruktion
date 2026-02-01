@@ -294,12 +294,14 @@ export default function ContactsPage() {
         const supabaseId = self.crypto.randomUUID();
 
         // Check if profiles table accepts manual insert (requires no FK on auth.users or loose constraint)
+        // Confirmed columns based on actions-users.ts: id, email, full_name, role, company_name, phone
         await supabase.from("profiles").insert({
           id: supabaseId,
           full_name: newContact.name,
           email: newContact.email,
           role: newContact.role,
-          // company_name? phone? (columns unknown, safer to stick to basics known from reads)
+          company_name: newContact.name, // Using name as company name per form logic
+          phone: newContact.phone,
         });
 
         // If including a mediator creation (for subcontractors)
@@ -310,6 +312,8 @@ export default function ContactsPage() {
             full_name: newContact.mediatorName,
             email: newContact.mediatorEmail,
             role: "broker",
+            company_name: newContact.mediatorName,
+            phone: newContact.mediatorPhone,
           });
         }
       } catch (e) {

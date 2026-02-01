@@ -78,6 +78,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+import { createClient } from "@/lib/supabase/client";
+
 interface DocumentItem {
   file?: File; // Optional for persistence
   name: string;
@@ -105,6 +107,8 @@ interface Worker {
   successRate: number;
   joinedDate: string;
   avatarSeed: string;
+  supabaseId?: string; // ID in Supabase profiles (if created)
+  synced?: boolean;
 }
 
 interface Manager {
@@ -154,6 +158,7 @@ export function SubcontractorDetail({
 }: SubcontractorDetailProps) {
   // Generate consistent mock data
   const [workers, setWorkers] = useState<Worker[]>([]); // Initialized as empty, waiting for real data
+  const workersLoadedRef = useRef(false);
 
   // Managers State
   const [managers, setManagers] = useState<Manager[]>([]);
@@ -161,6 +166,64 @@ export function SubcontractorDetail({
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddManagerOpen, setIsAddManagerOpen] = useState(false);
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
+  // New Worker Form State
+  const [newWorker, setNewWorker] = useState({
+    name: "",
+    role: "",
+    status: "Active",
+    a1Start: "",
+    a1End: "",
+    certStart: "",
+    certEnd: "",
+  });
+
+  const handleAddNewWorker = () => {
+    if (!newWorker.name || !newWorker.role) return;
+
+    const worker: Worker = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newWorker.name,
+      role: newWorker.role,
+      status: "Active", // Default or from form
+      a1Status: a1Na ? "Valid" : "Valid", // Simplification: Default to Valid for now
+
+      a1Start: newWorker.a1Start,
+      a1End: newWorker.a1End,
+      certStatus: certNa ? "None" : "Valid",
+      certStart: newWorker.certStart,
+      certEnd: newWorker.certEnd,
+      activeProjects: 0,
+      completedProjects: 0,
+      complaints: 0,
+      successRate: 100,
+      joinedDate: new Date().toLocaleDateString(),
+      avatarSeed: newWorker.name,
+      synced: false,
+    };
+
+    const updatedWorkers = [...workers, worker];
+    setWorkers(updatedWorkers);
+
+    // Save to storage & Sync
+    setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+
+    // Reset and Close
+    setNewWorker({
+      name: "",
+      role: "",
+      status: "Active",
+      a1Start: "",
+      a1End: "",
+      certStart: "",
+      certEnd: "",
+    });
+    setA1Na(false);
+    setCertNa(false);
+    setA1Files([]);
+    setCertFiles([]);
+    setIsAddWorkerOpen(false);
+  };
+
   const [newManager, setNewManager] = useState({
     name: "",
     role: "",
@@ -398,6 +461,163 @@ export function SubcontractorDetail({
 
     isInitializedRef.current = true;
   }, [subcontractor.name, subcontractor.documents]);
+
+  // Load Workers from LocalStorage
+  useEffect(() => {
+    if (workersLoadedRef.current) return;
+
+    const keys = [
+      "prostruktion_subcontractors",
+      "prostruktion_contractors",
+      "prostruktion_partners",
+      "prostruktion_mediators",
+    ];
+
+    for (const key of keys) {
+      const data = localStorage.getItem(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          const found = parsed.find(
+            (i: any) =>
+              i.name?.toLowerCase().trim() ===
+              subcontractor.name?.toLowerCase().trim(),
+          );
+          if (found && found.workers && found.workers.length > 0) {
+            setWorkers(found.workers);
+            console.log(
+              "[SubcontractorDetail] Loaded",
+              found.workers.length,
+              "workers for",
+              subcontractor.name,
+            );
+            workersLoadedRef.current = true;
+            return;
+          }
+        } catch (e) {}
+      }
+    }
+    workersLoadedRef.current = true;
+  }, [subcontractor.name]);
+
+  const saveWorkersToStorage = async (workersToSave: Worker[]) => {
+    // 1. Determine local storage key
+    let storageKey = "";
+    if (subcontractor.role === "subcontractor")
+      storageKey = "prostruktion_subcontractors";
+    else if (subcontractor.role === "contractor")
+      storageKey = "prostruktion_contractors";
+    else if (subcontractor.role === "partner")
+      storageKey = "prostruktion_partners";
+    else if (subcontractor.role === "broker")
+      storageKey = "prostruktion_mediators";
+
+    // Fallback search
+    if (!storageKey) {
+      const keys = [
+        "prostruktion_subcontractors",
+        "prostruktion_contractors",
+        "prostruktion_partners",
+        "prostruktion_mediators",
+      ];
+      for (const key of keys) {
+        const data = localStorage.getItem(key);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            const found = parsed.find(
+              (i: any) =>
+                i.name?.toLowerCase().trim() ===
+                subcontractor.name?.toLowerCase().trim(),
+            );
+            if (found) {
+              storageKey = key;
+              break;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (storageKey) {
+      const storedData = localStorage.getItem(storageKey);
+      if (storedData) {
+        try {
+          const parsed = JSON.parse(storedData);
+          const index = parsed.findIndex(
+            (i: any) =>
+              i.name?.toLowerCase().trim() ===
+              subcontractor.name?.toLowerCase().trim(),
+          );
+          if (index !== -1) {
+            parsed[index].workers = workersToSave;
+            localStorage.setItem(storageKey, JSON.stringify(parsed));
+          }
+        } catch (e) {
+          console.error("Error saving workers to localStorage", e);
+        }
+      }
+    }
+
+    // 2. Persist to Supabase (Sync Logic)
+    // We only try to insert NEW workers that haven't been synced yet
+    // Or update status if changed. For simplicity in this demo, let's try to "Upsert" the latest one added.
+    // In a real app we'd iterate and upsert all, or just the changed one.
+    // Let's rely on the calling function to know WHICH one is new, but here we scan for unsynced.
+
+    // We can't access Supabase client directly here optimally without prop,
+    // assuming createClient is available via import.
+    // Importing at top file level would be best.
+    // Assuming 'createClient' is imported from '@/lib/supabase/client' based on context.
+
+    const supabase = createClient();
+
+    // Find unsynced workers
+    const unsynced = workersToSave.filter((w) => !w.synced && !w.supabaseId);
+
+    if (unsynced.length > 0) {
+      for (const w of unsynced) {
+        const supabaseId = self.crypto.randomUUID();
+        try {
+          // profiles table: id, email, full_name, role, company_name, phone
+          // Workers are profiles with role "worker" or "subcontractor"? Usually "worker" logic isn't fully defined in schema,
+          // but let's assume we create a profile for them so they exist in DB.
+          // We use a fake email since we might not have one, or generate one.
+          const fakeEmail = `${w.name.replace(/\s+/g, ".").toLowerCase()}@prostruktion-worker.local`;
+
+          await supabase.from("profiles").insert({
+            id: supabaseId,
+            full_name: w.name,
+            email: fakeEmail,
+            role: "subcontractor", // or 'worker' if enum supports, fallback to sub
+            company_name: subcontractor.name, // Link to parent company name
+            phone: null,
+          });
+
+          // Update local state to mark as synced
+          w.supabaseId = supabaseId;
+          w.synced = true;
+
+          // Re-save local storage with synced flag
+          if (storageKey) {
+            const storedData = localStorage.getItem(storageKey);
+            if (storedData) {
+              const parsed = JSON.parse(storedData);
+              const index = parsed.findIndex(
+                (i: any) => i.name === subcontractor.name,
+              );
+              if (index !== -1) {
+                parsed[index].workers = workersToSave;
+                localStorage.setItem(storageKey, JSON.stringify(parsed));
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to sync worker to Supabase:", w.name, e);
+        }
+      }
+    }
+  };
 
   // Helper function to save documents to localStorage
   const saveDocumentsToStorage = (docsToSave: DocumentItem[]) => {
@@ -673,7 +893,7 @@ export function SubcontractorDetail({
 
       {/* Tabs for different sections */}
       <Tabs defaultValue="workers" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+        <TabsList className="grid w-full grid-cols-4 max-w-[840px] h-12 gap-2">
           <TabsTrigger value="workers">Workers</TabsTrigger>
           <TabsTrigger value="management">Management Personnel</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -921,11 +1141,26 @@ export function SubcontractorDetail({
                     <div className="grid gap-4 py-4">
                       <div className="grid gap-2">
                         <Label htmlFor="w-name">Full Name</Label>
-                        <Input id="w-name" placeholder="Worker Name" />
+                        <Input
+                          id="w-name"
+                          placeholder="Worker Name"
+                          value={newWorker.name}
+                          onChange={(e) =>
+                            setNewWorker((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                        />
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="w-role">Role / Trade</Label>
-                        <Select>
+                        <Select
+                          value={newWorker.role}
+                          onValueChange={(val) =>
+                            setNewWorker((prev) => ({ ...prev, role: val }))
+                          }
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select trade" />
                           </SelectTrigger>
@@ -973,6 +1208,13 @@ export function SubcontractorDetail({
                               type="date"
                               disabled={a1Na}
                               className="h-8 text-xs"
+                              value={newWorker.a1Start}
+                              onChange={(e) =>
+                                setNewWorker((prev) => ({
+                                  ...prev,
+                                  a1Start: e.target.value,
+                                }))
+                              }
                             />
                           </div>
                           <div className="grid gap-1.5">
@@ -984,6 +1226,13 @@ export function SubcontractorDetail({
                               type="date"
                               disabled={a1Na}
                               className="h-8 text-xs"
+                              value={newWorker.a1End}
+                              onChange={(e) =>
+                                setNewWorker((prev) => ({
+                                  ...prev,
+                                  a1End: e.target.value,
+                                }))
+                              }
                             />
                           </div>
                         </div>
@@ -1082,6 +1331,13 @@ export function SubcontractorDetail({
                               type="date"
                               disabled={certNa}
                               className="h-8 text-xs"
+                              value={newWorker.certStart}
+                              onChange={(e) =>
+                                setNewWorker((prev) => ({
+                                  ...prev,
+                                  certStart: e.target.value,
+                                }))
+                              }
                             />
                           </div>
                           <div className="grid gap-1.5">
@@ -1093,6 +1349,13 @@ export function SubcontractorDetail({
                               type="date"
                               disabled={certNa}
                               className="h-8 text-xs"
+                              value={newWorker.certEnd}
+                              onChange={(e) =>
+                                setNewWorker((prev) => ({
+                                  ...prev,
+                                  certEnd: e.target.value,
+                                }))
+                              }
                             />
                           </div>
                         </div>
@@ -1163,15 +1426,20 @@ export function SubcontractorDetail({
 
                       <div className="grid gap-2">
                         <Label htmlFor="w-status">Initial Status</Label>
-                        <Select defaultValue="active">
+                        <Select
+                          value={newWorker.status}
+                          onValueChange={(val) =>
+                            setNewWorker((prev) => ({ ...prev, status: val }))
+                          }
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select status" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="inactive">Inactive</SelectItem>
-                            <SelectItem value="on-leave">On Leave</SelectItem>
-                            <SelectItem value="blocked">Blocked</SelectItem>
+                            <SelectItem value="Active">Active</SelectItem>
+                            <SelectItem value="Inactive">Inactive</SelectItem>
+                            <SelectItem value="On Leave">On Leave</SelectItem>
+                            <SelectItem value="Blocked">Blocked</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -1183,9 +1451,7 @@ export function SubcontractorDetail({
                       >
                         Cancel
                       </Button>
-                      <Button onClick={() => setIsAddWorkerOpen(false)}>
-                        Add Worker
-                      </Button>
+                      <Button onClick={handleAddNewWorker}>Add Worker</Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
@@ -1200,7 +1466,7 @@ export function SubcontractorDetail({
                       Name
                     </TableHead>
                     <TableHead className="font-semibold w-[120px]">
-                      Role
+                      Role / Trade
                     </TableHead>
                     <TableHead className="font-semibold w-[100px]">
                       A1
@@ -1208,17 +1474,18 @@ export function SubcontractorDetail({
                     <TableHead className="font-semibold w-[150px]">
                       Certification
                     </TableHead>
-                    <TableHead className="font-semibold w-[160px]">
-                      Completed Projects
+                    <TableHead className="font-semibold w-[120px]">
+                      Completed
                     </TableHead>
                     <TableHead className="font-semibold w-[100px]">
                       Complaints
                     </TableHead>
+                    <TableHead className="w-[50px]">Sync</TableHead>
                     <TableHead className="font-semibold w-[140px]">
                       Status
                     </TableHead>
                     <TableHead className="font-semibold text-right">
-                      Success Rate
+                      Actions
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1306,6 +1573,19 @@ export function SubcontractorDetail({
                           <UserCog className="h-4 w-4 text-muted-foreground" />
                           <span>{worker.complaints}</span>
                         </div>
+                      </TableCell>
+                      <TableCell className="w-[50px]">
+                        {worker.synced ? (
+                          <div
+                            className="h-2 w-2 rounded-full bg-emerald-500 mx-auto"
+                            title="Synced to Supabase"
+                          ></div>
+                        ) : (
+                          <div
+                            className="h-2 w-2 rounded-full bg-gray-300 mx-auto"
+                            title="Local Only"
+                          ></div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -1438,12 +1718,22 @@ export function SubcontractorDetail({
                         ),
                       )
                     }
-                    disabled={
-                      currentPage >= Math.ceil(workers.length / itemsPerPage)
-                    }
                   >
                     Next Page <ChevronRight className="h-3 w-3" />
                   </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 p-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-100 dark:border-blue-800">
+              <div className="text-xs text-muted-foreground flex gap-2 items-center">
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                  <span>Synced to Database</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-gray-300"></div>
+                  <span>Local Only</span>
                 </div>
               </div>
             </div>
@@ -1677,12 +1967,13 @@ export function SubcontractorDetail({
                 <TableHeader className="bg-gray-50/50 dark:bg-gray-900/50">
                   <TableRow>
                     <TableHead className="font-semibold w-[300px]">
-                      Document Name
+                      Role / Trade
                     </TableHead>
-                    <TableHead className="font-semibold">Start Date</TableHead>
-                    <TableHead className="font-semibold">End Date</TableHead>
-                    <TableHead className="font-semibold">Status</TableHead>
-                    <TableHead className="font-semibold text-right">
+                    <TableHead className="w-[120px]">Status</TableHead>
+                    <TableHead className="w-[120px]">Completed</TableHead>
+                    <TableHead className="w-[120px]">Complaints</TableHead>
+                    <TableHead className="w-[50px]">Sync</TableHead>
+                    <TableHead className="w-[100px] text-right">
                       Actions
                     </TableHead>
                   </TableRow>

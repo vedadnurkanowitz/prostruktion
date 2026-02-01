@@ -81,6 +81,7 @@ type Contact = {
   completedProjects: number;
   successRate: number;
   mediator?: string;
+  contractor?: string;
   documents?: any[];
 };
 
@@ -130,6 +131,7 @@ const generateMockWorkers = (count: number): Worker[] => {
       "Roth",
       "Schmidt",
       "Müller",
+      "Wagner",
     ][i % 8],
     role: roles[Math.floor(Math.random() * roles.length)],
     status: Math.random() > 0.1 ? "Active" : "On Leave",
@@ -174,6 +176,7 @@ export default function ContactsPage() {
     phone: "",
     address: "",
     mediator: "",
+    contractor: "",
     mediatorName: "",
     mediatorEmail: "",
     mediatorPhone: "",
@@ -278,6 +281,7 @@ export default function ContactsPage() {
         status: "Active",
         role: newContact.role,
         mediator: newContact.mediatorName || newContact.mediator, // Use new name if created
+        contractor: newContact.contractor, // Link to contractor
         address: newContact.address,
       });
       localStorage.setItem(storageKey, JSON.stringify(existing));
@@ -329,6 +333,7 @@ export default function ContactsPage() {
       phone: "",
       address: "",
       mediator: "",
+      contractor: "",
       mediatorName: "",
       mediatorEmail: "",
       mediatorPhone: "",
@@ -361,6 +366,7 @@ export default function ContactsPage() {
   };
 
   const availableMediators = contacts.filter((c) => c.role === "broker");
+  const availableContractors = contacts.filter((c) => c.role === "contractor");
 
   useEffect(() => {
     async function fetchData() {
@@ -427,6 +433,8 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            mediator: s.mediator,
+            contractor: s.contractor,
             documents: s.documents || [],
           });
         });
@@ -740,7 +748,7 @@ export default function ContactsPage() {
                 <Plus className="mr-2 h-4 w-4" /> Add Contact
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Contact</DialogTitle>
                 <DialogDescription>
@@ -816,6 +824,29 @@ export default function ContactsPage() {
                     placeholder="Street, City, Zip"
                   />
                 </div>
+
+                {newContact.role === "subcontractor" && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="c-contractor">Link to Contractor</Label>
+                    <Select
+                      value={newContact.contractor}
+                      onValueChange={(val) =>
+                        setNewContact({ ...newContact, contractor: val })
+                      }
+                    >
+                      <SelectTrigger id="c-contractor">
+                        <SelectValue placeholder="Select Contractor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableContractors.map((c) => (
+                          <SelectItem key={c.id} value={c.name}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {newContact.role === "subcontractor" && (
                   <div className="border-t pt-4 mt-2 space-y-4 bg-gray-50 dark:bg-gray-900/50 -mx-6 px-6 pb-4">

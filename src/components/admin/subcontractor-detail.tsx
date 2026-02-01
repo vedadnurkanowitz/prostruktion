@@ -120,6 +120,34 @@ interface SubcontractorDetailProps {
   onBack: () => void;
 }
 
+// Helper to generate monthly stats
+const generateMonthlyStats = (role: string) => {
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  return months.map((month) => {
+    // If partner, numbers are sum of subs (simulated higher range)
+    const base = role === "partner" ? 50 : 5;
+    const range = role === "partner" ? 100 : 15;
+    return {
+      name: month,
+      // Random value between base and base+range
+      value: Math.floor(base + Math.random() * range),
+    };
+  });
+};
+
 export function SubcontractorDetail({
   subcontractor,
   onBack,
@@ -143,21 +171,32 @@ export function SubcontractorDetail({
   const handleSaveManager = () => {
     if (!newManager.name) return;
 
+    let newManagersList: Manager[] = [];
     if (editingManagerId) {
-      setManagers((prev) =>
-        prev.map((m) =>
+      setManagers((prev) => {
+        const updated = prev.map((m) =>
           m.id === editingManagerId ? { ...m, ...newManager } : m,
-        ),
-      );
+        );
+        newManagersList = updated;
+        return updated;
+      });
     } else {
-      setManagers((prev) => [
-        ...prev,
-        {
-          id: Math.random().toString(36).substr(2, 9),
-          ...newManager,
-        },
-      ]);
+      setManagers((prev) => {
+        const updated = [
+          ...prev,
+          {
+            id: Math.random().toString(36).substr(2, 9),
+            ...newManager,
+          },
+        ];
+        newManagersList = updated;
+        return updated;
+      });
     }
+
+    // Save to storage
+    setTimeout(() => saveManagersToStorage(newManagersList), 0);
+
     setNewManager({ name: "", role: "", email: "", phone: "" });
     setEditingManagerId(null);
     setIsAddManagerOpen(false);
@@ -175,7 +214,78 @@ export function SubcontractorDetail({
   };
 
   const handleDeleteManager = (id: string) => {
-    setManagers((prev) => prev.filter((m) => m.id !== id));
+    setManagers((prev) => {
+      const updated = prev.filter((m) => m.id !== id);
+      setTimeout(() => saveManagersToStorage(updated), 0);
+      return updated;
+    });
+  };
+
+  const saveManagersToStorage = (managersToSave: Manager[]) => {
+    // Determine storage key
+    let storageKey = "";
+    if (subcontractor.role === "subcontractor")
+      storageKey = "prostruktion_subcontractors";
+    else if (subcontractor.role === "contractor")
+      storageKey = "prostruktion_contractors";
+    else if (subcontractor.role === "partner")
+      storageKey = "prostruktion_partners";
+    else if (subcontractor.role === "broker")
+      storageKey = "prostruktion_mediators";
+
+    // Fallback: search all keys if role not sufficient
+    if (!storageKey) {
+      const keys = [
+        "prostruktion_subcontractors",
+        "prostruktion_contractors",
+        "prostruktion_partners",
+        "prostruktion_mediators",
+      ];
+      for (const key of keys) {
+        const data = localStorage.getItem(key);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            const found = parsed.find(
+              (i: any) =>
+                i.name?.toLowerCase().trim() ===
+                subcontractor.name?.toLowerCase().trim(),
+            );
+            if (found) {
+              storageKey = key;
+              break;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (!storageKey) return;
+
+    const storedData = localStorage.getItem(storageKey);
+    if (!storedData) return;
+
+    try {
+      const parsed = JSON.parse(storedData);
+      const index = parsed.findIndex(
+        (i: any) =>
+          i.name?.toLowerCase().trim() ===
+          subcontractor.name?.toLowerCase().trim(),
+      );
+
+      if (index !== -1) {
+        parsed[index].managers = managersToSave;
+        localStorage.setItem(storageKey, JSON.stringify(parsed));
+        console.log(
+          "[SubcontractorDetail] Saved",
+          managersToSave.length,
+          "managers for",
+          subcontractor.name,
+        );
+      }
+    } catch (e) {
+      console.error("Error saving managers to localStorage:", e);
+    }
   };
   // ... rest of imports
 
@@ -259,6 +369,33 @@ export function SubcontractorDetail({
     if (subcontractor.documents && subcontractor.documents.length > 0) {
       setDocuments(subcontractor.documents);
     }
+
+    // Attempt to load managers from props or local storage logic above
+    // Since we iterate keys above, let's just do it in the same loop or reuse the logic
+    // Re-running the logic for clarity and ensuring we catch the managers
+    for (const key of keys) {
+      const data = localStorage.getItem(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          const found = parsed.find(
+            (i: any) =>
+              i.name?.toLowerCase().trim() ===
+              subcontractor.name?.toLowerCase().trim(),
+          );
+          if (found && found.managers && found.managers.length > 0) {
+            setManagers(found.managers);
+            console.log(
+              "[SubcontractorDetail] Loaded",
+              found.managers.length,
+              "managers for",
+              subcontractor.name,
+            );
+          }
+        } catch (e) {}
+      }
+    }
+
     isInitializedRef.current = true;
   }, [subcontractor.name, subcontractor.documents]);
 
@@ -501,6 +638,22 @@ export function SubcontractorDetail({
                   <Phone className="h-4 w-4" />
                   <span>{subcontractor.phone || "+49 771 9085523"}</span>
                 </div>
+                {subcontractor.contractor && (
+                  <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full border border-blue-100 dark:border-blue-800">
+                    <UserCog className="h-3 w-3" />
+                    <span className="text-xs">
+                      Contractor: {subcontractor.contractor}
+                    </span>
+                  </div>
+                )}
+                {subcontractor.mediator && (
+                  <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 font-medium bg-purple-50 dark:bg-purple-900/20 px-2 py-0.5 rounded-full border border-purple-100 dark:border-purple-800">
+                    <Briefcase className="h-3 w-3" />
+                    <span className="text-xs">
+                      Mediator: {subcontractor.mediator}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -523,8 +676,54 @@ export function SubcontractorDetail({
         <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
           <TabsTrigger value="workers">Workers</TabsTrigger>
           <TabsTrigger value="management">Management Personnel</TabsTrigger>
+          <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
+
+        {/* Performance Tab */}
+        <TabsContent value="performance" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Jobs Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] w-full flex items-end justify-between gap-2 pt-10 px-4">
+                {generateMonthlyStats(subcontractor.role).map((item, i) => {
+                  const maxVal = subcontractor.role === "partner" ? 150 : 25; // Scale approximation
+                  const heightPercentage = Math.min(
+                    100,
+                    Math.max(5, (item.value / maxVal) * 100),
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className="flex flex-col items-center gap-2 flex-1 group"
+                    >
+                      <div className="relative w-full bg-gray-100 dark:bg-gray-800 rounded-t-sm h-full flex items-end overflow-hidden">
+                        <div
+                          className="w-full bg-primary/80 group-hover:bg-primary transition-all duration-500 ease-in-out relative"
+                          style={{ height: `${heightPercentage}%` }}
+                        >
+                          <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded transition-opacity whitespace-nowrap z-10">
+                            {item.value} Jobs
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {item.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 text-sm text-muted-foreground text-center">
+                {subcontractor.role === "partner"
+                  ? "Aggregation of all jobs completed by linked subcontractors."
+                  : "Total jobs completed per month."}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Workers Tab */}
         <TabsContent value="workers" className="space-y-6 mt-6">
@@ -712,7 +911,7 @@ export function SubcontractorDetail({
                       <Plus className="mr-2 h-4 w-4" /> Add Worker
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Add New Worker</DialogTitle>
                       <DialogDescription>

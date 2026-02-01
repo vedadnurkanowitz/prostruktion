@@ -344,9 +344,9 @@ export function SubcontractorDetail({
             ? manager.email
             : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
 
-        const { error } = await supabase.from("personnel").upsert(
+        const { error } = await supabase.from("contacts").upsert(
           {
-            full_name: manager.name,
+            name: manager.name,
             role: "manager",
             email: email,
             company_name: subcontractor.name,
@@ -417,7 +417,7 @@ export function SubcontractorDetail({
 
       // Load managers from personnel table
       const { data: managersData, error: managersError } = await supabase
-        .from("personnel")
+        .from("contacts")
         .select("*")
         .eq("company_name", subcontractor.name)
         .eq("role", "manager");
@@ -425,10 +425,10 @@ export function SubcontractorDetail({
       if (!managersError && managersData && managersData.length > 0) {
         const loadedManagers: Manager[] = managersData.map((m: any) => ({
           id: m.id,
-          name: m.full_name,
+          name: m.name,
           role: "Manager",
           email: m.email || "",
-          phone: "",
+          phone: m.phone || "",
         }));
         setManagers(loadedManagers);
         console.log(
@@ -440,7 +440,7 @@ export function SubcontractorDetail({
 
       // Load workers from personnel table
       const { data: workersData, error: workersError } = await supabase
-        .from("personnel")
+        .from("contacts")
         .select("*")
         .eq("company_name", subcontractor.name)
         .eq("role", "worker");
@@ -448,7 +448,7 @@ export function SubcontractorDetail({
       if (!workersError && workersData && workersData.length > 0) {
         const loadedWorkers: Worker[] = workersData.map((w: any) => ({
           id: w.id,
-          name: w.full_name,
+          name: w.name,
           role: "Worker",
           status: w.status || "Active",
           a1Status: "Pending" as const,
@@ -516,9 +516,9 @@ export function SubcontractorDetail({
       try {
         const email = `${w.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.worker`;
 
-        const { error } = await supabase.from("personnel").upsert(
+        const { error } = await supabase.from("contacts").upsert(
           {
-            full_name: w.name,
+            name: w.name,
             email: email,
             role: "worker",
             company_name: subcontractor.name,
@@ -1677,10 +1677,10 @@ export function SubcontractorDetail({
                     );
 
                     const { data, error, status, statusText } = await supabase
-                      .from("personnel")
+                      .from("contacts")
                       .insert({
                         id: testId,
-                        full_name: "Test Sync Probe",
+                        name: "Test Sync Probe",
                         email: `probe.${testId}@test.local`,
                         role: "manager",
                         company_name: "Diagnostic Probe",
@@ -1700,7 +1700,7 @@ export function SubcontractorDetail({
                         (error && Object.keys(error).length === 0)
                       ) {
                         alert(
-                          `RLS BLOCKED: Row Level Security is preventing inserts.\n\nYou need to either:\n1. Disable RLS on 'profiles' table, OR\n2. Add a policy to allow inserts for your user role.\n\nHTTP Status: ${status}`,
+                          `RLS BLOCKED: Row Level Security is preventing inserts.\n\nYou need to either:\n1. Disable RLS on 'contacts' table, OR\n2. Add a policy to allow inserts for your user role.\n\nHTTP Status: ${status}`,
                         );
                       } else {
                         alert(
@@ -1713,10 +1713,7 @@ export function SubcontractorDetail({
                         "Probe Success! Supabase connection is working for inserts.",
                       );
                       // Cleanup
-                      await supabase
-                        .from("personnel")
-                        .delete()
-                        .eq("id", testId);
+                      await supabase.from("contacts").delete().eq("id", testId);
                     }
                   } catch (e: any) {
                     console.error("Probe Exception:", e);

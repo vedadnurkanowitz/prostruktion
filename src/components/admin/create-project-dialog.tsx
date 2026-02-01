@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Users, Loader2 } from "lucide-react";
+
+type Worker = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+};
 
 export default function CreateProjectDialog() {
   const [open, setOpen] = useState(false);
@@ -31,6 +40,13 @@ export default function CreateProjectDialog() {
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
   const [error, setError] = useState("");
+
+  // Workers state
+  const [selectedSubcontractor, setSelectedSubcontractor] =
+    useState<string>("");
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
+  const [loadingWorkers, setLoadingWorkers] = useState(false);
 
   const fetchUsers = async () => {
     const supabase = createClient();
@@ -121,13 +137,79 @@ export default function CreateProjectDialog() {
     setContractors(allContractors);
   };
 
+  // Fetch workers when subcontractor changes
+  const fetchWorkersForSubcontractor = async (subcontractorId: string) => {
+    if (!subcontractorId) {
+      setWorkers([]);
+      setSelectedWorkers([]);
+      return;
+    }
+
+    setLoadingWorkers(true);
+
+    // Extract the subcontractor name from the ID
+    const sub = subcontractors.find((s) => s.id === subcontractorId);
+    if (!sub) {
+      setLoadingWorkers(false);
+      return;
+    }
+
+    const subName = sub.full_name;
+    const supabase = createClient();
+
+    // Fetch workers from contacts table where company_name matches
+    const { data: workersData, error } = await supabase
+      .from("contacts")
+      .select("id, name, email, role, status")
+      .eq("role", "worker")
+      .eq("company_name", subName);
+
+    if (error) {
+      console.error("Error fetching workers:", error);
+    }
+
+    const mappedWorkers = (workersData || []).map((w: any) => ({
+      id: w.id,
+      name: w.name, // Ensure we map name correctly
+      email: w.email,
+      role: w.role,
+      status: w.status,
+    }));
+
+    setWorkers(mappedWorkers);
+    setSelectedWorkers([]); // Reset selection when subcontractor changes
+    setLoadingWorkers(false);
+  };
+
   useEffect(() => {
     if (open) {
       fetchUsers();
+      // Reset workers when dialog opens
+      setSelectedSubcontractor("");
+      setWorkers([]);
+      setSelectedWorkers([]);
     }
   }, [open]);
 
+  // Fetch workers when subcontractor selection changes
+  useEffect(() => {
+    if (selectedSubcontractor) {
+      fetchWorkersForSubcontractor(selectedSubcontractor);
+    }
+  }, [selectedSubcontractor, subcontractors]);
+
+  const handleWorkerToggle = (workerId: string) => {
+    setSelectedWorkers((prev) =>
+      prev.includes(workerId)
+        ? prev.filter((id) => id !== workerId)
+        : [...prev, workerId],
+    );
+  };
+
   const handleSubmit = async (formData: FormData) => {
+    // Add selected workers to form data
+    formData.set("workerIds", JSON.stringify(selectedWorkers));
+
     const result = await createProject(null, formData);
     if (result?.error) {
       setError(result.error);
@@ -145,7 +227,7 @@ export default function CreateProjectDialog() {
           Create Project
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Project</DialogTitle>
           <DialogDescription>
@@ -218,7 +300,11 @@ export default function CreateProjectDialog() {
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="subcontractorId">Assign Subcontractor</Label>
-              <Select name="subcontractorId">
+              <Select
+                name="subcontractorId"
+                value={selectedSubcontractor}
+                onValueChange={(value) => setSelectedSubcontractor(value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select..." />
                 </SelectTrigger>
@@ -247,6 +333,57 @@ export default function CreateProjectDialog() {
               </Select>
             </div>
           </div>
+
+          {/* Workers Selection - Shows when subcontractor is selected */}
+          {selectedSubcontractor && (
+            <div className="grid gap-2 border rounded-lg p-3 bg-muted/20">
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="h-4 w-4 text-primary" />
+                <Label className="font-medium">Assign Workers</Label>
+                {loadingWorkers && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+
+              {!loadingWorkers && workers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  No workers found for this subcontractor. Add workers in the
+                  Contacts section first.
+                </p>
+              ) : (
+                <div className="grid gap-2 max-h-[150px] overflow-y-auto pr-2">
+                  {workers.map((worker) => (
+                    <div
+                      key={worker.id}
+                      className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer"
+                      onClick={() => handleWorkerToggle(worker.id)}
+                    >
+                      <Checkbox
+                        id={`worker-${worker.id}`}
+                        checked={selectedWorkers.includes(worker.id)}
+                        onCheckedChange={() => handleWorkerToggle(worker.id)}
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">
+                          {worker.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {worker.status || "Active"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedWorkers.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {selectedWorkers.length} worker
+                  {selectedWorkers.length > 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          )}
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
 

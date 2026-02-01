@@ -284,34 +284,31 @@ export function SubcontractorDetail({
     phone: "",
   });
 
-  const handleSaveManager = () => {
+  const handleSaveManager = async () => {
     if (!newManager.name) return;
 
     let newManagersList: Manager[] = [];
+
     if (editingManagerId) {
-      setManagers((prev) => {
-        const updated = prev.map((m) =>
-          m.id === editingManagerId ? { ...m, ...newManager } : m,
-        );
-        newManagersList = updated;
-        return updated;
-      });
+      // Build list first, then update state
+      newManagersList = managers.map((m) =>
+        m.id === editingManagerId ? { ...m, ...newManager } : m,
+      );
+      setManagers(newManagersList);
     } else {
-      setManagers((prev) => {
-        const updated = [
-          ...prev,
-          {
-            id: Math.random().toString(36).substr(2, 9),
-            ...newManager,
-          },
-        ];
-        newManagersList = updated;
-        return updated;
-      });
+      // Build list first, then update state
+      newManagersList = [
+        ...managers,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          ...newManager,
+        },
+      ];
+      setManagers(newManagersList);
     }
 
-    // Save to storage
-    setTimeout(() => saveManagersToStorage(newManagersList), 0);
+    // Save to storage immediately with the built list
+    await saveManagersToStorage(newManagersList);
 
     setNewManager({ name: "", role: "", email: "", phone: "" });
     setEditingManagerId(null);

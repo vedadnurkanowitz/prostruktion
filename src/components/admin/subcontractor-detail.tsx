@@ -1368,7 +1368,7 @@ export function SubcontractorDetail({
                     <TableHead className="font-semibold w-[140px]">
                       Status
                     </TableHead>
-                    <TableHead className="font-semibold text-right">
+                    <TableHead className="font-semibold text-right w-[60px]">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -1399,8 +1399,10 @@ export function SubcontractorDetail({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">{worker.role}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-sm w-[120px]">
+                        {worker.role}
+                      </TableCell>
+                      <TableCell className="w-[100px]">
                         <span
                           className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium w-fit ${
                             worker.a1Files && worker.a1Files.length > 0
@@ -1413,7 +1415,7 @@ export function SubcontractorDetail({
                             : "No File"}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[150px]">
                         <div className="flex items-center gap-2">
                           {/* Certificate Status Badge */}
                           <Badge
@@ -1466,19 +1468,19 @@ export function SubcontractorDetail({
                           </Badge>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[120px]">
                         <div className="flex items-center gap-2 text-sm">
                           <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
                           <span>{worker.completedProjects}</span>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[100px]">
                         <div className="flex items-center gap-2 text-sm">
                           <UserCog className="h-4 w-4 text-muted-foreground" />
                           <span>{worker.complaints}</span>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[80px]">
                         <div className="flex items-center gap-1 text-sm font-medium">
                           <span
                             className={`${worker.successRate >= 90 ? "text-green-600" : worker.successRate >= 70 ? "text-amber-600" : "text-red-600"}`}
@@ -1487,7 +1489,7 @@ export function SubcontractorDetail({
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-[140px]">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Badge
@@ -1532,7 +1534,7 @@ export function SubcontractorDetail({
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right w-[60px]">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">

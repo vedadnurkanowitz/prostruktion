@@ -335,96 +335,25 @@ export function SubcontractorDetail({
   };
 
   const saveManagersToStorage = async (managersToSave: Manager[]) => {
-    // Determine storage key
-    let storageKey = "";
-    if (subcontractor.role === "subcontractor")
-      storageKey = "prostruktion_subcontractors";
-    else if (subcontractor.role === "contractor")
-      storageKey = "prostruktion_contractors";
-    else if (subcontractor.role === "partner")
-      storageKey = "prostruktion_partners";
-    else if (subcontractor.role === "broker")
-      storageKey = "prostruktion_mediators";
-
-    // Fallback: search all keys if role not sufficient
-    if (!storageKey) {
-      const keys = [
-        "prostruktion_subcontractors",
-        "prostruktion_contractors",
-        "prostruktion_partners",
-        "prostruktion_mediators",
-      ];
-      for (const key of keys) {
-        const data = localStorage.getItem(key);
-        if (data) {
-          try {
-            const parsed = JSON.parse(data);
-            const found = parsed.find(
-              (i: any) =>
-                i.name?.toLowerCase().trim() ===
-                subcontractor.name?.toLowerCase().trim(),
-            );
-            if (found) {
-              storageKey = key;
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-    }
-
-    // 1. Save to LocalStorage
-    if (storageKey) {
-      const storedData = localStorage.getItem(storageKey);
-      if (storedData) {
-        try {
-          const parsed = JSON.parse(storedData);
-          const index = parsed.findIndex(
-            (i: any) =>
-              i.name?.toLowerCase().trim() ===
-              subcontractor.name?.toLowerCase().trim(),
-          );
-
-          if (index !== -1) {
-            parsed[index].managers = managersToSave;
-            localStorage.setItem(storageKey, JSON.stringify(parsed));
-            console.log("[SubcontractorDetail] Saved managers locally");
-          }
-        } catch (e) {
-          console.error("Error saving managers to localStorage:", e);
-        }
-      }
-    }
-
-    // 2. Sync to Supabase
     const supabase = createClient();
+
     for (const manager of managersToSave) {
       try {
-        // Mock email if missing for uniqueness/constraint
-        // Use a consistent email based on name+company if possible to allow updates,
-        // OR rely on the stored random ID if we persist it (we don't persist supabaseId yet).
-        // For now, we generate a UUID for the ROW ID to satisfy table constraints if 'id' is PK.
-        const rowId = self.crypto.randomUUID();
-
         const email =
           manager.email && manager.email.trim() !== ""
             ? manager.email
             : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
 
-        const { data, error } = await supabase
-          .from("personnel")
-          .upsert(
-            {
-              id: rowId,
-              full_name: manager.name,
-              role: "manager",
-              email: email,
-              company_name: subcontractor.name,
-              status: "Active",
-            },
-            { onConflict: "email", ignoreDuplicates: false },
-          )
-          .select();
+        const { error } = await supabase.from("personnel").upsert(
+          {
+            full_name: manager.name,
+            role: "manager",
+            email: email,
+            company_name: subcontractor.name,
+            status: "Active",
+          },
+          { onConflict: "email", ignoreDuplicates: false },
+        );
 
         if (error) {
           console.error(
@@ -479,336 +408,180 @@ export function SubcontractorDetail({
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const isInitializedRef = useRef(false);
 
-  // Load documents from localStorage on mount
+  // Load data from Supabase on mount
   useEffect(() => {
     if (isInitializedRef.current) return;
 
-    // Try to load from localStorage first
-    const keys = [
-      "prostruktion_subcontractors",
-      "prostruktion_contractors",
-      "prostruktion_partners",
-      "prostruktion_mediators",
-    ];
+    const loadDataFromSupabase = async () => {
+      const supabase = createClient();
 
-    for (const key of keys) {
-      const data = localStorage.getItem(key);
-      if (data) {
-        try {
-          const parsed = JSON.parse(data);
-          const found = parsed.find(
-            (i: any) =>
-              i.name?.toLowerCase().trim() ===
-              subcontractor.name?.toLowerCase().trim(),
-          );
-          if (found && found.documents && found.documents.length > 0) {
-            setDocuments(found.documents);
-            console.log(
-              "[SubcontractorDetail] Loaded",
-              found.documents.length,
-              "documents for",
-              subcontractor.name,
-            );
-            isInitializedRef.current = true;
-            return;
-          }
-        } catch (e) {
-          console.error("Error parsing localStorage:", e);
-        }
+      // Load managers from personnel table
+      const { data: managersData, error: managersError } = await supabase
+        .from("personnel")
+        .select("*")
+        .eq("company_name", subcontractor.name)
+        .eq("role", "manager");
+
+      if (!managersError && managersData && managersData.length > 0) {
+        const loadedManagers: Manager[] = managersData.map((m: any) => ({
+          id: m.id,
+          name: m.full_name,
+          role: "Manager",
+          email: m.email || "",
+          phone: "",
+        }));
+        setManagers(loadedManagers);
+        console.log(
+          "[SubcontractorDetail] Loaded",
+          loadedManagers.length,
+          "managers from Supabase",
+        );
       }
-    }
 
-    // If nothing in localStorage, use props
-    if (subcontractor.documents && subcontractor.documents.length > 0) {
-      setDocuments(subcontractor.documents);
-    }
+      // Load workers from personnel table
+      const { data: workersData, error: workersError } = await supabase
+        .from("personnel")
+        .select("*")
+        .eq("company_name", subcontractor.name)
+        .eq("role", "worker");
 
-    // Attempt to load managers from props or local storage logic above
-    // Since we iterate keys above, let's just do it in the same loop or reuse the logic
-    // Re-running the logic for clarity and ensuring we catch the managers
-    for (const key of keys) {
-      const data = localStorage.getItem(key);
-      if (data) {
-        try {
-          const parsed = JSON.parse(data);
-          const found = parsed.find(
-            (i: any) =>
-              i.name?.toLowerCase().trim() ===
-              subcontractor.name?.toLowerCase().trim(),
-          );
-          if (found && found.managers && found.managers.length > 0) {
-            setManagers(found.managers);
-            console.log(
-              "[SubcontractorDetail] Loaded",
-              found.managers.length,
-              "managers for",
-              subcontractor.name,
-            );
-          }
-        } catch (e) {}
+      if (!workersError && workersData && workersData.length > 0) {
+        const loadedWorkers: Worker[] = workersData.map((w: any) => ({
+          id: w.id,
+          name: w.full_name,
+          role: "Worker",
+          status: w.status || "Active",
+          a1Status: "Pending" as const,
+          a1Start: "",
+          a1End: "",
+          a1Files: [],
+          certStatus: "None" as const,
+          certStart: "",
+          certEnd: "",
+          certFiles: [],
+          activeProjects: 0,
+          completedProjects: 0,
+          complaints: 0,
+          successRate: 100,
+          joinedDate: w.created_at || new Date().toISOString(),
+          avatarSeed: w.full_name,
+          synced: true,
+          supabaseId: w.id,
+        }));
+        setWorkers(loadedWorkers);
+        workersLoadedRef.current = true;
+        console.log(
+          "[SubcontractorDetail] Loaded",
+          loadedWorkers.length,
+          "workers from Supabase",
+        );
       }
-    }
 
-    isInitializedRef.current = true;
+      // Load documents from documents table
+      const { data: docsData, error: docsError } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("company_name", subcontractor.name);
+
+      if (!docsError && docsData && docsData.length > 0) {
+        const loadedDocs: DocumentItem[] = docsData.map((d: any) => ({
+          name: d.name,
+          startDate: d.start_date,
+          endDate: d.end_date,
+        }));
+        setDocuments(loadedDocs);
+        console.log(
+          "[SubcontractorDetail] Loaded",
+          loadedDocs.length,
+          "documents from Supabase",
+        );
+      } else if (
+        subcontractor.documents &&
+        subcontractor.documents.length > 0
+      ) {
+        setDocuments(subcontractor.documents);
+      }
+
+      isInitializedRef.current = true;
+      workersLoadedRef.current = true;
+    };
+
+    loadDataFromSupabase();
   }, [subcontractor.name, subcontractor.documents]);
 
-  // Load Workers from LocalStorage
-  useEffect(() => {
-    if (workersLoadedRef.current) return;
-
-    const keys = [
-      "prostruktion_subcontractors",
-      "prostruktion_contractors",
-      "prostruktion_partners",
-      "prostruktion_mediators",
-    ];
-
-    for (const key of keys) {
-      const data = localStorage.getItem(key);
-      if (data) {
-        try {
-          const parsed = JSON.parse(data);
-          const found = parsed.find(
-            (i: any) =>
-              i.name?.toLowerCase().trim() ===
-              subcontractor.name?.toLowerCase().trim(),
-          );
-          if (found && found.workers && found.workers.length > 0) {
-            setWorkers(found.workers);
-            console.log(
-              "[SubcontractorDetail] Loaded",
-              found.workers.length,
-              "workers for",
-              subcontractor.name,
-            );
-            workersLoadedRef.current = true;
-            return;
-          }
-        } catch (e) {}
-      }
-    }
-    workersLoadedRef.current = true;
-  }, [subcontractor.name]);
-
   const saveWorkersToStorage = async (workersToSave: Worker[]) => {
-    // 1. Determine local storage key
-    let storageKey = "";
-    if (subcontractor.role === "subcontractor")
-      storageKey = "prostruktion_subcontractors";
-    else if (subcontractor.role === "contractor")
-      storageKey = "prostruktion_contractors";
-    else if (subcontractor.role === "partner")
-      storageKey = "prostruktion_partners";
-    else if (subcontractor.role === "broker")
-      storageKey = "prostruktion_mediators";
-
-    // Fallback search
-    if (!storageKey) {
-      const keys = [
-        "prostruktion_subcontractors",
-        "prostruktion_contractors",
-        "prostruktion_partners",
-        "prostruktion_mediators",
-      ];
-      for (const key of keys) {
-        const data = localStorage.getItem(key);
-        if (data) {
-          try {
-            const parsed = JSON.parse(data);
-            const found = parsed.find(
-              (i: any) =>
-                i.name?.toLowerCase().trim() ===
-                subcontractor.name?.toLowerCase().trim(),
-            );
-            if (found) {
-              storageKey = key;
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-    }
-
-    if (storageKey) {
-      const storedData = localStorage.getItem(storageKey);
-      if (storedData) {
-        try {
-          const parsed = JSON.parse(storedData);
-          const index = parsed.findIndex(
-            (i: any) =>
-              i.name?.toLowerCase().trim() ===
-              subcontractor.name?.toLowerCase().trim(),
-          );
-          if (index !== -1) {
-            parsed[index].workers = workersToSave;
-            localStorage.setItem(storageKey, JSON.stringify(parsed));
-          }
-        } catch (e) {
-          console.error("Error saving workers to localStorage", e);
-        }
-      }
-    }
-
-    // 2. Persist to Supabase (Sync Logic)
-    // We only try to insert NEW workers that haven't been synced yet
-    // Or update status if changed. For simplicity in this demo, let's try to "Upsert" the latest one added.
-    // In a real app we'd iterate and upsert all, or just the changed one.
-    // Let's rely on the calling function to know WHICH one is new, but here we scan for unsynced.
-
-    // We can't access Supabase client directly here optimally without prop,
-    // assuming createClient is available via import.
-    // Importing at top file level would be best.
-    // Assuming 'createClient' is imported from '@/lib/supabase/client' based on context.
-
     const supabase = createClient();
 
-    // Find unsynced workers
-    const unsynced = workersToSave.filter((w) => !w.synced && !w.supabaseId);
+    for (const w of workersToSave) {
+      try {
+        const email = `${w.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.worker`;
 
-    if (unsynced.length > 0) {
-      for (const w of unsynced) {
-        const supabaseId = self.crypto.randomUUID();
-        try {
-          // profiles table: id, email, full_name, role, company_name, phone
-          // Workers are profiles with role "worker" or "subcontractor"? Usually "worker" logic isn't fully defined in schema,
-          // but let's assume we create a profile for them so they exist in DB.
-          // We use a fake email since we might not have one, or generate one.
-          const fakeEmail = `${w.name.replace(/\s+/g, ".").toLowerCase()}@prostruktion-worker.local`;
+        const { error } = await supabase.from("personnel").upsert(
+          {
+            full_name: w.name,
+            email: email,
+            role: "worker",
+            company_name: subcontractor.name,
+            status: w.status || "Active",
+          },
+          { onConflict: "email", ignoreDuplicates: false },
+        );
 
-          await supabase.from("personnel").upsert(
-            {
-              id: supabaseId,
-              full_name: w.name,
-              email: fakeEmail,
-              role: "worker",
-              company_name: subcontractor.name,
-              status: w.status || "Active",
-            },
-            { onConflict: "email", ignoreDuplicates: false },
-          );
-
-          // Update local state to mark as synced
-          w.supabaseId = supabaseId;
-          w.synced = true;
-
-          // Re-save local storage with synced flag
-          if (storageKey) {
-            const storedData = localStorage.getItem(storageKey);
-            if (storedData) {
-              const parsed = JSON.parse(storedData);
-              const index = parsed.findIndex(
-                (i: any) => i.name === subcontractor.name,
-              );
-              if (index !== -1) {
-                parsed[index].workers = workersToSave;
-                localStorage.setItem(storageKey, JSON.stringify(parsed));
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("Failed to sync worker to Supabase:", w.name, e);
+        if (error) {
+          console.error("Worker sync error:", w.name, error);
+        } else {
+          console.log("Worker synced:", w.name);
         }
+      } catch (e) {
+        console.warn("Failed to sync worker:", w.name, e);
       }
     }
   };
 
-  // Helper function to save documents to localStorage
-  const saveDocumentsToStorage = (docsToSave: DocumentItem[]) => {
-    // Determine storage key
-    let storageKey = "";
-    if (subcontractor.role === "subcontractor")
-      storageKey = "prostruktion_subcontractors";
-    else if (subcontractor.role === "contractor")
-      storageKey = "prostruktion_contractors";
-    else if (subcontractor.role === "partner")
-      storageKey = "prostruktion_partners";
-    else if (subcontractor.role === "broker")
-      storageKey = "prostruktion_mediators";
+  // Helper function to save documents to Supabase
+  const saveDocumentsToStorage = async (docsToSave: DocumentItem[]) => {
+    const supabase = createClient();
 
-    // Fallback: search all keys
-    if (!storageKey && subcontractor.name) {
-      const keys = [
-        "prostruktion_subcontractors",
-        "prostruktion_contractors",
-        "prostruktion_partners",
-        "prostruktion_mediators",
-      ];
-      for (const key of keys) {
-        const data = localStorage.getItem(key);
-        if (data) {
-          try {
-            const parsed = JSON.parse(data);
-            const found = parsed.find(
-              (i: any) =>
-                i.name?.toLowerCase().trim() ===
-                subcontractor.name?.toLowerCase().trim(),
-            );
-            if (found) {
-              storageKey = key;
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-    }
+    for (const doc of docsToSave) {
+      try {
+        let filePath: string | null = null;
 
-    if (!storageKey) {
-      console.warn(
-        "[SubcontractorDetail] No storage key found for:",
-        subcontractor.name,
-      );
-      return;
-    }
+        // Upload file to Supabase Storage if present
+        if (doc.file) {
+          const fileExt = doc.file.name.split(".").pop();
+          const fileName = `${subcontractor.name.replace(/\s+/g, "_")}/${Date.now()}_${doc.name.replace(/\s+/g, "_")}.${fileExt}`;
 
-    const storedData = localStorage.getItem(storageKey);
-    if (!storedData) return;
+          const { data: uploadData, error: uploadError } =
+            await supabase.storage.from("documents").upload(fileName, doc.file);
 
-    try {
-      const parsed = JSON.parse(storedData);
-      const index = parsed.findIndex(
-        (i: any) =>
-          i.name?.toLowerCase().trim() ===
-          subcontractor.name?.toLowerCase().trim(),
-      );
-
-      if (index !== -1) {
-        // Prepare docs for storage (strip File object)
-        const docsForStorage = docsToSave.map((d) => ({
-          name: d.name,
-          startDate: d.startDate,
-          endDate: d.endDate,
-        }));
-
-        // Calculate nearest expiry
-        let nearestExpiry: string | null = null;
-        let isExpired = false;
-
-        docsToSave.forEach((doc) => {
-          if (doc.endDate) {
-            const end = new Date(doc.endDate);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            if (end < today) isExpired = true;
-            if (!nearestExpiry || end < new Date(nearestExpiry)) {
-              nearestExpiry = doc.endDate;
-            }
+          if (uploadError) {
+            console.error("File upload error:", uploadError);
+          } else {
+            filePath = uploadData.path;
+            console.log("File uploaded:", filePath);
           }
-        });
+        }
 
-        parsed[index].documents = docsForStorage;
-        parsed[index].expiry = nearestExpiry;
-        parsed[index].docsExpired = isExpired;
-
-        localStorage.setItem(storageKey, JSON.stringify(parsed));
-        console.log(
-          "[SubcontractorDetail] Saved",
-          docsForStorage.length,
-          "documents for",
-          subcontractor.name,
+        // Save metadata to documents table
+        const { error } = await supabase.from("documents").upsert(
+          {
+            company_name: subcontractor.name,
+            name: doc.name,
+            file_path: filePath,
+            start_date: doc.startDate || null,
+            end_date: doc.endDate || null,
+          },
+          { onConflict: "id" },
         );
+
+        if (error) {
+          console.error("Document metadata save error:", doc.name, error);
+        } else {
+          console.log("Document saved:", doc.name);
+        }
+      } catch (e) {
+        console.error("Error saving document:", doc.name, e);
       }
-    } catch (e) {
-      console.error("Error saving to localStorage:", e);
     }
   };
 

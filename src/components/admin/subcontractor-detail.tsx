@@ -1421,41 +1421,48 @@ export function SubcontractorDetail({
                             className={`
                                 cursor-pointer hover:opacity-80 transition-opacity text-xs font-normal gap-1 pl-1
                                 ${
-                                  worker.certStatus === "Valid"
-                                    ? "bg-green-50 text-green-700 border-green-200"
-                                    : worker.certStatus === "Expiring Soon"
-                                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                                      : worker.certStatus === "Expired"
-                                        ? "bg-red-50 text-red-700 border-red-200"
-                                        : "bg-gray-100 text-gray-500 border-gray-200" // None/Missing
+                                  // First check if there are files - if not, always show gray
+                                  !worker.certFiles ||
+                                  worker.certFiles.length === 0
+                                    ? "bg-gray-100 text-gray-500 border-gray-200"
+                                    : worker.certStatus === "Valid"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : worker.certStatus === "Expiring Soon"
+                                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                                        : worker.certStatus === "Expired"
+                                          ? "bg-red-50 text-red-700 border-red-200"
+                                          : "bg-gray-100 text-gray-500 border-gray-200"
                                 }
                               `}
                             title={
                               worker.certFiles && worker.certFiles.length > 0
                                 ? worker.certFiles.join(", ")
-                                : "No files"
+                                : "No certificate uploaded"
                             }
                           >
-                            {worker.certStatus === "Valid" && (
-                              <CheckCircle2 className="h-3 w-3 fill-green-200 text-green-600" />
-                            )}
-                            {worker.certStatus === "Expiring Soon" && (
-                              <AlertCircle className="h-3 w-3 fill-amber-200 text-amber-600" />
-                            )}
-                            {worker.certStatus === "Expired" && (
-                              <AlertCircle className="h-3 w-3 fill-red-200 text-red-600" />
-                            )}
+                            {/* Only show icons when there are files */}
+                            {worker.certFiles &&
+                              worker.certFiles.length > 0 &&
+                              worker.certStatus === "Valid" && (
+                                <CheckCircle2 className="h-3 w-3 fill-green-200 text-green-600" />
+                              )}
+                            {worker.certFiles &&
+                              worker.certFiles.length > 0 &&
+                              worker.certStatus === "Expiring Soon" && (
+                                <AlertCircle className="h-3 w-3 fill-amber-200 text-amber-600" />
+                              )}
+                            {worker.certFiles &&
+                              worker.certFiles.length > 0 &&
+                              worker.certStatus === "Expired" && (
+                                <AlertCircle className="h-3 w-3 fill-red-200 text-red-600" />
+                              )}
 
-                            {/* Only show Active if there is a file, OR if logic dictates otherwise. User requested: "active although there is now certificate uploaded -> fix" implying No File = No Active */}
-                            {worker.certStatus === "Valid" &&
-                            worker.certFiles &&
-                            worker.certFiles.length > 0
-                              ? "Active"
-                              : worker.certStatus === "Valid" // Status is valid but NO file -> "No Cert"
-                                ? "No Cert"
-                                : worker.certStatus === "None"
-                                  ? "No Cert"
-                                  : worker.certStatus}
+                            {/* Show appropriate text based on file presence */}
+                            {worker.certFiles && worker.certFiles.length > 0
+                              ? worker.certStatus === "Valid"
+                                ? "Active"
+                                : worker.certStatus
+                              : "No Certificate"}
                           </Badge>
                         </div>
                       </TableCell>

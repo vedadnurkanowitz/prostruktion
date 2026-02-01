@@ -54,6 +54,9 @@ import {
   MoreHorizontal,
   Download,
   Filter,
+  Upload,
+  X,
+  ImageIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SubcontractorDetail } from "@/components/admin/subcontractor-detail";
@@ -182,6 +185,54 @@ export default function ContactsPage() {
     mediatorPhone: "",
   });
 
+  // Logo upload state
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Handle logo file selection
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Handle drag and drop for logo
+  const handleLogoDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleLogoDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleLogoDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const removeLogo = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+  };
+
   // Add Mediator State
   const [isAddMediatorOpen, setIsAddMediatorOpen] = useState(false);
   const [newMediator, setNewMediator] = useState({
@@ -283,6 +334,7 @@ export default function ContactsPage() {
         mediator: newContact.mediatorName || newContact.mediator, // Use new name if created
         contractor: newContact.contractor, // Link to contractor
         address: newContact.address,
+        logo: logoPreview, // Store logo as base64
       });
       localStorage.setItem(storageKey, JSON.stringify(existing));
     }
@@ -342,6 +394,9 @@ export default function ContactsPage() {
       mediatorEmail: "",
       mediatorPhone: "",
     });
+    // Reset logo
+    setLogoFile(null);
+    setLogoPreview(null);
   };
 
   const handleAddMediator = () => {
@@ -828,6 +883,86 @@ export default function ContactsPage() {
                     placeholder="Street, City, Zip"
                   />
                 </div>
+
+                {/* Logo Upload - Show for subcontractor, partner, contractor */}
+                {(newContact.role === "subcontractor" ||
+                  newContact.role === "partner" ||
+                  newContact.role === "contractor") && (
+                  <div className="grid gap-2">
+                    <Label>Company Logo</Label>
+                    <div
+                      className={`relative border-2 border-dashed rounded-lg transition-all duration-200 ${
+                        isDragging
+                          ? "border-primary bg-primary/5"
+                          : logoPreview
+                            ? "border-green-400 bg-green-50 dark:bg-green-950/20"
+                            : "border-gray-300 dark:border-gray-700 hover:border-primary/50 hover:bg-muted/30"
+                      }`}
+                      onDrop={handleLogoDrop}
+                      onDragOver={handleLogoDragOver}
+                      onDragLeave={handleLogoDragLeave}
+                    >
+                      {logoPreview ? (
+                        <div className="relative p-4">
+                          <div className="flex items-center gap-4">
+                            <div className="relative">
+                              <img
+                                src={logoPreview}
+                                alt="Logo preview"
+                                className="h-20 w-20 object-contain rounded-lg border bg-white dark:bg-gray-900 shadow-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={removeLogo}
+                                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                                Logo uploaded
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {logoFile?.name || "Logo image"}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Click or drag to replace
+                              </p>
+                            </div>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoChange}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center p-6 cursor-pointer">
+                          <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
+                            <ImageIcon className="h-6 w-6 text-gray-400" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Upload company logo
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Drag and drop or click to browse
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            PNG, JPG, SVG up to 2MB
+                          </p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoChange}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {newContact.role === "subcontractor" && (
                   <div className="grid gap-2">

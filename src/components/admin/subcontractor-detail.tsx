@@ -415,16 +415,15 @@ export function SubcontractorDetail({
             : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
 
         const { data, error } = await supabase
-          .from("profiles")
+          .from("personnel")
           .upsert(
             {
-              id: rowId, // Provide ID in case it's required and not auto-gen
+              id: rowId,
               full_name: manager.name,
               role: "manager",
-              user_role: "project_manager",
               email: email,
-              phone: manager.phone,
               company_name: subcontractor.name,
+              status: "Active",
             },
             { onConflict: "email", ignoreDuplicates: false },
           )
@@ -679,16 +678,14 @@ export function SubcontractorDetail({
           // We use a fake email since we might not have one, or generate one.
           const fakeEmail = `${w.name.replace(/\s+/g, ".").toLowerCase()}@prostruktion-worker.local`;
 
-          await supabase.from("profiles").upsert(
+          await supabase.from("personnel").upsert(
             {
               id: supabaseId,
               full_name: w.name,
               email: fakeEmail,
-              role: "subcontractor", // or 'worker'
+              role: "worker",
               company_name: subcontractor.name,
-              phone: null,
-              // If we want to store status/etc, we need columns or jsonb.
-              // For now, ensuring the record exists is the priority.
+              status: w.status || "Active",
             },
             { onConflict: "email", ignoreDuplicates: false },
           );
@@ -913,36 +910,8 @@ export function SubcontractorDetail({
 
     setWorkers(updatedWorkers);
 
-    // 1. Save to LocalStorage
+    // Save to LocalStorage only (profiles table doesn't have status column)
     setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
-
-    // 2. Sync to Supabase
-    if (updatedWorker && updatedWorker.supabaseId) {
-      const supabase = createClient();
-      try {
-        console.log(
-          "Syncing status update to Supabase for:",
-          updatedWorker.name,
-        );
-        const { error } = await supabase
-          .from("profiles")
-          .update({
-            // We map 'status' to a column in profiles.
-            // Assuming 'status' column exists or using 'metadata' jsonb if necessary.
-            // For now, attempting direct column update.
-            status: newStatus,
-          })
-          .eq("id", updatedWorker.supabaseId);
-
-        if (error) {
-          console.warn("Supabase status update failed:", error.message);
-        } else {
-          console.log("Supabase status update success");
-        }
-      } catch (e) {
-        console.error("Error updating status in Supabase:", e);
-      }
-    }
   };
 
   // Stats
@@ -1902,94 +1871,170 @@ export function SubcontractorDetail({
         <TabsContent value="management" className="space-y-4 mt-6">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-medium">Management Contacts</h3>
-            <Dialog open={isAddManagerOpen} onOpenChange={setIsAddManagerOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <UserCog className="mr-2 h-4 w-4" /> Add Manager
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingManagerId
-                      ? "Edit Management Personnel"
-                      : "Add Management Personnel"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {editingManagerId
-                      ? "Edit the details of this contact person."
-                      : "Add a new key contact person for this subcontractor."}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="m-name">Full Name</Label>
-                    <Input
-                      id="m-name"
-                      placeholder="e.g. Klaus Webber"
-                      value={newManager.name}
-                      onChange={(e) =>
-                        setNewManager({ ...newManager, name: e.target.value })
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  const supabase = createClient();
+                  const testId = self.crypto.randomUUID();
+                  try {
+                    // Check auth status first
+                    const { data: authData } = await supabase.auth.getUser();
+                    console.log(
+                      "Auth Status:",
+                      authData?.user
+                        ? `Logged in as ${authData.user.email}`
+                        : "Not authenticated",
+                    );
+
+                    const { data, error, status, statusText } = await supabase
+                      .from("personnel")
+                      .insert({
+                        id: testId,
+                        full_name: "Test Sync Probe",
+                        email: `probe.${testId}@test.local`,
+                        role: "manager",
+                        company_name: "Diagnostic Probe",
+                        status: "Active",
+                      })
+                      .select();
+
+                    if (error) {
+                      const errDetails = JSON.stringify(error, null, 2);
+                      console.error("Probe Failed:", error);
+                      console.error("Full Error Object:", errDetails);
+                      console.error("HTTP Status:", status, statusText);
+
+                      // RLS typically returns empty error or 403
+                      if (
+                        status === 403 ||
+                        (error && Object.keys(error).length === 0)
+                      ) {
+                        alert(
+                          `RLS BLOCKED: Row Level Security is preventing inserts.\n\nYou need to either:\n1. Disable RLS on 'profiles' table, OR\n2. Add a policy to allow inserts for your user role.\n\nHTTP Status: ${status}`,
+                        );
+                      } else {
+                        alert(
+                          `Probe Failed: ${error.message || errDetails}\nHTTP Status: ${status}`,
+                        );
                       }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="m-role">Role / Position</Label>
-                    <Input
-                      id="m-role"
-                      placeholder="e.g. CEO, Project Manager"
-                      value={newManager.role}
-                      onChange={(e) =>
-                        setNewManager({ ...newManager, role: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="m-email">Email Address</Label>
-                    <Input
-                      id="m-email"
-                      type="email"
-                      placeholder="name@company.com"
-                      value={newManager.email}
-                      onChange={(e) =>
-                        setNewManager({ ...newManager, email: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="m-phone">Phone Number</Label>
-                    <Input
-                      id="m-phone"
-                      placeholder="+49..."
-                      value={newManager.phone}
-                      onChange={(e) =>
-                        setNewManager({ ...newManager, phone: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsAddManagerOpen(false);
-                      setEditingManagerId(null);
-                      setNewManager({
-                        name: "",
-                        role: "",
-                        email: "",
-                        phone: "",
-                      });
-                    }}
-                  >
-                    Cancel
+                    } else {
+                      console.log("Probe Success:", data);
+                      alert(
+                        "Probe Success! Supabase connection is working for inserts.",
+                      );
+                      // Cleanup
+                      await supabase
+                        .from("personnel")
+                        .delete()
+                        .eq("id", testId);
+                    }
+                  } catch (e: any) {
+                    console.error("Probe Exception:", e);
+                    alert(`Probe Exception: ${e.message}`);
+                  }
+                }}
+              >
+                <ShieldCheck className="mr-2 h-4 w-4" /> Test Sync
+              </Button>
+              <Dialog
+                open={isAddManagerOpen}
+                onOpenChange={setIsAddManagerOpen}
+              >
+                <DialogTrigger asChild>
+                  <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <UserCog className="mr-2 h-4 w-4" /> Add Manager
                   </Button>
-                  <Button onClick={handleSaveManager}>
-                    {editingManagerId ? "Save Changes" : "Add Contact"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingManagerId
+                        ? "Edit Management Personnel"
+                        : "Add Management Personnel"}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {editingManagerId
+                        ? "Edit the details of this contact person."
+                        : "Add a new key contact person for this subcontractor."}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="m-name">Full Name</Label>
+                      <Input
+                        id="m-name"
+                        placeholder="e.g. Klaus Webber"
+                        value={newManager.name}
+                        onChange={(e) =>
+                          setNewManager({ ...newManager, name: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="m-role">Role / Position</Label>
+                      <Input
+                        id="m-role"
+                        placeholder="e.g. CEO, Project Manager"
+                        value={newManager.role}
+                        onChange={(e) =>
+                          setNewManager({ ...newManager, role: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="m-email">Email Address</Label>
+                      <Input
+                        id="m-email"
+                        type="email"
+                        placeholder="name@company.com"
+                        value={newManager.email}
+                        onChange={(e) =>
+                          setNewManager({
+                            ...newManager,
+                            email: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="m-phone">Phone Number</Label>
+                      <Input
+                        id="m-phone"
+                        placeholder="+49..."
+                        value={newManager.phone}
+                        onChange={(e) =>
+                          setNewManager({
+                            ...newManager,
+                            phone: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsAddManagerOpen(false);
+                        setEditingManagerId(null);
+                        setNewManager({
+                          name: "",
+                          role: "",
+                          email: "",
+                          phone: "",
+                        });
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveManager}>
+                      {editingManagerId ? "Save Changes" : "Add Contact"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           <Card>

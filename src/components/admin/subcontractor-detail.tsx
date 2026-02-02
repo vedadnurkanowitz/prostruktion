@@ -516,19 +516,42 @@ export function SubcontractorDetail({
       try {
         const email = `${w.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.worker`;
 
-        const { error } = await supabase.from("contacts").upsert(
-          {
-            name: w.name,
-            email: email,
-            role: "worker",
-            company_name: subcontractor.name,
-            status: w.status || "Active",
-          },
-          { onConflict: "email", ignoreDuplicates: false },
-        );
+        const payload = {
+          name: w.name,
+          email: email,
+          role: "worker",
+          company_name: subcontractor.name,
+          status: w.status || "Active",
+        };
+
+        // Manual Upsert Logic to avoid constraint error
+        // 1. Check if exists
+        const { data: existing } = await supabase
+          .from("contacts")
+          .select("id")
+          .eq("email", email)
+          .single();
+
+        let error;
+
+        if (existing) {
+          // 2. Update
+          const result = await supabase
+            .from("contacts")
+            .update(payload)
+            .eq("id", existing.id);
+          error = result.error;
+        } else {
+          // 3. Insert
+          const result = await supabase
+            .from("contacts")
+            .insert(payload);
+          error = result.error;
+        }
 
         if (error) {
-          console.error("Worker sync error:", w.name, error);
+          console.error("Worker sync error:", w.name, JSON.stringify(error, null, 2));
+          console.error("Payload was:", payload);
         } else {
           console.log("Worker synced:", w.name);
         }
@@ -645,9 +668,9 @@ export function SubcontractorDetail({
           w.completedProjects === 0
             ? 100
             : Math.round(
-                ((w.completedProjects - w.complaints) / w.completedProjects) *
-                  100,
-              );
+              ((w.completedProjects - w.complaints) / w.completedProjects) *
+              100,
+            );
         // Ensure within bounds 0-100 just in case complaints > completed (which shouldn't happen logically but mathematically can)
         const clamped = Math.max(0, Math.min(100, calculated));
         return w.successRate !== clamped;
@@ -660,9 +683,9 @@ export function SubcontractorDetail({
           w.completedProjects === 0
             ? 100
             : Math.round(
-                ((w.completedProjects - w.complaints) / w.completedProjects) *
-                  100,
-              );
+              ((w.completedProjects - w.complaints) / w.completedProjects) *
+              100,
+            );
         return { ...w, successRate: Math.max(0, Math.min(100, calculated)) };
       });
     });
@@ -1344,28 +1367,28 @@ export function SubcontractorDetail({
               <Table>
                 <TableHeader className="bg-gray-50/50 dark:bg-gray-900/50">
                   <TableRow>
-                    <TableHead className="font-semibold w-[220px]">
+                    <TableHead className="font-semibold w-[250px]">
                       Name
                     </TableHead>
-                    <TableHead className="font-semibold w-[120px]">
+                    <TableHead className="font-semibold w-[150px]">
                       Role / Trade
                     </TableHead>
-                    <TableHead className="font-semibold w-[100px]">
+                    <TableHead className="font-semibold w-[100px] text-center">
                       A1
                     </TableHead>
-                    <TableHead className="font-semibold w-[150px]">
+                    <TableHead className="font-semibold w-[150px] text-center">
                       Certification
                     </TableHead>
-                    <TableHead className="font-semibold w-[120px]">
+                    <TableHead className="font-semibold w-[100px] text-center">
                       Completed
                     </TableHead>
-                    <TableHead className="font-semibold w-[100px]">
+                    <TableHead className="font-semibold w-[100px] text-center">
                       Complaints
                     </TableHead>
-                    <TableHead className="font-semibold w-[80px]">
+                    <TableHead className="font-semibold w-[80px] text-center">
                       Success
                     </TableHead>
-                    <TableHead className="font-semibold w-[140px]">
+                    <TableHead className="font-semibold w-[140px] text-center">
                       Status
                     </TableHead>
                     <TableHead className="font-semibold text-right w-[60px]">
@@ -1379,7 +1402,7 @@ export function SubcontractorDetail({
                       key={worker.id}
                       className="group hover:bg-muted/50 transition-colors"
                     >
-                      <TableCell>
+                      <TableCell className="w-[250px]">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10 border bg-gray-100">
                             <AvatarImage
@@ -1399,43 +1422,44 @@ export function SubcontractorDetail({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm w-[120px]">
+                      <TableCell className="text-sm w-[150px]">
                         {worker.role}
                       </TableCell>
-                      <TableCell className="w-[100px]">
-                        <span
-                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium w-fit ${
-                            worker.a1Files && worker.a1Files.length > 0
+                      <TableCell className="w-[100px] text-center">
+                        <div className="flex justify-center">
+                          <span
+                            className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md text-xs font-medium w-fit ${worker.a1Files && worker.a1Files.length > 0
                               ? "bg-green-100 text-green-700"
                               : "bg-gray-100 text-gray-500"
-                          }`}
-                        >
-                          {worker.a1Files && worker.a1Files.length > 0
-                            ? "Uploaded"
-                            : "No File"}
-                        </span>
+                              }`}
+                          >
+                            {worker.a1Files && worker.a1Files.length > 0
+                              ? "Uploaded"
+                              : "No File"}
+                          </span>
+                        </div>
                       </TableCell>
-                      <TableCell className="w-[150px]">
-                        <div className="flex items-center gap-2">
+                      <TableCell className="w-[150px] text-center">
+                        <div className="flex items-center justify-center gap-2">
                           {/* Certificate Status Badge */}
                           <Badge
                             variant="outline"
                             className={`
-                                cursor-pointer hover:opacity-80 transition-opacity text-xs font-normal gap-1 pl-1
-                                ${
-                                  // First check if there are files - if not, always show gray
-                                  !worker.certFiles ||
-                                  worker.certFiles.length === 0
-                                    ? "bg-gray-100 text-gray-500 border-gray-200"
-                                    : worker.certStatus === "Valid"
-                                      ? "bg-green-50 text-green-700 border-green-200"
-                                      : worker.certStatus === "Expiring Soon"
-                                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                                        : worker.certStatus === "Expired"
-                                          ? "bg-red-50 text-red-700 border-red-200"
-                                          : "bg-gray-100 text-gray-500 border-gray-200"
-                                }
-                              `}
+                                  cursor-pointer hover:opacity-80 transition-opacity text-xs font-normal gap-1 pl-1
+                                  ${
+                              // First check if there are files - if not, always show gray
+                              !worker.certFiles ||
+                                worker.certFiles.length === 0
+                                ? "bg-gray-100 text-gray-500 border-gray-200"
+                                : worker.certStatus === "Valid"
+                                  ? "bg-green-50 text-green-700 border-green-200"
+                                  : worker.certStatus === "Expiring Soon"
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : worker.certStatus === "Expired"
+                                      ? "bg-red-50 text-red-700 border-red-200"
+                                      : "bg-gray-100 text-gray-500 border-gray-200"
+                              }
+                                `}
                             title={
                               worker.certFiles && worker.certFiles.length > 0
                                 ? worker.certFiles.join(", ")
@@ -1468,20 +1492,20 @@ export function SubcontractorDetail({
                           </Badge>
                         </div>
                       </TableCell>
-                      <TableCell className="w-[120px]">
-                        <div className="flex items-center gap-2 text-sm">
+                      <TableCell className="w-[100px] text-center">
+                        <div className="flex items-center justify-center gap-2 text-sm">
                           <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
                           <span>{worker.completedProjects}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="w-[100px]">
-                        <div className="flex items-center gap-2 text-sm">
+                      <TableCell className="w-[100px] text-center">
+                        <div className="flex items-center justify-center gap-2 text-sm">
                           <UserCog className="h-4 w-4 text-muted-foreground" />
                           <span>{worker.complaints}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="w-[80px]">
-                        <div className="flex items-center gap-1 text-sm font-medium">
+                      <TableCell className="w-[80px] text-center">
+                        <div className="flex items-center justify-center gap-1 text-sm font-medium">
                           <span
                             className={`${worker.successRate >= 90 ? "text-green-600" : worker.successRate >= 70 ? "text-amber-600" : "text-red-600"}`}
                           >
@@ -1489,50 +1513,51 @@ export function SubcontractorDetail({
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="w-[140px]">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Badge
-                              variant="outline"
-                              className={`
-                                cursor-pointer hover:opacity-80 transition-opacity
-                                ${
-                                  worker.status === "Active"
+                      <TableCell className="w-[140px] text-center">
+                        <div className="flex justify-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Badge
+                                variant="outline"
+                                className={`
+                                  cursor-pointer hover:opacity-80 transition-opacity
+                                  ${worker.status === "Active"
                                     ? "bg-green-50 text-green-700 border-green-200"
                                     : worker.status === "On Leave"
                                       ? "bg-amber-50 text-amber-700 border-amber-200"
                                       : "bg-red-50 text-red-700 border-red-200"
+                                  }
+                                `}
+                              >
+                                {worker.status}{" "}
+                                <ChevronDown className="ml-1 h-3 w-3" />
+                              </Badge>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleStatusUpdate(worker.id, "Active")
                                 }
-                              `}
-                            >
-                              {worker.status}{" "}
-                              <ChevronDown className="ml-1 h-3 w-3" />
-                            </Badge>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleStatusUpdate(worker.id, "Active")
-                              }
-                            >
-                              Active
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleStatusUpdate(worker.id, "On Leave")
-                              }
-                            >
-                              On Leave
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleStatusUpdate(worker.id, "Blocked")
-                              }
-                            >
-                              Blocked
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              >
+                                Active
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleStatusUpdate(worker.id, "On Leave")
+                                }
+                              >
+                                On Leave
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleStatusUpdate(worker.id, "Blocked")
+                                }
+                              >
+                                Blocked
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right w-[60px]">
                         <DropdownMenu>
@@ -1612,11 +1637,10 @@ export function SubcontractorDetail({
                             currentPage === pageNum ? "secondary" : "outline"
                           }
                           size="sm"
-                          className={`h-8 w-8 p-0 ${
-                            currentPage === pageNum
-                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                              : "text-muted-foreground"
-                          }`}
+                          className={`h-8 w-8 p-0 ${currentPage === pageNum
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "text-muted-foreground"
+                            }`}
                           onClick={() => setCurrentPage(pageNum)}
                         >
                           {pageNum}

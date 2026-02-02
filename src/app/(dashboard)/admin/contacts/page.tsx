@@ -57,6 +57,7 @@ import {
   Upload,
   X,
   ImageIcon,
+  Trash2,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SubcontractorDetail } from "@/components/admin/subcontractor-detail";
@@ -66,12 +67,12 @@ type Contact = {
   name: string;
   companyName?: string;
   role:
-    | "partner"
-    | "broker"
-    | "contractor"
-    | "subcontractor"
-    | "staff"
-    | "super_admin";
+  | "partner"
+  | "broker"
+  | "contractor"
+  | "subcontractor"
+  | "staff"
+  | "super_admin";
   jobTitle?: string;
   email?: string;
   phone?: string;
@@ -240,6 +241,74 @@ export default function ContactsPage() {
     email: "",
     phone: "",
   });
+
+  // Delete State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteClick = (contact: Contact) => {
+    setContactToDelete(contact);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!contactToDelete) return;
+
+    setIsDeleting(true);
+    const { id, role, name, companyName, email } = contactToDelete;
+
+    // 1. Remove from LocalStorage
+    let storageKey = "";
+    if (role === "subcontractor") storageKey = "prostruktion_subcontractors";
+    else if (role === "contractor") storageKey = "prostruktion_contractors";
+    else if (role === "partner") storageKey = "prostruktion_partners";
+    else if (role === "broker") storageKey = "prostruktion_mediators";
+
+    if (storageKey) {
+      try {
+        const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
+        // Filter by name/email/company since generated IDs might not match LS logic perfectly 
+        // (LS logic in this file uses simple push, IDs are generated on load. 
+        // We match by name/company/email to be safe).
+        const update = existing.filter((item: any) => {
+          // Try to match somewhat loosely to ensure deletion
+          return item.name !== name && item.name !== companyName && item.name !== contactToDelete.name;
+        });
+        localStorage.setItem(storageKey, JSON.stringify(update));
+      } catch (e) {
+        console.error("Error removing from LocalStorage", e);
+      }
+    }
+
+    // 2. Remove from Supabase
+    try {
+      const supabase = createClient();
+      // ID in state might be 'sub-xxxxx' (generated) or uuid (real). 
+      // If it starts with 'sub-', 'cont-', etc it's likely a LS contact, but let's try to delete by ID anyway if it looks like a UUID,
+      // or try to match by email if possible.
+
+      let shouldDeleteByEmail = id.startsWith("sub-") || id.startsWith("cont-") || id.startsWith("part-") || id.startsWith("med-");
+
+      if (!shouldDeleteByEmail) {
+        await supabase.from("profiles").delete().eq("id", id);
+      } else if (email) {
+        // Fallback: delete by email if ID was client-generated mock
+        await supabase.from("profiles").delete().eq("email", email);
+      }
+
+    } catch (e) {
+      console.error("Error removing from Supabase", e);
+    }
+
+    // 3. Update Local State
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+
+    // Close & Reset
+    setIsDeleting(false);
+    setDeleteDialogOpen(false);
+    setContactToDelete(null);
+  };
 
   const handleAddContact = () => {
     // Basic Validation
@@ -888,81 +957,80 @@ export default function ContactsPage() {
                 {(newContact.role === "subcontractor" ||
                   newContact.role === "partner" ||
                   newContact.role === "contractor") && (
-                  <div className="grid gap-2">
-                    <Label>Company Logo</Label>
-                    <div
-                      className={`relative border-2 border-dashed rounded-lg transition-all duration-200 ${
-                        isDragging
+                    <div className="grid gap-2">
+                      <Label>Company Logo</Label>
+                      <div
+                        className={`relative border-2 border-dashed rounded-lg transition-all duration-200 ${isDragging
                           ? "border-primary bg-primary/5"
                           : logoPreview
                             ? "border-green-400 bg-green-50 dark:bg-green-950/20"
                             : "border-gray-300 dark:border-gray-700 hover:border-primary/50 hover:bg-muted/30"
-                      }`}
-                      onDrop={handleLogoDrop}
-                      onDragOver={handleLogoDragOver}
-                      onDragLeave={handleLogoDragLeave}
-                    >
-                      {logoPreview ? (
-                        <div className="relative p-4">
-                          <div className="flex items-center gap-4">
-                            <div className="relative">
-                              <img
-                                src={logoPreview}
-                                alt="Logo preview"
-                                className="h-20 w-20 object-contain rounded-lg border bg-white dark:bg-gray-900 shadow-sm"
-                              />
-                              <button
-                                type="button"
-                                onClick={removeLogo}
-                                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
+                          }`}
+                        onDrop={handleLogoDrop}
+                        onDragOver={handleLogoDragOver}
+                        onDragLeave={handleLogoDragLeave}
+                      >
+                        {logoPreview ? (
+                          <div className="relative p-4">
+                            <div className="flex items-center gap-4">
+                              <div className="relative">
+                                <img
+                                  src={logoPreview}
+                                  alt="Logo preview"
+                                  className="h-20 w-20 object-contain rounded-lg border bg-white dark:bg-gray-900 shadow-sm"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={removeLogo}
+                                  className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                                  Logo uploaded
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {logoFile?.name || "Logo image"}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Click or drag to replace
+                                </p>
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                                Logo uploaded
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {logoFile?.name || "Logo image"}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Click or drag to replace
-                              </p>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoChange}
+                              className="absolute inset-0 opacity-0 cursor-pointer"
+                            />
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center p-6 cursor-pointer">
+                            <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
+                              <ImageIcon className="h-6 w-6 text-gray-400" />
                             </div>
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleLogoChange}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                          />
-                        </div>
-                      ) : (
-                        <label className="flex flex-col items-center justify-center p-6 cursor-pointer">
-                          <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
-                            <ImageIcon className="h-6 w-6 text-gray-400" />
-                          </div>
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Upload company logo
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Drag and drop or click to browse
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            PNG, JPG, SVG up to 2MB
-                          </p>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleLogoChange}
-                            className="hidden"
-                          />
-                        </label>
-                      )}
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Upload company logo
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Drag and drop or click to browse
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              PNG, JPG, SVG up to 2MB
+                            </p>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoChange}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {newContact.role === "subcontractor" && (
                   <div className="grid gap-2">
@@ -1172,17 +1240,28 @@ export default function ContactsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {(contact.role === "subcontractor" ||
-                      contact.role === "partner") && (
+                    <div className="flex items-center justify-end gap-2">
+                      {(contact.role === "subcontractor" ||
+                        contact.role === "partner") && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-200"
+                            onClick={() => handleViewClick(contact)}
+                          >
+                            View <ChevronRight className="ml-1 h-3 w-3" />
+                          </Button>
+                        )}
+
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-8 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-200"
-                        onClick={() => handleViewClick(contact)}
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => handleDeleteClick(contact)}
                       >
-                        View <ChevronRight className="ml-1 h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                    )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -1237,11 +1316,10 @@ export default function ContactsPage() {
                     key={pageNum}
                     variant={currentPage === pageNum ? "secondary" : "outline"}
                     size="sm"
-                    className={`h-8 w-8 p-0 ${
-                      currentPage === pageNum
-                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                        : "text-muted-foreground"
-                    }`}
+                    className={`h-8 w-8 p-0 ${currentPage === pageNum
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "text-muted-foreground"
+                      }`}
                     onClick={() => setCurrentPage(pageNum)}
                   >
                     {pageNum}
@@ -1449,6 +1527,39 @@ export default function ContactsPage() {
               Cancel
             </Button>
             <Button onClick={handleAddMediator}>Add Mediator</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Delete Contact
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{contactToDelete?.companyName || contactToDelete?.name}</strong>?
+              <br /><br />
+              This action cannot be undone. The contact will be removed from your list permanently.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? "Deleting..." : "Delete Contact"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

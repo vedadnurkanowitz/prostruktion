@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -51,8 +52,9 @@ import {
   RotateCw,
   AlertCircle,
   Users,
+  Trophy,
 } from "lucide-react";
-import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
+// import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data"; // Unused
 import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
 
@@ -81,29 +83,22 @@ export default function AdminProjects() {
     }),
     scheduledStart: "", // Added scheduled start date
     amount: "",
+    description: "", // Added description for email paste
+    customerNumber: "",
+    customerPhone: "",
+    customerEmail: "",
+    estimatedHours: "", // Added estimated max hours
     workers: [] as string[], // Selected worker IDs
   });
 
-  // Calculator State
-  const [calcState, setCalcState] = useState({
-    units: 0,
-    services: [] as string[],
-    quantityBonusTier: "none",
-    calculation: {
-      baseSum: 0,
-      bonus1: 0,
-      sumWithBonus1: 0,
-      bonus2: 0,
-      servicesSum: 0,
-      total: 0,
-    },
-  });
+  // Calculator State REMOVED
 
   // User Lists for Dropdowns
   const [partners, setPartners] = useState<any[]>([]);
   const [mediators, setMediators] = useState<any[]>([]);
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
+  const [availableWorkers, setAvailableWorkers] = useState<any[]>([]); // Added availableWorkers state
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [archivedCount, setArchivedCount] = useState(0);
 
@@ -290,53 +285,46 @@ export default function AdminProjects() {
     fetchDropdownUsers();
   }, []);
 
-  // Effect to calculate totals when inputs change
+  // Effect to fetch available workers when Subcontractor or Partner changes
   useEffect(() => {
-    const unitIndex = Math.min(calcState.units, 16); // Cap at 16
-    const costs = PRICING_MATRIX.baseCosts[unitIndex];
+    const fetchWorkers = async () => {
+      const supabase = createClient();
+      // We need to fetch based on names because newProject.sub/partner stores NAME (or we check IDs if available)
+      // The current state stores Names in .sub/.partner and IDs in .subId/.partnerId
+      // The contacts table "company_name" likely matches the Name.
 
-    // Sum of base costs
-    const baseSum = Object.values(costs).reduce((a, b) => a + b, 0);
+      const subName = newProject.sub;
+      const partnerName = newProject.partner;
 
-    // Bonus 1 (Quality & Deadline)
-    // Only apply if a contractor/partner is assigned
-    const hasAssignee = !!newProject.contractor || !!newProject.partner;
-    const bonus1 = hasAssignee ? PRICING_MATRIX.bonus1[unitIndex] || 0 : 0;
-    const sumWithBonus1 = baseSum + bonus1;
+      const targetCompanies = [subName, partnerName].filter(Boolean);
 
-    // Bonus 2 (Quantity)
-    // @ts-ignore - Indexing with string
-    const bonus2 = PRICING_MATRIX.bonus2[calcState.quantityBonusTier] || 0;
+      if (targetCompanies.length === 0) {
+        setAvailableWorkers([]);
+        return;
+      }
 
-    // Additional Services
-    const servicesSum = calcState.services.reduce((sum, serviceId) => {
-      const service = ADDITIONAL_SERVICES.find((s) => s.id === serviceId);
-      return sum + (service ? service.price : 0);
-    }, 0);
+      try {
+        const { data: workers, error } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("role", "worker")
+          .in("company_name", targetCompanies);
 
-    const total = sumWithBonus1 + bonus2 + servicesSum;
+        if (error) {
+          console.error("Error fetching workers:", error);
+          setAvailableWorkers([]);
+        } else {
+          setAvailableWorkers(workers || []);
+        }
+      } catch (err) {
+        console.error("Unexpected error fetching workers:", err);
+      }
+    };
 
-    setCalcState((prev) => ({
-      ...prev,
-      calculation: {
-        baseSum,
-        bonus1,
-        sumWithBonus1,
-        bonus2,
-        servicesSum,
-        total,
-      },
-    }));
+    fetchWorkers();
+  }, [newProject.sub, newProject.partner]);
 
-    // Update the main form amount
-    setNewProject((prev) => ({ ...prev, amount: total.toString() }));
-  }, [
-    calcState.units,
-    calcState.services,
-    calcState.quantityBonusTier,
-    newProject.contractor,
-    newProject.partner,
-  ]);
+  // Effect to calculate totals REMOVED - Manual Entry now
 
   // Calculate Penalty Helper
   const calculatePenalty = (amountStr: string, startDateStr: string) => {
@@ -419,6 +407,9 @@ export default function AdminProjects() {
             sub: p.description
               ? p.description.match(/Subcontractor: (.*?) \(/)?.[1] || ""
               : "",
+            estimatedHours: p.description
+              ? p.description.match(/Estimated Max Hours: (.*)/)?.[1] || "N/A"
+              : "N/A",
             start: new Date(p.created_at || Date.now()).toLocaleDateString(
               "en-US",
               { year: "numeric", month: "short", day: "numeric" },
@@ -482,82 +473,7 @@ export default function AdminProjects() {
   // - Mediator: Sum of all projects done by their subcontractors (assigned to this mediator).
   // - Contractor: Individual project count.
   // Bonus applies only if monthly count >= 8 (e.g., 5 projects = No Bonus).
-  useEffect(() => {
-    // Priority: Partner > Mediator > Contractor
-    // If a partner is selected, we count based on Partner's total volume
-    // If no partner but Mediator is selected, we count based on Mediator's volume
-    // If neither, we count based on Contractor's volume (individual stats)
-
-    let targetEntity = "";
-    let entityType: "partner" | "mediator" | "contractor" | "none" = "none";
-
-    if (newProject.partner) {
-      targetEntity = newProject.partner;
-      entityType = "partner";
-    } else if (newProject.mediator) {
-      targetEntity = newProject.mediator;
-      entityType = "mediator";
-    } else if (newProject.contractor) {
-      targetEntity = newProject.contractor;
-      entityType = "contractor";
-    }
-
-    if (entityType === "none" || !targetEntity) {
-      setCalcState((prev) => ({ ...prev, quantityBonusTier: "none" }));
-      return;
-    }
-
-    // Parse current project start date
-    const currentStartDate = new Date(newProject.start);
-    const textMonth = currentStartDate.toLocaleString("default", {
-      month: "short",
-    });
-    const textYear = currentStartDate.getFullYear();
-
-    // Filter projects for this entity in the same month/year
-    const monthlyCount = projects.filter((p) => {
-      // Check Date match
-      const pDate = new Date(p.start);
-      const pMonth = pDate.toLocaleString("default", { month: "short" });
-      const pYear = pDate.getFullYear();
-
-      if (pMonth !== textMonth || pYear !== textYear) return false;
-
-      // Check Entity match
-      if (entityType === "partner") {
-        return p.partner === targetEntity;
-      } else if (entityType === "mediator") {
-        return p.mediator === targetEntity;
-      } else {
-        return p.contractor === targetEntity;
-      }
-    }).length;
-
-    console.log(
-      `Entity: ${targetEntity} (${entityType}) | Monthly Count: ${monthlyCount} | Month: ${textMonth} ${textYear}`,
-    );
-
-    // Determine Tier
-    // Tiers based on PRICING_MATRIX keys: "08-12", "12-36", "36+"
-    const currentCount = monthlyCount + 1; // Include current project
-
-    let tier = "none";
-    if (currentCount >= 36) {
-      tier = "36+";
-    } else if (currentCount >= 12) {
-      tier = "12-36";
-    } else if (currentCount >= 8) {
-      tier = "08-12";
-    }
-
-    setCalcState((prev) => ({ ...prev, quantityBonusTier: tier }));
-  }, [
-    newProject.contractor,
-    newProject.partner,
-    newProject.mediator,
-    newProject.start,
-    projects,
-  ]);
+  // Quantity Bonus logic removed as per new requirements (calculated subsequently)
 
   const handleAddProject = async () => {
     // Basic validation
@@ -570,9 +486,10 @@ export default function AdminProjects() {
       abnahme: "No",
       invoiceHeader: "Create Invoice",
       invoiceStatus: "Ready",
-      amount: `€ ${calcState.calculation.total.toLocaleString()}`,
-      // Save calculation details for reference
-      calculationDetails: calcState,
+      amount: isNaN(parseFloat(newProject.amount)) ? newProject.amount : `€ ${parseFloat(newProject.amount).toLocaleString()}`,
+      description: newProject.description, // Store manual description
+      // Save calculation details for reference - REMOVED calcState
+      calculationDetails: null,
     };
 
     const updatedProjects = [projectData, ...projects];
@@ -587,15 +504,19 @@ export default function AdminProjects() {
       const supabase = createClient();
 
       const metadata = `
+Customer Number: ${newProject.customerNumber}
+Customer Phone: ${newProject.customerPhone}
+Customer Email: ${newProject.customerEmail}
 Address: ${newProject.address}
+Estimated Max Hours: ${newProject.estimatedHours}
 Subcontractor: ${newProject.sub} (ID: ${newProject.subId || "N/A"})
 Contractor: ${newProject.contractor}
       `.trim();
 
       await supabase.from("projects").insert({
         title: newProject.project,
-        description: metadata,
-        contract_value: calcState.calculation.total,
+        description: newProject.description || metadata, // Use description if provided, else metadata
+        contract_value: parseFloat(newProject.amount) || 0,
         partner_id: newProject.partnerId || null,
         broker_id: newProject.mediatorId || null,
         status: "active", // Default status for DB
@@ -623,20 +544,12 @@ Contractor: ${newProject.contractor}
       }),
       scheduledStart: "", // Reset scheduled start
       amount: "",
+      description: "",
+      customerNumber: "",
+      customerPhone: "",
+      customerEmail: "",
+      estimatedHours: "",
       workers: [],
-    });
-    setCalcState({
-      units: 0,
-      services: [],
-      quantityBonusTier: "none",
-      calculation: {
-        baseSum: 0,
-        bonus1: 0,
-        sumWithBonus1: 0,
-        bonus2: 0,
-        servicesSum: 0,
-        total: 0,
-      },
     });
   };
 
@@ -667,9 +580,12 @@ Contractor: ${newProject.contractor}
       projectToUpdate.status = "In Progress";
       projectToUpdate.statusColor = "bg-orange-500 text-white";
 
-      // Note: We keep the original start date as the "Scheduled Start"
-      // We might want to set a new "Actual Start" date here?
-      // For now, we just change status as requested.
+      // Update start date to now (Launch date)
+      projectToUpdate.start = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
 
       setProjects(updatedProjects);
       localStorage.setItem(
@@ -679,9 +595,33 @@ Contractor: ${newProject.contractor}
     }
   };
 
+  const handleActualHoursChange = (project: any, value: string) => {
+    const updatedProjects = [...projects];
+    // Find project by reference in the main array
+    const mainIndex = updatedProjects.findIndex(p => p === project);
+
+    if (mainIndex !== -1) {
+      updatedProjects[mainIndex].actualHours = value;
+      setProjects(updatedProjects);
+      localStorage.setItem("prostruktion_projects_v1", JSON.stringify(updatedProjects));
+    }
+  };
+
+  const handleProjectFieldChange = (project: any, field: string, value: any) => {
+    const updatedProjects = [...projects];
+    const mainIndex = updatedProjects.findIndex(p => p === project);
+
+    if (mainIndex !== -1) {
+      updatedProjects[mainIndex][field] = value;
+      setProjects(updatedProjects);
+      localStorage.setItem("prostruktion_projects_v1", JSON.stringify(updatedProjects));
+    }
+  };
+
   const handleStatusChange = (index: number, newStatus: string) => {
     const updatedProjects = [...projects];
     // Find project based on filtering logic
+
     const activeProjects = projects.filter((p) => p.status !== "Scheduled");
     const targetProject = activeProjects[index];
 
@@ -1052,28 +992,22 @@ Contractor: ${newProject.contractor}
             <TableHeader className="bg-yellow-50 dark:bg-yellow-900/10">
               <TableRow>
                 <TableHead className="w-[40px]"></TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Project
+                <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
+                  Name
                 </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Contractor
+                <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
+                  Subcontractor
                 </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Partner
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Sub
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
                   Scheduled date
                 </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                <TableHead className="w-[10%] font-semibold text-gray-700 dark:text-gray-300">
                   Penalty
                 </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
                   Amount
                 </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
                   Net
                 </TableHead>
                 <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
@@ -1086,7 +1020,7 @@ Contractor: ${newProject.contractor}
                 .length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={10}
+                    colSpan={8}
                     className="text-center py-8 text-muted-foreground"
                   >
                     No scheduled projects found.
@@ -1140,8 +1074,6 @@ Contractor: ${newProject.contractor}
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>{project.contractor}</TableCell>
-                          <TableCell>{project.partner}</TableCell>
                           <TableCell>{project.sub}</TableCell>
                           <TableCell className="text-sm">
                             {project.start}
@@ -1187,111 +1119,194 @@ Contractor: ${newProject.contractor}
                           </TableCell>
                         </TableRow>
                         {isExpanded && (
-                          <TableRow className="bg-gray-100 dark:bg-gray-800 border-t border-gray-200">
-                            <TableCell colSpan={10}>
-                              <div className="p-4">
-                                <div className="mb-4">
-                                  <div className="text-xs text-muted-foreground">
-                                    Mediator
-                                  </div>
-                                  <div className="text-sm font-medium">
-                                    {project.mediator || "-"}
+                          <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
+                            <TableCell colSpan={10} className="p-0">
+                              <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Column 1: Project & Customer Details */}
+                                <div className="space-y-4 h-full flex flex-col">
+                                  <div className="flex flex-col h-full">
+                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                      <FileText className="h-3 w-3" /> Customer Details
+                                    </h4>
+                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
+                                      <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
+                                        <span className="text-muted-foreground text-xs">Customer No:</span>
+                                        <span className="font-medium">{project.customerNumber || "N/A"}</span>
+
+                                        <span className="text-muted-foreground text-xs">Phone:</span>
+                                        <span className="font-medium">{project.customerPhone || "N/A"}</span>
+
+                                        <span className="text-muted-foreground text-xs">Email:</span>
+                                        <span className="font-medium truncate" title={project.customerEmail}>{project.customerEmail || "N/A"}</span>
+
+                                        <span className="text-muted-foreground text-xs">Location:</span>
+                                        <span className="font-medium">{project.address}</span>
+                                      </div>
+                                      {project.description && (
+                                        <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
+                                          <span className="text-xs text-muted-foreground block mb-2 shrink-0">Notes:</span>
+                                          <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
+                                            {project.description}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
 
-                                <h4 className="font-semibold text-sm mb-2">
-                                  Assigned Workers
-                                </h4>
-                                {project.workers &&
-                                project.workers.length > 0 ? (
-                                  <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
-                                    <Table>
-                                      <TableHeader className="bg-gray-50/50 dark:bg-gray-900/50">
-                                        <TableRow>
-                                          <TableHead className="font-semibold text-xs py-2 h-9">
-                                            Name
-                                          </TableHead>
-                                          <TableHead className="font-semibold text-xs py-2 h-9">
-                                            Role
-                                          </TableHead>
-                                          <TableHead className="font-semibold text-xs py-2 h-9">
-                                            A1
-                                          </TableHead>
-                                          <TableHead className="font-semibold text-xs py-2 h-9">
-                                            Cooling
-                                          </TableHead>
-                                          <TableHead className="font-semibold text-xs text-center py-2 h-9">
-                                            Complaints
-                                          </TableHead>
-                                          <TableHead className="font-semibold text-xs text-center py-2 h-9">
-                                            Success Rate
-                                          </TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {project.workers.map(
-                                          (workerId: string) => {
-                                            // Worker lookup removed. Using placeholder.
-                                            return (
-                                              <TableRow
-                                                key={workerId}
-                                                className="hover:bg-muted/50"
-                                              >
-                                                <TableCell className="py-2">
-                                                  <div className="flex items-center gap-3">
-                                                    <Avatar className="h-8 w-8 border bg-gray-100">
-                                                      <AvatarImage
-                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                      />
-                                                      <AvatarFallback>
-                                                        {workerId.charAt(0)}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                    <div className="flex flex-col">
-                                                      <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                                        Worker {workerId}
-                                                      </span>
-                                                      <span className="text-[10px] text-muted-foreground">
-                                                        Role N/A
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                </TableCell>
-                                                <TableCell className="py-2 text-xs">
-                                                  N/A
-                                                </TableCell>
-                                                <TableCell className="py-2">
-                                                  <span className="text-xs text-muted-foreground">
-                                                    N/A
-                                                  </span>
-                                                </TableCell>
-                                                <TableCell className="py-2">
-                                                  <span className="text-xs text-muted-foreground">
-                                                    N/A
-                                                  </span>
-                                                </TableCell>
-                                                <TableCell className="py-2 text-center">
-                                                  0
-                                                </TableCell>
-                                                <TableCell className="py-2 text-center">
-                                                  0%
-                                                </TableCell>
-                                              </TableRow>
-                                            );
-                                          },
-                                        )}
-                                      </TableBody>
-                                    </Table>
+                                {/* Column 2: Assigned Workers (Existing) */}
+                                <div className="space-y-4 h-full flex flex-col">
+                                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <HardHat className="h-3 w-3" /> Assigned Workers
+                                  </h4>
+
+                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
+                                    <div className="grid grid-cols-[100px_1fr] gap-2">
+                                      <span className="text-muted-foreground text-xs">Contractor:</span>
+                                      <span className="font-medium">{project.contractor || "N/A"}</span>
+
+                                      <span className="text-muted-foreground text-xs">Partner:</span>
+                                      <span className="font-medium">{project.partner || "N/A"}</span>
+
+                                      <span className="text-muted-foreground text-xs">Mediator:</span>
+                                      <span className="font-medium">{project.mediator || "N/A"}</span>
+                                    </div>
                                   </div>
-                                ) : (
-                                  <p className="text-sm text-muted-foreground">
-                                    No workers assigned.
-                                  </p>
-                                )}
+
+                                  {project.workers && project.workers.length > 0 ? (
+                                    <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
+                                      <Table>
+                                        <TableHeader className="bg-gray-50/50">
+                                          <TableRow className="h-8 hover:bg-transparent">
+                                            <TableHead className="h-8 text-[10px] font-semibold">Name</TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold text-center">Cert</TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold text-center">A1</TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold text-center">Success</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {project.workers.map((workerId: string) => (
+                                            <TableRow key={workerId} className="h-8 hover:bg-transparent border-0">
+                                              <TableCell className="py-1">
+                                                <div className="flex items-center gap-2">
+                                                  <Avatar className="h-5 w-5 border">
+                                                    <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`} />
+                                                    <AvatarFallback className="text-[9px]">{workerId.charAt(0)}</AvatarFallback>
+                                                  </Avatar>
+                                                  <span className="text-xs font-medium truncate max-w-[100px]">Worker {workerId}</span>
+                                                </div>
+                                              </TableCell>
+                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
+                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
+                                              <TableCell className="py-1 text-center text-xs text-green-600 font-medium">100%</TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
+                                      No workers assigned yet.
+                                    </div>
+                                  )}
+
+                                  {/* Estimated & Actual Hours Footer */}
+                                  <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className="font-medium text-gray-700 dark:text-gray-300">Estimated Max Hours:</span>
+                                      <span className="font-mono font-semibold">{project.estimatedHours || "N/A"}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className="font-medium text-gray-700 dark:text-gray-300">Actual Hours:</span>
+                                      <span className="w-16 border-b border-gray-400 dark:border-gray-600"></span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Column 3: Bonus & Performance Stats */}
+                                <div className="space-y-4 h-full flex flex-col">
+                                  <div className="h-full flex flex-col">
+                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                      <Trophy className="h-3 w-3" /> Bonus & Performance
+                                    </h4>
+
+                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 flex flex-col h-full shadow-sm">
+                                      <div className="flex-1 space-y-6">
+                                        {/* 1. Qualitäts- und Termintreuebonus */}
+                                        <div className="space-y-2">
+                                          <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                                            1. Qualitäts- und Termintreuebonus
+                                          </h5>
+                                          <div className="bg-gray-50 dark:bg-gray-900/10 rounded p-2 flex items-center justify-between border">
+                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Bonus Amount</span>
+                                            <span className="text-xs font-mono text-muted-foreground font-semibold">+ € 0</span>
+                                          </div>
+                                        </div>
+
+                                        {/* 2. Mengenzuschlag & Total Calculation */}
+                                        {(() => {
+                                          const pDate = new Date(project.start);
+                                          const pMonth = pDate.toLocaleString("default", { month: "short" });
+
+                                          // Count logic
+                                          const count = projects.filter(p => {
+                                            const d = new Date(p.start);
+                                            return d.getMonth() === pDate.getMonth() &&
+                                              d.getFullYear() === pDate.getFullYear() &&
+                                              (p.partner === project.partner || p.contractor === project.contractor)
+                                          }).length;
+
+                                          let tier = "None";
+                                          let bonus = 0;
+                                          if (count >= 36) { tier = "36+"; bonus = 200; }
+                                          else if (count >= 12) { tier = "12-36"; bonus = 100; }
+                                          else if (count >= 8) { tier = "08-12"; bonus = 50; }
+
+                                          const qualityBonus = 0;
+                                          const totalBonus = qualityBonus + bonus;
+
+                                          return (
+                                            <>
+                                              <div className="space-y-2">
+                                                <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                                                  2. Mengenzuschlag
+                                                </h5>
+                                                <div className="bg-blue-50 dark:bg-blue-900/10 rounded p-2 text-xs space-y-1">
+                                                  <div className="flex justify-between font-semibold text-blue-800 dark:text-blue-300">
+                                                    <span>Mengenzuschlag</span>
+                                                    <span>Tier: {tier}</span>
+                                                  </div>
+                                                  <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                                                    <span>Projects ({pMonth}):</span>
+                                                    <span>{count}</span>
+                                                  </div>
+                                                  <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-blue-200 mt-1 pt-1">
+                                                    <span>Bonus Amount:</span>
+                                                    <span>€ {bonus}</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+
+                                              <div className="mt-auto pt-4 border-t border-dashed">
+                                                <div className="flex justify-between items-center text-sm">
+                                                  <span className="font-bold text-gray-900 dark:text-gray-100">Total Bonus</span>
+                                                  <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">
+                                                    € {totalBonus}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </TableCell>
                           </TableRow>
-                        )}
+                        )
+                        }
                       </Fragment>
                     );
                   })
@@ -1312,16 +1327,7 @@ Contractor: ${newProject.contractor}
               <TableRow>
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Project & Address
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Contractor
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Partner
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Mediator
+                  Name
                 </TableHead>
                 <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                   Subcontractor
@@ -1332,7 +1338,6 @@ Contractor: ${newProject.contractor}
                 <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                   Status
                 </TableHead>
-                {/* Abnahme column removed */}
                 <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                   Amount (€)
                 </TableHead>
@@ -1346,7 +1351,7 @@ Contractor: ${newProject.contractor}
                 .filter((p) => p.status !== "Scheduled")
                 .map((item, i) => {
                   // Calculate stats for accordion details
-                  const { penalty, daysLate, isOverdue, penaltyPercentage } =
+                  const { penalty, daysLate, isOverdue, penaltyPercentage, netAmount } =
                     calculatePenalty(
                       item.amount,
                       item.scheduledStart || item.start,
@@ -1387,9 +1392,6 @@ Contractor: ${newProject.contractor}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{item.contractor}</TableCell>
-                        <TableCell>{item.partner}</TableCell>
-                        <TableCell>{item.mediator}</TableCell>
                         <TableCell>{item.sub}</TableCell>
                         <TableCell className="text-sm">{item.start}</TableCell>
                         <TableCell>
@@ -1413,9 +1415,11 @@ Contractor: ${newProject.contractor}
                             </SelectContent>
                           </Select>
                         </TableCell>
-                        {/* Abnahme cell removed */}
                         <TableCell className="font-medium">
-                          {item.amount}
+                          €{" "}
+                          {netAmount.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -1442,135 +1446,243 @@ Contractor: ${newProject.contractor}
                         </TableCell>
                       </TableRow>
                       {isExpanded && (
-                        <TableRow className="bg-gray-100 dark:bg-gray-800 border-t border-gray-200">
-                          <TableCell colSpan={11}>
-                            <div className="flex items-center gap-8 py-2 px-4 text-sm">
-                              <div className="space-y-1">
-                                <span className="text-xs text-muted-foreground block">
-                                  Scheduled Start
-                                </span>
-                                <span className="font-medium">
-                                  {item.scheduledStart || item.start}
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                <span className="text-xs text-muted-foreground block">
-                                  Overdue
-                                </span>
-                                <Badge
-                                  variant={
-                                    isOverdue ? "destructive" : "secondary"
-                                  }
-                                  className={
-                                    isOverdue
-                                      ? "bg-red-100 text-red-700"
-                                      : "bg-green-100 text-green-700"
-                                  }
-                                >
-                                  {isOverdue ? `${daysLate} Days` : "No"}
-                                </Badge>
-                              </div>
-                              <div className="space-y-1">
-                                <span className="text-xs text-muted-foreground block">
-                                  Penalty
-                                </span>
-                                <span
-                                  className={`font-medium ${isOverdue ? "text-red-600" : "text-green-600"}`}
-                                >
-                                  {isOverdue
-                                    ? `- € ${penalty.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${penaltyPercentage}%)`
-                                    : "None"}
-                                </span>
-                              </div>
-                            </div>
+                        <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
+                          <TableCell colSpan={10} className="p-0">
+                            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                              {/* Column 1: Project & Customer Details */}
+                              <div className="space-y-4 h-full flex flex-col">
+                                <div className="flex flex-col h-full">
+                                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <FileText className="h-3 w-3" /> Customer Details
+                                  </h4>
+                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
+                                    <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
+                                      <span className="text-muted-foreground text-xs">Customer No:</span>
+                                      <span className="font-medium">{item.customerNumber || "N/A"}</span>
 
-                            <div className="mt-4 border-t pt-4">
-                              <h4 className="font-semibold text-sm mb-3">
-                                Assigned Workers
-                              </h4>
-                              {item.workers && item.workers.length > 0 ? (
-                                <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
-                                  <Table>
-                                    <TableHeader className="bg-gray-50/50 dark:bg-gray-900/50">
-                                      <TableRow>
-                                        <TableHead className="font-semibold text-xs py-2 h-9">
-                                          Name
-                                        </TableHead>
-                                        <TableHead className="font-semibold text-xs py-2 h-9">
-                                          Role
-                                        </TableHead>
-                                        <TableHead className="font-semibold text-xs py-2 h-9">
-                                          A1
-                                        </TableHead>
-                                        <TableHead className="font-semibold text-xs py-2 h-9">
-                                          Cooling
-                                        </TableHead>
-                                        <TableHead className="font-semibold text-xs text-center py-2 h-9">
-                                          Complaints
-                                        </TableHead>
-                                        <TableHead className="font-semibold text-xs text-center py-2 h-9">
-                                          Success Rate
-                                        </TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {item.workers.map((workerId: string) => {
-                                        // Placeholder for worker logic
-                                        return (
-                                          <TableRow
-                                            key={workerId}
-                                            className="hover:bg-muted/50"
-                                          >
-                                            <TableCell className="py-2">
-                                              <div className="flex items-center gap-3">
-                                                <Avatar className="h-8 w-8 border bg-gray-100">
-                                                  <AvatarImage
-                                                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                  />
-                                                  <AvatarFallback>
-                                                    {workerId.charAt(0)}
-                                                  </AvatarFallback>
+                                      <span className="text-muted-foreground text-xs">Phone:</span>
+                                      <span className="font-medium">{item.customerPhone || "N/A"}</span>
+
+                                      <span className="text-muted-foreground text-xs">Email:</span>
+                                      <span className="font-medium truncate" title={item.customerEmail}>{item.customerEmail || "N/A"}</span>
+
+                                      <span className="text-muted-foreground text-xs">Location:</span>
+                                      <span className="font-medium">{item.address}</span>
+                                    </div>
+                                    {item.description && (
+                                      <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
+                                        <span className="text-xs text-muted-foreground block mb-2 shrink-0">Notes:</span>
+                                        <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
+                                          {item.description}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Column 2: Assigned Workers (Existing) */}
+                              <div className="space-y-4 h-full flex flex-col">
+                                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                  <HardHat className="h-3 w-3" /> Assigned Workers
+                                </h4>
+
+                                <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
+                                  <div className="grid grid-cols-[100px_1fr] gap-2">
+                                    <span className="text-muted-foreground text-xs">Contractor:</span>
+                                    <span className="font-medium">{item.contractor || "N/A"}</span>
+
+                                    <span className="text-muted-foreground text-xs">Partner:</span>
+                                    <span className="font-medium">{item.partner || "N/A"}</span>
+
+                                    <span className="text-muted-foreground text-xs">Mediator:</span>
+                                    <span className="font-medium">{item.mediator || "N/A"}</span>
+                                  </div>
+                                </div>
+
+                                {item.workers && item.workers.length > 0 ? (
+                                  <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
+                                    <Table>
+                                      <TableHeader className="bg-gray-50/50">
+                                        <TableRow className="h-8 hover:bg-transparent">
+                                          <TableHead className="h-8 text-[10px] font-semibold">Name</TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold text-center">Cert</TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold text-center">A1</TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold text-center">Success</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {item.workers.map((workerId: string) => (
+                                          <TableRow key={workerId} className="h-8 hover:bg-transparent border-0">
+                                            <TableCell className="py-1">
+                                              <div className="flex items-center gap-2">
+                                                <Avatar className="h-5 w-5 border">
+                                                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`} />
+                                                  <AvatarFallback className="text-[9px]">{workerId.charAt(0)}</AvatarFallback>
                                                 </Avatar>
-                                                <div className="flex flex-col">
-                                                  <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                                    Worker {workerId}
-                                                  </span>
-                                                  <span className="text-[10px] text-muted-foreground">
-                                                    Role N/A
-                                                  </span>
-                                                </div>
+                                                <span className="text-xs font-medium truncate max-w-[100px]">Worker {workerId}</span>
                                               </div>
                                             </TableCell>
-                                            <TableCell className="py-2 text-xs">
-                                              N/A
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              <span className="text-xs text-muted-foreground">
-                                                N/A
-                                              </span>
-                                            </TableCell>
-                                            <TableCell className="py-2">
-                                              <span className="text-xs text-muted-foreground">
-                                                N/A
-                                              </span>
-                                            </TableCell>
-                                            <TableCell className="py-2 text-center">
-                                              0
-                                            </TableCell>
-                                            <TableCell className="py-2 text-center">
-                                              0%
-                                            </TableCell>
+                                            <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
+                                            <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
+                                            <TableCell className="py-1 text-center text-xs text-green-600 font-medium">100%</TableCell>
                                           </TableRow>
-                                        );
-                                      })}
-                                    </TableBody>
-                                  </Table>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
+                                    No workers assigned yet.
+                                  </div>
+                                )}
+
+                                {/* Estimated & Actual Hours Footer */}
+                                <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">Estimated Max Hours:</span>
+                                    <span className="font-mono font-semibold">{item.estimatedHours || "N/A"}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">Actual Hours:</span>
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        className="h-6 w-20 text-xs text-right bg-white dark:bg-gray-950 px-1 py-0 h-7"
+                                        placeholder="0"
+                                        value={item.actualHours || ""}
+                                        onChange={(e) => handleActualHoursChange(item, e.target.value)}
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground">
-                                  No workers assigned.
-                                </p>
-                              )}
+                              </div>
+
+                              {/* Column 3: Bonus & Performance Stats */}
+                              <div className="space-y-4 h-full flex flex-col">
+                                <div className="h-full flex flex-col">
+                                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <Trophy className="h-3 w-3" /> Bonus & Performance
+                                  </h4>
+
+                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 flex flex-col h-full shadow-sm">
+                                    <div className="flex-1 space-y-6">
+                                      {/* 1. Qualitäts- und Termintreuebonus */}
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                            1. Qualitäts- und Termintreuebonus
+                                            <Checkbox
+                                              checked={item.qualityBonusChecked || false}
+                                              onCheckedChange={(checked) => handleProjectFieldChange(item, 'qualityBonusChecked', checked)}
+                                              className="h-3.5 w-3.5"
+                                            />
+                                          </h5>
+                                        </div>
+
+                                        <div className={`bg-gray-50 dark:bg-gray-900/10 rounded p-2 border space-y-2 ${!item.qualityBonusChecked ? 'opacity-50' : ''}`}>
+                                          {/* Status Badge */}
+                                          <div className="flex justify-between items-center text-xs">
+                                            <span className="text-muted-foreground">Status:</span>
+                                            <Badge
+                                              variant={isOverdue ? "destructive" : "secondary"}
+                                              className={`h-5 px-1.5 ${isOverdue ? "bg-red-100 text-red-700 hover:bg-red-200 border-0" : "bg-green-100 text-green-700 hover:bg-green-200 border-0"}`}
+                                            >
+                                              {isOverdue ? "Overdue" : "On Time"}
+                                            </Badge>
+                                          </div>
+
+                                          {/* Indoor Units Input */}
+                                          <div className="flex justify-between items-center text-xs">
+                                            <span className="text-muted-foreground">Indoor Units:</span>
+                                            <Input
+                                              type="number"
+                                              className="h-6 w-16 text-right text-xs px-1"
+                                              value={item.indoorUnits || ""}
+                                              onChange={(e) => handleProjectFieldChange(item, 'indoorUnits', e.target.value)}
+                                              placeholder="0"
+                                              disabled={!item.qualityBonusChecked}
+                                            />
+                                          </div>
+
+                                          {/* Calculated Amount */}
+                                          <div className="flex justify-between items-center text-xs pt-2 border-t border-dashed">
+                                            <span className="font-medium text-gray-700 dark:text-gray-300">Bonus Amount</span>
+                                            <span className="font-mono font-semibold text-blue-600">
+                                              + € {((parseInt(item.indoorUnits) || 0) * 50).toLocaleString()}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* 2. Mengenzuschlag & Total Calculation */}
+                                      {(() => {
+                                        const pDate = new Date(item.start);
+                                        const pMonth = pDate.toLocaleString("default", { month: "short" });
+
+                                        // Count logic - Based on Subcontractor's Performance (Monthly)
+                                        const count = projects.filter(p => {
+                                          const d = new Date(p.start);
+                                          return d.getMonth() === pDate.getMonth() &&
+                                            d.getFullYear() === pDate.getFullYear() &&
+                                            (p.sub === item.sub) // Filter by Subcontractor
+                                        }).length;
+
+                                        let tier = "None";
+                                        let quantityBonusAmount = 0;
+                                        if (count >= 36) { tier = "36+"; quantityBonusAmount = 200; }
+                                        else if (count >= 12) { tier = "12-36"; quantityBonusAmount = 100; }
+                                        else if (count >= 8) { tier = "08-12"; quantityBonusAmount = 50; }
+
+                                        // Totals
+                                        const qualityAmount = item.qualityBonusChecked ? (parseInt(item.indoorUnits) || 0) * 50 : 0;
+                                        const quantityAmountFinal = item.quantityBonusChecked ? quantityBonusAmount : 0;
+                                        const totalBonus = qualityAmount + quantityAmountFinal;
+
+                                        return (
+                                          <>
+                                            <div className="space-y-2">
+                                              <div className="flex items-center justify-between">
+                                                <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                                  2. Mengenzuschlag
+                                                  <Checkbox
+                                                    checked={item.quantityBonusChecked || false}
+                                                    onCheckedChange={(checked) => handleProjectFieldChange(item, 'quantityBonusChecked', checked)}
+                                                    className="h-3.5 w-3.5"
+                                                  />
+                                                </h5>
+                                              </div>
+
+                                              <div className={`bg-blue-50 dark:bg-blue-900/10 rounded p-2 text-xs space-y-1 ${!item.quantityBonusChecked ? 'opacity-50' : ''}`}>
+                                                <div className="flex justify-between font-semibold text-blue-800 dark:text-blue-300">
+                                                  <span>Mengenzuschlag</span>
+                                                  <span>Tier: {tier}</span>
+                                                </div>
+                                                <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                                                  <span>Projects ({pMonth}):</span>
+                                                  <span>{count}</span>
+                                                </div>
+                                                <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-blue-200 mt-1 pt-1">
+                                                  <span>Bonus Amount:</span>
+                                                  <span>€ {quantityBonusAmount}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            <div className="mt-auto pt-4 border-t border-dashed">
+                                              <div className="flex justify-between items-center text-sm">
+                                                <span className="font-bold text-gray-900 dark:text-gray-100">Total Bonus</span>
+                                                <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">
+                                                  € {totalBonus.toLocaleString()}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1629,10 +1741,10 @@ Contractor: ${newProject.contractor}
             </div>
           </div>
         </div>
-      </div>
+      </div >
 
       {/* Success Modal */}
-      <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
+      < Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen} >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-green-600">
@@ -1704,7 +1816,7 @@ Contractor: ${newProject.contractor}
             <Button onClick={() => setSuccessModalOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog >
       <Dialog open={addProjectOpen} onOpenChange={setAddProjectOpen}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1721,32 +1833,6 @@ Contractor: ${newProject.contractor}
                 Project Details
               </h3>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="name" className="text-xs font-medium">
-                    Project Name
-                  </label>
-                  <Input
-                    id="name"
-                    value={newProject.project}
-                    onChange={(e) =>
-                      setNewProject({ ...newProject, project: e.target.value })
-                    }
-                    placeholder="e.g. Weber House"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="address" className="text-xs font-medium">
-                    Address
-                  </label>
-                  <Input
-                    id="address"
-                    value={newProject.address}
-                    onChange={(e) =>
-                      setNewProject({ ...newProject, address: e.target.value })
-                    }
-                    placeholder="e.g. Berliner Str. 12"
-                  />
-                </div>
                 <div className="space-y-2">
                   <label htmlFor="contractor" className="text-xs font-medium">
                     Contractor
@@ -1805,6 +1891,9 @@ Contractor: ${newProject.contractor}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label htmlFor="mediator" className="text-xs font-medium">
                     Mediator (Optional)
@@ -1897,6 +1986,74 @@ Contractor: ${newProject.contractor}
                   </Select>
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label htmlFor="name" className="text-xs font-medium">
+                    Project Name
+                  </label>
+                  <Input
+                    id="name"
+                    value={newProject.project}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, project: e.target.value })
+                    }
+                    placeholder="e.g. Weber House"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="customerNumber" className="text-xs font-medium">
+                    Customer Number
+                  </label>
+                  <Input
+                    id="customerNumber"
+                    value={newProject.customerNumber}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, customerNumber: e.target.value })
+                    }
+                    placeholder="e.g. KD-12345"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="customerPhone" className="text-xs font-medium">
+                    Customer Phone
+                  </label>
+                  <Input
+                    id="customerPhone"
+                    value={newProject.customerPhone}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, customerPhone: e.target.value })
+                    }
+                    placeholder="e.g. +49 123 456789"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="customerEmail" className="text-xs font-medium">
+                    Customer Email
+                  </label>
+                  <Input
+                    id="customerEmail"
+                    value={newProject.customerEmail}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, customerEmail: e.target.value })
+                    }
+                    placeholder="e.g. client@example.com"
+                  />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <label htmlFor="address" className="text-xs font-medium">
+                    Installation Location
+                  </label>
+                  <Input
+                    id="address"
+                    value={newProject.address}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, address: e.target.value })
+                    }
+                    placeholder="e.g. Berliner Str. 12"
+                  />
+                </div>
+              </div>
               {/* Scheduled Start Date */}
               <div className="space-y-2">
                 <label htmlFor="scheduledStart" className="text-xs font-medium">
@@ -1932,183 +2089,141 @@ Contractor: ${newProject.contractor}
                     ? `(from ${[newProject.partner, newProject.sub].filter(Boolean).join(" / ")})`
                     : ""}
                 </label>
-                <div className="border rounded-md p-2 max-h-[150px] overflow-y-auto space-y-1 bg-gray-50/50">
-                  {/* Workers selection removed as DUMMY_WORKERS are cleaned up. 
-                      Ideally this should fetch real workers from Supabase or be removed if not needed yet. 
-                  */}
-                  <div className="text-center text-sm text-muted-foreground p-4">
-                    Worker selection requires backend integration.
+                <div className="border rounded-md p-2 max-h-[300px] overflow-y-auto space-y-1 bg-gray-50/50">
+                  {/* Header Row */}
+                  <div className="flex items-center text-[10px] font-semibold text-muted-foreground px-2 py-1 border-b mb-2 bg-gray-100/50 rounded-t">
+                    <div className="w-6"></div>
+                    <div className="w-[140px]">Name</div>
+                    <div className="w-[100px]">Role / Trade</div>
+                    <div className="w-[80px] text-center">A1</div>
+                    <div className="w-[100px] text-center">Certification</div>
+                    <div className="w-[70px] text-center">Completed</div>
+                    <div className="w-[70px] text-center">Complaints</div>
+                    <div className="w-[60px] text-center">Success</div>
                   </div>
+
+                  {availableWorkers.length > 0 ? (
+                    availableWorkers.map((worker) => (
+                      <div
+                        key={worker.id}
+                        className="flex items-center p-2 hover:bg-gray-100 rounded border-b last:border-0 bg-white"
+                      >
+                        <Checkbox
+                          id={`worker-${worker.id}`}
+                          className="mr-3"
+                          checked={newProject.workers.includes(worker.name)}
+                          onCheckedChange={(checked) => {
+                            setNewProject((prev) => {
+                              const newWorkers = checked
+                                ? [...prev.workers, worker.name]
+                                : prev.workers.filter((w) => w !== worker.name);
+                              return { ...prev, workers: newWorkers };
+                            });
+                          }}
+                        />
+
+                        {/* Name & Avatar */}
+                        <div className="w-[140px] flex items-center gap-2">
+                          <Avatar className="h-7 w-7 border">
+                            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.name}`} />
+                            <AvatarFallback>{worker.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div className="text-sm font-medium leading-none truncate" title={worker.name}>
+                            {worker.name}
+                          </div>
+                        </div>
+
+                        {/* Role / Trade */}
+                        <div className="w-[100px] text-xs text-muted-foreground capitalize truncate" title={worker.trade || worker.role || "Worker"}>
+                          {worker.trade || worker.role || "Worker"}
+                        </div>
+
+                        {/* A1 Status */}
+                        <div className="w-[80px] text-center">
+                          <Badge variant="secondary" className="text-[9px] bg-gray-50 text-gray-500 hover:bg-gray-100 font-normal border px-1">
+                            {worker.a1Status || "No File"}
+                          </Badge>
+                        </div>
+
+                        {/* Certification */}
+                        <div className="w-[100px] text-center">
+                          <Badge variant="secondary" className="text-[9px] bg-gray-50 text-gray-500 hover:bg-gray-100 font-normal border px-1">
+                            {worker.certStatus || "No Certificate"}
+                          </Badge>
+                        </div>
+
+                        {/* Stats */}
+                        <div className="w-[70px] text-center text-xs flex items-center justify-center gap-1 text-muted-foreground">
+                          <CheckCircle2 className="h-3 w-3" /> {worker.completedProjects || 0}
+                        </div>
+                        <div className="w-[70px] text-center text-xs flex items-center justify-center gap-1 text-muted-foreground">
+                          <AlertCircle className="h-3 w-3" /> {worker.complaints || 0}
+                        </div>
+                        <div className="w-[60px] text-center text-xs text-green-600 font-medium">
+                          {worker.successRate || 100}%
+                        </div>
+
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center text-sm text-muted-foreground p-8 flex flex-col items-center justify-center gap-2">
+                      <Users className="h-8 w-8 text-muted-foreground/50" />
+                      <p>{newProject.sub || newProject.partner ? "No workers found for selected companies." : "Select Subcontractor or Partner to see workers."}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Pricing Calculator Section */}
-          <div>
-            <div className="flex items-center justify-between mb-3 pb-1 border-b">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <Calculator className="h-4 w-4" /> Pricing Calculation
-              </h3>
-              <Badge
-                variant="outline"
-                className="text-base font-bold px-3 py-1 bg-blue-50 text-blue-700 border-blue-200"
-              >
-                Total: € {calcState.calculation.total.toLocaleString()}
-              </Badge>
-            </div>
+          {/* Manual Pricing Section */}
+          <div className="border-t pt-4 mt-4">
+            <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
+              <Calculator className="h-4 w-4" /> Project Pricing & Details
+            </h3>
 
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Left Column - Inputs */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium">
-                    Anzahl Innengeräte (0-16)
-                  </label>
-                  <Select
-                    value={calcState.units.toString()}
-                    onValueChange={(val) =>
-                      setCalcState((prev) => ({
-                        ...prev,
-                        units: parseInt(val),
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Units" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {Array.from({ length: 17 }).map((_, i) => (
-                        <SelectItem key={i} value={i.toString()}>
-                          {i} {i === 1 ? "Unit" : "Units"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-medium block">
-                    Zusatzleistungen (Additional Services)
-                  </label>
-                  <div className="border rounded-md p-2 h-[220px] overflow-y-auto space-y-1 bg-gray-50/50">
-                    {ADDITIONAL_SERVICES.map((service) => (
-                      <div
-                        key={service.id}
-                        className="flex items-start space-x-2 p-1 hover:bg-gray-100 rounded"
-                      >
-                        <Checkbox
-                          id={service.id}
-                          checked={calcState.services.includes(service.id)}
-                          onCheckedChange={(checked) => {
-                            setCalcState((prev) => {
-                              const newServices = checked
-                                ? [...prev.services, service.id]
-                                : prev.services.filter(
-                                    (id) => id !== service.id,
-                                  );
-                              return { ...prev, services: newServices };
-                            });
-                          }}
-                        />
-                        <label
-                          htmlFor={service.id}
-                          className="text-xs font-medium leading-tight cursor-pointer pt-0.5"
-                        >
-                          {service.label}{" "}
-                          <span className="text-muted-foreground ml-1 font-normal">
-                            (€{service.price})
-                          </span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+            <div className="grid gap-6">
+              <div className="space-y-2">
+                <label htmlFor="description" className="text-sm font-medium">
+                  Description / Email Paste
+                </label>
+                <Textarea
+                  id="description"
+                  placeholder="Paste the project assignment email here..."
+                  className="min-h-[200px] font-mono text-xs"
+                  value={newProject.description}
+                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                />
               </div>
 
-              {/* Breakdown */}
-              <div className="bg-slate-50 dark:bg-slate-900 border rounded-lg p-4 text-sm space-y-3 h-fit">
-                <h4 className="font-semibold text-xs uppercase text-muted-foreground tracking-wider mb-2">
-                  Cost Breakdown
-                </h4>
+              <div className="space-y-2">
+                <label htmlFor="estimatedHours" className="text-sm font-medium">
+                  Estimated Max Hours
+                </label>
+                <Input
+                  id="estimatedHours"
+                  placeholder="e.g. 40"
+                  value={newProject.estimatedHours}
+                  onChange={(e) => setNewProject({ ...newProject, estimatedHours: e.target.value })}
+                />
+              </div>
 
-                <div className="flex justify-between">
-                  <span>Base Sum (for {calcState.units} units):</span>
-                  <span className="font-medium">
-                    € {calcState.calculation.baseSum.toLocaleString()}
-                  </span>
+              <div className="space-y-2">
+                <label htmlFor="amount" className="text-sm font-medium">
+                  Total Price (€)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground">€</span>
+                  <Input
+                    id="amount"
+                    placeholder="0.00"
+                    className="pl-8"
+                    value={newProject.amount}
+                    onChange={(e) => setNewProject({ ...newProject, amount: e.target.value })}
+                  />
                 </div>
-
-                <div className="flex justify-between text-green-600">
-                  <span className="flex items-center gap-1">
-                    + Quality Bonus{" "}
-                    <span className="text-[10px] bg-green-100 px-1 rounded">
-                      1. Bonus
-                    </span>
-                  </span>
-                  <span>€ {calcState.calculation.bonus1.toLocaleString()}</span>
-                </div>
-
-                <div className="flex justify-between border-t border-dashed pt-2 font-medium">
-                  <span>Summe inkl. 1. Bonus:</span>
-                  <span>
-                    € {calcState.calculation.sumWithBonus1.toLocaleString()}
-                  </span>
-                </div>
-
-                {/* Quantity Bonus moved here in breakdown */}
-                <div className="flex flex-col gap-1 border-t border-dashed pt-2">
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1">
-                      + Quantity Bonus{" "}
-                      <span className="text-[10px] bg-green-100 px-1 rounded">
-                        2. Bonus
-                      </span>
-                    </span>
-                    <span>
-                      € {calcState.calculation.bonus2.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[10px] text-muted-foreground ml-4">
-                      Tier:{" "}
-                      {calcState.quantityBonusTier === "none"
-                        ? "None (<8)"
-                        : calcState.quantityBonusTier === "08-12"
-                          ? "08-12 (8-11)"
-                          : calcState.quantityBonusTier === "12-36"
-                            ? "12-36 (12-35)"
-                            : "36+ (>36)"}
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="text-[9px] h-4 px-1 border-green-200 bg-green-50 text-green-700"
-                    >
-                      Auto-Calc
-                    </Badge>
-                  </div>
-                </div>
-
-                {calcState.services.length > 0 && (
-                  <div className="flex justify-between pt-2 text-blue-600">
-                    <span>
-                      + Additional Services ({calcState.services.length}):
-                    </span>
-                    <span className="font-medium">
-                      € {calcState.calculation.servicesSum.toLocaleString()}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex justify-between border-t-2 border-slate-200 pt-3 mt-2">
-                  <span className="text-lg font-bold">Total Amount:</span>
-                  <span className="text-lg font-bold text-blue-600">
-                    € {calcState.calculation.total.toLocaleString()}
-                  </span>
-                </div>
-
-                <p className="text-[10px] text-muted-foreground pt-2 text-center">
-                  * Prices include applicable taxes and standard rates.
+                <p className="text-[10px] text-muted-foreground">
+                  Enter the total project value including all services.
                 </p>
               </div>
             </div>
@@ -2127,6 +2242,6 @@ Contractor: ${newProject.contractor}
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

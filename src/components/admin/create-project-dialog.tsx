@@ -235,6 +235,76 @@ export default function CreateProjectDialog() {
           </DialogDescription>
         </DialogHeader>
         <form action={handleSubmit} className="grid gap-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="contractorId">Assign Contractor</Label>
+              <Select name="contractorId">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {contractors.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.full_name || c.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="partnerId">Assign Partner</Label>
+              <Select name="partnerId">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {partners.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name || p.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="brokerId">Assign Mediator</Label>
+              <Select name="brokerId">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {brokers.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.full_name || b.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="subcontractorId">Assign Subcontractor</Label>
+              <Select
+                name="subcontractorId"
+                value={selectedSubcontractor}
+                onValueChange={(value) => setSelectedSubcontractor(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {subcontractors.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.full_name || s.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="title">Project Title</Label>
             <Input
@@ -262,76 +332,6 @@ export default function CreateProjectDialog() {
               name="description"
               placeholder="Scope of work..."
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="partnerId">Assign Partner</Label>
-              <Select name="partnerId">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {partners.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.full_name || p.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="brokerId">Assign Mediator</Label>
-              <Select name="brokerId">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {brokers.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.full_name || b.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="subcontractorId">Assign Subcontractor</Label>
-              <Select
-                name="subcontractorId"
-                value={selectedSubcontractor}
-                onValueChange={(value) => setSelectedSubcontractor(value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {subcontractors.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.full_name || s.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="contractorId">Assign Contractor</Label>
-              <Select name="contractorId">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {contractors.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.full_name || c.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           {/* Workers Selection - Shows when subcontractor is selected */}

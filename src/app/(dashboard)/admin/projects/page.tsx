@@ -654,55 +654,43 @@ export default function AdminProjects() {
 
     // Save to Supabase using new schema
     try {
-      // 1. Create or find customer
-      let customerId: string | null = null;
-      if (newProject.customerNumber || newProject.customerEmail) {
-        // Check if customer exists
-        const { data: existingCustomer } = await supabase
-          .from("customers")
-          .select("id")
-          .eq("customer_number", newProject.customerNumber)
-          .maybeSingle();
+      // Note: Customer creation Logic removed/skipped as 'projects' table has no customer_id column yet.
+      // We will store customer info in the description for now.
 
-        if (existingCustomer) {
-          customerId = existingCustomer.id;
-        } else {
-          // Create new customer
-          const { data: newCustomer, error: customerError } = await supabase
-            .from("customers")
-            .insert({
-              customer_number: newProject.customerNumber || null,
-              name: newProject.project, // Use project name as customer name fallback
-              email: newProject.customerEmail || null,
-              phone: newProject.customerPhone || null,
-              address: newProject.address || null,
-            })
-            .select("id")
-            .single();
+      const metadata = `
+Customer: ${newProject.customerNumber || "N/A"}
+Phone: ${newProject.customerPhone || "N/A"}
+Email: ${newProject.customerEmail || "N/A"}
+Address: ${newProject.address || "N/A"}
+Est. Hours: ${newProject.estimatedHours || "N/A"}
+Indoor Units: ${newProject.indoorUnits || 0}
+Work Types: ${newProject.selectedWorkTypes.join(", ")}
+Services: ${newProject.selectedAdditionalServices.join(", ")}
+Contractor: ${newProject.contractor}
+Subcontractor: ${newProject.sub}
+      `.trim();
 
-          if (!customerError && newCustomer) {
-            customerId = newCustomer.id;
-          }
-        }
-      }
+      const fullDescription = newProject.description
+        ? `${newProject.description}\n\n--- Details ---\n${metadata}`
+        : metadata;
 
-      // 2. Insert project
+      // 2. Insert project - ONLY valid columns
       const { data: insertedProject, error: projectError } = await supabase
         .from("projects")
         .insert({
           title: newProject.project,
-          address: newProject.address,
-          description: newProject.description || null,
+          // address: newProject.address, // Missing column
+          description: fullDescription,
           contract_value: parseFloat(newProject.amount) || 0,
-          status: "Scheduled",
-          scheduled_start: newProject.scheduledStart || null,
-          estimated_hours: newProject.estimatedHours || null,
-          indoor_units: newProject.indoorUnits || 0,
-          customer_id: customerId,
+          status: "Scheduled", // or "active" if you prefer
+          // scheduled_start: newProject.scheduledStart || null, // Missing column
+          // estimated_hours: newProject.estimatedHours || null, // Missing column
+          // indoor_units: newProject.indoorUnits || 0, // Missing column
+          // customer_id: customerId, // Missing column
           partner_id: newProject.partnerId || null,
           broker_id: newProject.mediatorId || null,
-          contractor_id: newProject.contractorId || null,
-          subcontractor_id: newProject.subId || null,
+          // contractor_id: newProject.contractorId || null, // Missing column
+          // subcontractor_id: newProject.subId || null, // Missing column
         })
         .select("id")
         .single();
@@ -712,7 +700,7 @@ export default function AdminProjects() {
       } else if (insertedProject) {
         supabaseProjectId = insertedProject.id;
 
-        // 3. Insert work types
+        // 3. Insert work types (Assuming tables exist, kept as is)
         if (newProject.selectedWorkTypes.length > 0) {
           const workTypeInserts = newProject.selectedWorkTypes.map((type) => {
             const units = newProject.indoorUnits || 0;
@@ -727,7 +715,12 @@ export default function AdminProjects() {
             };
           });
 
-          await supabase.from("project_work_types").insert(workTypeInserts);
+          // Check if table exists is hard, just try/catch the insert
+          try {
+            await supabase.from("project_work_types").insert(workTypeInserts);
+          } catch (err) {
+            console.warn("Could not save work types", err);
+          }
         }
 
         // 4. Insert additional services
@@ -744,10 +737,13 @@ export default function AdminProjects() {
               };
             },
           );
-
-          await supabase
-            .from("project_additional_services")
-            .insert(serviceInserts);
+          try {
+            await supabase
+              .from("project_additional_services")
+              .insert(serviceInserts);
+          } catch (err) {
+            console.warn("Could not save services", err);
+          }
         }
 
         // 5. Insert workers
@@ -756,8 +752,11 @@ export default function AdminProjects() {
             project_id: insertedProject.id,
             worker_id: workerId,
           }));
-
-          await supabase.from("project_workers").insert(workerInserts);
+          try {
+            await supabase.from("project_workers").insert(workerInserts);
+          } catch (err) {
+            console.warn("Could not save workers", err);
+          }
         }
       }
     } catch (e) {
@@ -787,34 +786,7 @@ export default function AdminProjects() {
       JSON.stringify(updatedProjects),
     );
 
-    // Save to Supabase (Best Effort)
-    try {
-      const supabase = createClient();
-
-      const metadata = `
-Customer Number: ${newProject.customerNumber}
-Customer Phone: ${newProject.customerPhone}
-Customer Email: ${newProject.customerEmail}
-Address: ${newProject.address}
-Estimated Max Hours: ${newProject.estimatedHours}
-Subcontractor: ${newProject.sub} (ID: ${newProject.subId || "N/A"})
-Contractor: ${newProject.contractor}
-      `.trim();
-
-      await supabase.from("projects").insert({
-        title: newProject.project,
-        description:
-          newProject.description ||
-          metadata +
-            `\n\nPricing Details:\nUnits: ${newProject.indoorUnits}\nWork Types: ${newProject.selectedWorkTypes.join(", ")}\nServices: ${newProject.selectedAdditionalServices.join(", ")}`, // Use description if provided, else metadata
-        contract_value: parseFloat(newProject.amount) || 0,
-        partner_id: newProject.partnerId || null,
-        broker_id: newProject.mediatorId || null,
-        status: "active", // Default status for DB
-      });
-    } catch (e) {
-      console.error("Failed to save project to Supabase:", e);
-    }
+    // Removed duplicated "Best Effort" block here
     setAddProjectOpen(false);
     setNewProject({
       project: "",

@@ -510,15 +510,16 @@ export default function AdminProjects() {
       const supabase = createClient();
       try {
         // Fetch projects with related data using validated schema
-        // Note: customer_id, contractor_id, subcontractor_id are currently missing in the DB
-        // so we exclude them from the join to prevent errors.
         const { data, error } = await supabase
           .from("projects")
           .select(
             `
             *,
+            customer:customers(id, customer_number, name, email, phone, address),
             partner_profile:profiles!partner_id(id, full_name, email, company_name),
             broker_profile:profiles!broker_id(id, full_name, email),
+            contractor:contacts!contractor_id(id, name, company_name),
+            subcontractor:contacts!subcontractor_id(id, name, company_name),
             project_work_types(work_type_key, price),
             project_additional_services(service_id, price)
           `,
@@ -549,7 +550,8 @@ export default function AdminProjects() {
               project: p.title,
               address: p.address || "",
               description: p.description || "",
-              contractor: "", // Not available in DB yet
+              contractor:
+                p.contractor?.company_name || p.contractor?.name || "",
               partner:
                 p.partner_profile?.company_name ||
                 p.partner_profile?.full_name ||
@@ -557,11 +559,11 @@ export default function AdminProjects() {
               partnerId: p.partner_id,
               mediator: p.broker_profile?.full_name || "",
               mediatorId: p.broker_id,
-              sub: "", // Not available in DB yet
-              subId: null,
-              customerNumber: "", // Not available in DB yet
-              customerEmail: "",
-              customerPhone: "",
+              sub: p.subcontractor?.company_name || p.subcontractor?.name || "",
+              subId: p.subcontractor_id,
+              customerNumber: p.customer?.customer_number || "",
+              customerEmail: p.customer?.email || "",
+              customerPhone: p.customer?.phone || "",
               estimatedHours: p.estimated_hours || "",
               indoorUnits: p.indoor_units || 0,
               selectedWorkTypes,
@@ -654,43 +656,57 @@ export default function AdminProjects() {
 
     // Save to Supabase using new schema
     try {
-      // Note: Customer creation Logic removed/skipped as 'projects' table has no customer_id column yet.
-      // We will store customer info in the description for now.
+      // 1. Create or find customer (Now we have a customer_id column)
+      let customerId: string | null = null;
+      if (newProject.customerNumber || newProject.customerEmail) {
+        // Check if customer exists
+        const { data: existingCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("customer_number", newProject.customerNumber)
+          .maybeSingle();
 
-      const metadata = `
-Customer: ${newProject.customerNumber || "N/A"}
-Phone: ${newProject.customerPhone || "N/A"}
-Email: ${newProject.customerEmail || "N/A"}
-Address: ${newProject.address || "N/A"}
-Est. Hours: ${newProject.estimatedHours || "N/A"}
-Indoor Units: ${newProject.indoorUnits || 0}
-Work Types: ${newProject.selectedWorkTypes.join(", ")}
-Services: ${newProject.selectedAdditionalServices.join(", ")}
-Contractor: ${newProject.contractor}
-Subcontractor: ${newProject.sub}
-      `.trim();
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+        } else {
+          // Create new customer
+          const { data: newCustomer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              customer_number: newProject.customerNumber || null,
+              name: newProject.project, // Use project name as customer name fallback
+              email: newProject.customerEmail || null,
+              phone: newProject.customerPhone || null,
+              address: newProject.address || null,
+            })
+            .select("id")
+            .single();
 
-      const fullDescription = newProject.description
-        ? `${newProject.description}\n\n--- Details ---\n${metadata}`
-        : metadata;
+          if (!customerError && newCustomer) {
+            customerId = newCustomer.id;
+          }
+        }
+      }
 
-      // 2. Insert project - ONLY valid columns
+      // 2. Insert project - Now using ALL specific columns
       const { data: insertedProject, error: projectError } = await supabase
         .from("projects")
         .insert({
           title: newProject.project,
-          // address: newProject.address, // Missing column
-          description: fullDescription,
+          address: newProject.address || null,
+          description: newProject.description || null,
           contract_value: parseFloat(newProject.amount) || 0,
-          status: "Scheduled", // or "active" if you prefer
-          // scheduled_start: newProject.scheduledStart || null, // Missing column
-          // estimated_hours: newProject.estimatedHours || null, // Missing column
-          // indoor_units: newProject.indoorUnits || 0, // Missing column
-          // customer_id: customerId, // Missing column
+          status: "Scheduled",
+          scheduled_start: newProject.scheduledStart || null,
+          estimated_hours: newProject.estimatedHours
+            ? parseFloat(newProject.estimatedHours)
+            : null,
+          indoor_units: newProject.indoorUnits || 0,
+          customer_id: customerId,
           partner_id: newProject.partnerId || null,
           broker_id: newProject.mediatorId || null,
-          // contractor_id: newProject.contractorId || null, // Missing column
-          // subcontractor_id: newProject.subId || null, // Missing column
+          contractor_id: newProject.contractorId || null,
+          subcontractor_id: newProject.subId || null,
         })
         .select("id")
         .single();

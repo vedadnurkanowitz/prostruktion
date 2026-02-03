@@ -509,19 +509,23 @@ export default function AdminProjects() {
     const fetchProjects = async () => {
       const supabase = createClient();
       try {
-        // Fetch projects with all related data using new schema
-        const { data, error } = await supabase.from("projects").select(`
+        // Fetch projects with related data using validated schema
+        // Note: customer_id, contractor_id, subcontractor_id are currently missing in the DB
+        // so we exclude them from the join to prevent errors.
+        const { data, error } = await supabase
+          .from("projects")
+          .select(
+            `
             *,
-            customer:customer_id(id, customer_number, name, email, phone, address),
-            partner_profile:partner_id(id, full_name, email, company_name),
-            broker_profile:broker_id(id, full_name, email),
-            contractor:contractor_id(id, name, company_name),
-            subcontractor:subcontractor_id(id, name, company_name),
+            partner_profile:profiles!partner_id(id, full_name, email, company_name),
+            broker_profile:profiles!broker_id(id, full_name, email),
             project_work_types(work_type_key, price),
             project_additional_services(service_id, price)
-          `);
+          `,
+          )
+          .order("created_at", { ascending: false });
 
-        if (data && !error && data.length > 0) {
+        if (data && !error) {
           // Map DB projects to UI shape
           const mappedProjects = data.map((p: any) => {
             // Extract work types and services from joined data
@@ -533,7 +537,7 @@ export default function AdminProjects() {
 
             // Determine status color
             let statusColor = "bg-purple-600 text-white";
-            if (p.status === "In Progress")
+            if (p.status === "In Progress" || p.status === "active")
               statusColor = "bg-orange-500 text-white";
             if (p.status === "In Abnahme")
               statusColor = "bg-yellow-500 text-black";
@@ -545,8 +549,7 @@ export default function AdminProjects() {
               project: p.title,
               address: p.address || "",
               description: p.description || "",
-              contractor:
-                p.contractor?.company_name || p.contractor?.name || "",
+              contractor: "", // Not available in DB yet
               partner:
                 p.partner_profile?.company_name ||
                 p.partner_profile?.full_name ||
@@ -554,11 +557,11 @@ export default function AdminProjects() {
               partnerId: p.partner_id,
               mediator: p.broker_profile?.full_name || "",
               mediatorId: p.broker_id,
-              sub: p.subcontractor?.company_name || p.subcontractor?.name || "",
-              subId: p.subcontractor_id,
-              customerNumber: p.customer?.customer_number || "",
-              customerEmail: p.customer?.email || "",
-              customerPhone: p.customer?.phone || "",
+              sub: "", // Not available in DB yet
+              subId: null,
+              customerNumber: "", // Not available in DB yet
+              customerEmail: "",
+              customerPhone: "",
               estimatedHours: p.estimated_hours || "",
               indoorUnits: p.indoor_units || 0,
               selectedWorkTypes,
@@ -591,6 +594,8 @@ export default function AdminProjects() {
             JSON.stringify(mappedProjects),
           );
           return; // Skip localStorage fallback if we got Supabase data
+        } else if (error) {
+          console.error("Supabase fetch error:", error);
         }
       } catch (error) {
         console.error("Error fetching projects from Supabase:", error);

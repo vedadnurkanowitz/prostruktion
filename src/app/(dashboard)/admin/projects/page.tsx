@@ -2253,44 +2253,81 @@ Contractor: ${newProject.contractor}
                   <div className="border-t border-dashed my-2"></div>
 
                   {/* Scope of Work */}
-                  <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-2">
+                  <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-3">
                     <h4 className="font-semibold uppercase text-muted-foreground">
                       Scope of Work
                     </h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-muted-foreground block">
-                          Indoor Units:
+
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground block font-semibold mb-1">
+                        Work Types (
+                        {currentInvoice.projectData?.indoorUnits || 0} Indoor
+                        Units):
+                      </span>
+                      {currentInvoice.projectData?.selectedWorkTypes?.length >
+                      0 ? (
+                        <ul className="space-y-1">
+                          {currentInvoice.projectData.selectedWorkTypes.map(
+                            (type: string) => {
+                              const units =
+                                currentInvoice.projectData?.indoorUnits || 0;
+                              const cost =
+                                PRICING_MATRIX.baseCosts[units]?.[
+                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                ] || 0;
+
+                              return (
+                                <li
+                                  key={type}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
+                                    <span className="leading-tight text-xs">
+                                      {WORK_TYPE_LABELS[type] || type}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {cost}
+                                  </span>
+                                </li>
+                              );
+                            },
+                          )}
+                        </ul>
+                      ) : (
+                        <span className="text-muted-foreground italic">
+                          No specific work types selected.
                         </span>
-                        <span className="font-medium">
-                          {currentInvoice.projectData?.indoorUnits || 0} Units
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block">
-                          Installation:
-                        </span>
-                        <span className="font-medium">Standard Montage</span>
-                      </div>
+                      )}
                     </div>
+
                     {currentInvoice.projectData?.selectedAdditionalServices
                       ?.length > 0 && (
                       <div>
-                        <span className="text-muted-foreground block mb-1">
+                        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                        <span className="text-muted-foreground block font-semibold mb-1">
                           Additional Services:
                         </span>
                         <div className="flex flex-wrap gap-1">
                           {currentInvoice.projectData.selectedAdditionalServices.map(
-                            (s: string, idx: number) => (
-                              <Badge
-                                key={idx}
-                                variant="secondary"
-                                className="text-[10px] px-1 py-0 h-5"
-                              >
-                                {ADDITIONAL_SERVICES.find((as) => as.id === s)
-                                  ?.label || s}
-                              </Badge>
-                            ),
+                            (s: string, idx: number) => {
+                              const service = ADDITIONAL_SERVICES.find(
+                                (as) => as.id === s,
+                              );
+                              return (
+                                <Badge
+                                  key={idx}
+                                  variant="secondary"
+                                  className="text-[10px] px-2 py-0.5 h-auto whitespace-normal text-left"
+                                >
+                                  {service?.label || s}
+                                  {service?.price
+                                    ? ` (€ ${service.price})`
+                                    : ""}
+                                </Badge>
+                              );
+                            },
                           )}
                         </div>
                       </div>

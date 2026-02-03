@@ -53,16 +53,56 @@ import {
   AlertCircle,
   Users,
   Trophy,
+  PlusCircle,
 } from "lucide-react";
-// import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data"; // Unused
+import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AdminProjects() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [currentInvoice, setCurrentInvoice] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
+
+  // Invoice Editing State
+  const [activeInvoiceTab, setActiveInvoiceTab] = useState("partner");
+  const [invoiceEditState, setInvoiceEditState] = useState({
+    projectValue: 0,
+    qualityBonus: { enabled: true, amount: 0, label: "" },
+    quantityBonus: { enabled: true, amount: 0, label: "" },
+    partnerSharePercent: 15,
+    mediatorSharePercent: 10,
+    subcontractorFee: 0,
+    quantityCount: 0,
+    reviewed: {
+      partner: false,
+      mediator: false,
+      subcontractor: false,
+    },
+  });
+
+  // Helper to count monthly projects for a partner
+  const getPartnerMonthlyCount = (partnerName: string) => {
+    if (!partnerName) return 0;
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return projects.filter((p) => {
+      // Parse project start date or use created date if available
+      // Assuming 'start' is "MMM D, YYYY"
+      const pDate = new Date(p.start);
+      return (
+        (p.partner === partnerName || p.partnerId === partnerName) && // Check both name and ID
+        pDate.getMonth() === currentMonth &&
+        pDate.getFullYear() === currentYear &&
+        p.status !== "Scheduled" // Count active/finished projects?
+      );
+    }).length;
+  };
 
   // Form State
   const [newProject, setNewProject] = useState({
@@ -82,14 +122,38 @@ export default function AdminProjects() {
       day: "numeric",
     }),
     scheduledStart: "", // Added scheduled start date
-    amount: "",
+    amount: "2660", // Default calculated for 0 units and default work types
     description: "", // Added description for email paste
     customerNumber: "",
     customerPhone: "",
     customerEmail: "",
     estimatedHours: "", // Added estimated max hours
     workers: [] as string[], // Selected worker IDs
+    indoorUnits: 0,
+    selectedWorkTypes: [
+      "montage",
+      "hydraulik",
+      "kaelteInbetriebnahme",
+      "elektroAnschluss",
+      "elektroInbetriebnahme",
+      "bohrungen",
+      "kleinteile",
+      "kaeltemittel",
+    ],
+    selectedAdditionalServices: [] as string[],
   });
+
+  const WORK_TYPE_LABELS: Record<string, string> = {
+    montage: "Montage Innengeräte, Hydraulik-Modul,\nAußengerät (1)",
+    hydraulik: "Hydraulische Montage (2)",
+    kaelteInbetriebnahme: "Kältetechnische Inbetriebnahme (3)",
+    elektroAnschluss: "Elektroanschluss Unterverteilung (4)",
+    elektroInbetriebnahme: "Elektrotechnische Inbetriebnahme (5)",
+    bohrungen: "Bohrungen (6)",
+    kleinteile: "Kleinteilpauschale (7)",
+    kaeltemittel: "Kältemittel R32 (8)",
+    besichtigung: "Vor-Ort-Besichtigung",
+  };
 
   // Calculator State REMOVED
 
@@ -123,6 +187,76 @@ export default function AdminProjects() {
       newExpanded.add(index);
     }
     setExpandedScheduledRows(newExpanded);
+  };
+
+  // Additional Work State
+  const [additionalWorkInputs, setAdditionalWorkInputs] = useState<{
+    [key: number]: { description: string; price: string };
+  }>({});
+
+  const handleAdditionalWorkInputChange = (
+    index: number,
+    field: "description" | "price",
+    value: string,
+  ) => {
+    setAdditionalWorkInputs((prev) => ({
+      ...prev,
+      [index]: {
+        ...prev[index],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleAddAdditionalWorkItem = (index: number, project: any) => {
+    const input = additionalWorkInputs[index];
+    if (!input || !input.description || !input.price) return;
+
+    const newWorkItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      description: input.description,
+      price: parseFloat(input.price),
+      receiptName: null as string | null, // Placeholder for file name
+    };
+
+    // Check for file input
+    const fileInput = document.getElementById(
+      `receipt-upload-${index}`,
+    ) as HTMLInputElement;
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      newWorkItem.receiptName = fileInput.files[0].name;
+      // Note: Actual file upload/storage logic would go here.
+    }
+
+    const updatedProjects = [...projects];
+    // Find the actual project index in the main list if filtered, but here 'projects' is the source
+    // note: 'i' in the map loop corresponds to 'paginatedProjects' index usually, but here likely matches if no filter.
+    // Ideally we should find by ID, but existing logic uses 'i' from map.
+    // The map loop in render uses: `paginatedProjects...map((item, i) => ...)`
+    // And `handleStatusChange` uses `i`.
+    // However, `setProjects` updates the main `projects` array.
+    // We should use `handleProjectFieldChange` logic finding by object reference if possible, but simpler here:
+
+    const mainIndex = updatedProjects.findIndex((p) => p === project);
+    if (mainIndex !== -1) {
+      if (!updatedProjects[mainIndex].additionalWorks) {
+        updatedProjects[mainIndex].additionalWorks = [];
+      }
+      updatedProjects[mainIndex].additionalWorks.push(newWorkItem);
+
+      setProjects(updatedProjects);
+      localStorage.setItem(
+        "prostruktion_projects_v1",
+        JSON.stringify(updatedProjects),
+      );
+    }
+
+    // Clear input
+    setAdditionalWorkInputs((prev) => ({
+      ...prev,
+      [index]: { description: "", price: "" },
+    }));
+    if (fileInput) fileInput.value = "";
   };
 
   // Pagination State
@@ -486,7 +620,9 @@ export default function AdminProjects() {
       abnahme: "No",
       invoiceHeader: "Create Invoice",
       invoiceStatus: "Ready",
-      amount: isNaN(parseFloat(newProject.amount)) ? newProject.amount : `€ ${parseFloat(newProject.amount).toLocaleString()}`,
+      amount: isNaN(parseFloat(newProject.amount))
+        ? newProject.amount
+        : `€ ${parseFloat(newProject.amount).toLocaleString()}`,
       description: newProject.description, // Store manual description
       // Save calculation details for reference - REMOVED calcState
       calculationDetails: null,
@@ -515,7 +651,10 @@ Contractor: ${newProject.contractor}
 
       await supabase.from("projects").insert({
         title: newProject.project,
-        description: newProject.description || metadata, // Use description if provided, else metadata
+        description:
+          newProject.description ||
+          metadata +
+            `\n\nPricing Details:\nUnits: ${newProject.indoorUnits}\nWork Types: ${newProject.selectedWorkTypes.join(", ")}\nServices: ${newProject.selectedAdditionalServices.join(", ")}`, // Use description if provided, else metadata
         contract_value: parseFloat(newProject.amount) || 0,
         partner_id: newProject.partnerId || null,
         broker_id: newProject.mediatorId || null,
@@ -543,13 +682,25 @@ Contractor: ${newProject.contractor}
         day: "numeric",
       }),
       scheduledStart: "", // Reset scheduled start
-      amount: "",
+      workers: [],
+      indoorUnits: 0,
+      selectedWorkTypes: [
+        "montage",
+        "hydraulik",
+        "kaelteInbetriebnahme",
+        "elektroAnschluss",
+        "elektroInbetriebnahme",
+        "bohrungen",
+        "kleinteile",
+        "kaeltemittel",
+      ],
+      selectedAdditionalServices: [],
+      amount: "2660",
       description: "",
       customerNumber: "",
       customerPhone: "",
       customerEmail: "",
       estimatedHours: "",
-      workers: [],
     });
   };
 
@@ -598,23 +749,33 @@ Contractor: ${newProject.contractor}
   const handleActualHoursChange = (project: any, value: string) => {
     const updatedProjects = [...projects];
     // Find project by reference in the main array
-    const mainIndex = updatedProjects.findIndex(p => p === project);
+    const mainIndex = updatedProjects.findIndex((p) => p === project);
 
     if (mainIndex !== -1) {
       updatedProjects[mainIndex].actualHours = value;
       setProjects(updatedProjects);
-      localStorage.setItem("prostruktion_projects_v1", JSON.stringify(updatedProjects));
+      localStorage.setItem(
+        "prostruktion_projects_v1",
+        JSON.stringify(updatedProjects),
+      );
     }
   };
 
-  const handleProjectFieldChange = (project: any, field: string, value: any) => {
+  const handleProjectFieldChange = (
+    project: any,
+    field: string,
+    value: any,
+  ) => {
     const updatedProjects = [...projects];
-    const mainIndex = updatedProjects.findIndex(p => p === project);
+    const mainIndex = updatedProjects.findIndex((p) => p === project);
 
     if (mainIndex !== -1) {
       updatedProjects[mainIndex][field] = value;
       setProjects(updatedProjects);
-      localStorage.setItem("prostruktion_projects_v1", JSON.stringify(updatedProjects));
+      localStorage.setItem(
+        "prostruktion_projects_v1",
+        JSON.stringify(updatedProjects),
+      );
     }
   };
 
@@ -653,119 +814,85 @@ Contractor: ${newProject.contractor}
   };
 
   const handleCreateInvoice = (project: any, index: number) => {
-    // 1. Calculate splits
-    // Remove "€ " and "," from string to get number
-    const numericAmount = parseFloat(project.amount.replace(/[^0-9.-]+/g, ""));
+    // 1. Calculate Base Values
+    const numericAmount = parseFloat(
+      (project.amount || "").replace(/[^0-9.-]+/g, "") ||
+        project.contract_value ||
+        0,
+    );
 
-    // Check if mediator exists (assuming "-" or empty string means no mediator)
+    // 2. Calculate Quality Bonus
+    // Based on indoor units. default to 0 units if undefined.
+    const units = project.indoorUnits || 0;
+    const qualityBonusAmount =
+      (PRICING_MATRIX.bonus1 && PRICING_MATRIX.bonus1[units]) || 0;
+
+    // 3. Calculate Quantity Bonus
+    // Count projects for this partner in current month
+    const partnerName = project.partner;
+    const monthlyCount = getPartnerMonthlyCount(partnerName) + 1; // +1 includes this current project
+
+    let quantityBonusAmount = 0;
+    // bonus2 keys are "08-12", "12-36", "36+"
+    if (monthlyCount >= 8 && monthlyCount <= 12) quantityBonusAmount = 150;
+    else if (monthlyCount > 12 && monthlyCount <= 36) quantityBonusAmount = 330;
+    else if (monthlyCount > 36) quantityBonusAmount = 600;
+
+    // 4. Determine Shares
     const hasMediator =
       project.mediator &&
       project.mediator !== "-" &&
       project.mediator.trim() !== "";
 
-    const totalCommission = numericAmount * 0.3;
+    // Set Invoice Edit State
+    setInvoiceEditState({
+      projectValue: numericAmount,
+      qualityBonus: {
+        enabled: true,
+        amount: qualityBonusAmount,
+        label: `${units} Indoor Units`,
+      },
+      quantityBonus: {
+        enabled: monthlyCount >= 8,
+        amount: quantityBonusAmount,
+        label: `Tier: ${monthlyCount} Projects (Month)`,
+      },
+      partnerSharePercent: hasMediator ? 10 : 15,
+      mediatorSharePercent: 10,
+      subcontractorFee: 0,
+      quantityCount: monthlyCount,
+      reviewed: {
+        partner: false,
+        mediator: false, // Default false
+        subcontractor: false,
+      },
+    });
 
+    const totalCommission = numericAmount * 0.3;
     let companyShare, partnerShare, mediatorShare;
 
     if (hasMediator) {
-      companyShare = numericAmount * 0.1; // 10%
-      partnerShare = numericAmount * 0.1; // 10%
-      mediatorShare = numericAmount * 0.1; // 10%
+      companyShare = numericAmount * 0.1;
+      partnerShare = numericAmount * 0.1;
+      mediatorShare = numericAmount * 0.1;
     } else {
-      companyShare = numericAmount * 0.15; // 15%
-      partnerShare = numericAmount * 0.15; // 15%
+      companyShare = numericAmount * 0.15;
+      partnerShare = numericAmount * 0.15;
       mediatorShare = 0;
     }
 
-    // 2. Set current invoice data for modal
-    const invoiceData = {
+    // Set current invoice for context
+    setCurrentInvoice({
       ...project,
-      numericAmount, // Pass clean number for display if needed
+      numericAmount,
       totalCommission,
       companyShare,
       partnerShare,
       mediatorShare,
       hasMediator,
-    };
-    setCurrentInvoice(invoiceData);
+      projectData: project,
+    });
 
-    // 3. Mark locally as sent
-    const newProjects = [...projects];
-    newProjects[index].invoiceStatus = "Sent";
-    setProjects(newProjects);
-    localStorage.setItem(
-      "prostruktion_projects_v1",
-      JSON.stringify(newProjects),
-    );
-
-    // 4. Save to LocalStorage for Financial Dashboard
-    // Map project fields to Financial Dashboard format
-    const financialRecord = {
-      id: Date.now(), // Unique ID
-      project: project.project,
-      partner: project.partner,
-      mediator: hasMediator ? project.mediator : "-",
-      emp: project.contractor, // Mapping Contractor to Employer
-      date: new Date().toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }), // Today's date
-      amount: companyShare, // Display the Invoice Amount (Share), not Total
-      projectTotal: numericAmount, // Store total for calculations
-      action: "Create Invoice",
-      overdue: false,
-      status: "For Invoice",
-      days: "Now",
-    };
-
-    const existingInvoices = JSON.parse(
-      localStorage.getItem("prostruktion_invoices") || "[]",
-    );
-    localStorage.setItem(
-      "prostruktion_invoices",
-      JSON.stringify([...existingInvoices, financialRecord]),
-    );
-
-    // 5. Save to LocalStorage for Archive
-    // Map project fields to Archive format (mocking warranty dates for demo)
-
-    const now = new Date();
-    const warrantyDate = new Date(now);
-    warrantyDate.setFullYear(warrantyDate.getFullYear() + 5);
-    warrantyDate.setMonth(warrantyDate.getMonth() + 1);
-
-    const archiveRecord = {
-      project: project.project,
-      address: project.address,
-      contractor: project.contractor,
-      partner: project.partner,
-      mediator: hasMediator ? project.mediator : "-",
-      sub: project.sub,
-      abnahme: now.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }),
-      warrantyEnd: warrantyDate.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }), // 5 years + 1 month warranty
-      status: "In Warranty",
-      statusColor: "bg-orange-100 text-orange-700",
-      action: "Create Complaint",
-    };
-
-    const existingArchive = JSON.parse(
-      localStorage.getItem("prostruktion_archive") || "[]",
-    );
-    localStorage.setItem(
-      "prostruktion_archive",
-      JSON.stringify([...existingArchive, archiveRecord]),
-    );
-
-    // 6. Open success modal
     setSuccessModalOpen(true);
   };
 
@@ -1126,25 +1253,47 @@ Contractor: ${newProject.contractor}
                                 <div className="space-y-4 h-full flex flex-col">
                                   <div className="flex flex-col h-full">
                                     <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                      <FileText className="h-3 w-3" /> Customer Details
+                                      <FileText className="h-3 w-3" /> Customer
+                                      Details
                                     </h4>
                                     <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
                                       <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
-                                        <span className="text-muted-foreground text-xs">Customer No:</span>
-                                        <span className="font-medium">{project.customerNumber || "N/A"}</span>
+                                        <span className="text-muted-foreground text-xs">
+                                          Customer No:
+                                        </span>
+                                        <span className="font-medium">
+                                          {project.customerNumber || "N/A"}
+                                        </span>
 
-                                        <span className="text-muted-foreground text-xs">Phone:</span>
-                                        <span className="font-medium">{project.customerPhone || "N/A"}</span>
+                                        <span className="text-muted-foreground text-xs">
+                                          Phone:
+                                        </span>
+                                        <span className="font-medium">
+                                          {project.customerPhone || "N/A"}
+                                        </span>
 
-                                        <span className="text-muted-foreground text-xs">Email:</span>
-                                        <span className="font-medium truncate" title={project.customerEmail}>{project.customerEmail || "N/A"}</span>
+                                        <span className="text-muted-foreground text-xs">
+                                          Email:
+                                        </span>
+                                        <span
+                                          className="font-medium truncate"
+                                          title={project.customerEmail}
+                                        >
+                                          {project.customerEmail || "N/A"}
+                                        </span>
 
-                                        <span className="text-muted-foreground text-xs">Location:</span>
-                                        <span className="font-medium">{project.address}</span>
+                                        <span className="text-muted-foreground text-xs">
+                                          Location:
+                                        </span>
+                                        <span className="font-medium">
+                                          {project.address}
+                                        </span>
                                       </div>
                                       {project.description && (
                                         <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
-                                          <span className="text-xs text-muted-foreground block mb-2 shrink-0">Notes:</span>
+                                          <span className="text-xs text-muted-foreground block mb-2 shrink-0">
+                                            Notes:
+                                          </span>
                                           <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
                                             {project.description}
                                           </p>
@@ -1157,50 +1306,89 @@ Contractor: ${newProject.contractor}
                                 {/* Column 2: Assigned Workers (Existing) */}
                                 <div className="space-y-4 h-full flex flex-col">
                                   <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <HardHat className="h-3 w-3" /> Assigned Workers
+                                    <HardHat className="h-3 w-3" /> Assigned
+                                    Workers
                                   </h4>
 
                                   <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
                                     <div className="grid grid-cols-[100px_1fr] gap-2">
-                                      <span className="text-muted-foreground text-xs">Contractor:</span>
-                                      <span className="font-medium">{project.contractor || "N/A"}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Contractor:
+                                      </span>
+                                      <span className="font-medium">
+                                        {project.contractor || "N/A"}
+                                      </span>
 
-                                      <span className="text-muted-foreground text-xs">Partner:</span>
-                                      <span className="font-medium">{project.partner || "N/A"}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Partner:
+                                      </span>
+                                      <span className="font-medium">
+                                        {project.partner || "N/A"}
+                                      </span>
 
-                                      <span className="text-muted-foreground text-xs">Mediator:</span>
-                                      <span className="font-medium">{project.mediator || "N/A"}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Mediator:
+                                      </span>
+                                      <span className="font-medium">
+                                        {project.mediator || "N/A"}
+                                      </span>
                                     </div>
                                   </div>
 
-                                  {project.workers && project.workers.length > 0 ? (
+                                  {project.workers &&
+                                  project.workers.length > 0 ? (
                                     <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
                                       <Table>
                                         <TableHeader className="bg-gray-50/50">
                                           <TableRow className="h-8 hover:bg-transparent">
-                                            <TableHead className="h-8 text-[10px] font-semibold">Name</TableHead>
-                                            <TableHead className="h-8 text-[10px] font-semibold text-center">Cert</TableHead>
-                                            <TableHead className="h-8 text-[10px] font-semibold text-center">A1</TableHead>
-                                            <TableHead className="h-8 text-[10px] font-semibold text-center">Success</TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold">
+                                              Name
+                                            </TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                              Cert
+                                            </TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                              A1
+                                            </TableHead>
+                                            <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                              Success
+                                            </TableHead>
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                          {project.workers.map((workerId: string) => (
-                                            <TableRow key={workerId} className="h-8 hover:bg-transparent border-0">
-                                              <TableCell className="py-1">
-                                                <div className="flex items-center gap-2">
-                                                  <Avatar className="h-5 w-5 border">
-                                                    <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`} />
-                                                    <AvatarFallback className="text-[9px]">{workerId.charAt(0)}</AvatarFallback>
-                                                  </Avatar>
-                                                  <span className="text-xs font-medium truncate max-w-[100px]">Worker {workerId}</span>
-                                                </div>
-                                              </TableCell>
-                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
-                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
-                                              <TableCell className="py-1 text-center text-xs text-green-600 font-medium">100%</TableCell>
-                                            </TableRow>
-                                          ))}
+                                          {project.workers.map(
+                                            (workerId: string) => (
+                                              <TableRow
+                                                key={workerId}
+                                                className="h-8 hover:bg-transparent border-0"
+                                              >
+                                                <TableCell className="py-1">
+                                                  <div className="flex items-center gap-2">
+                                                    <Avatar className="h-5 w-5 border">
+                                                      <AvatarImage
+                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
+                                                      />
+                                                      <AvatarFallback className="text-[9px]">
+                                                        {workerId.charAt(0)}
+                                                      </AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="text-xs font-medium truncate max-w-[100px]">
+                                                      Worker {workerId}
+                                                    </span>
+                                                  </div>
+                                                </TableCell>
+                                                <TableCell className="py-1 text-xs text-muted-foreground text-center">
+                                                  Yes
+                                                </TableCell>
+                                                <TableCell className="py-1 text-xs text-muted-foreground text-center">
+                                                  Yes
+                                                </TableCell>
+                                                <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                  100%
+                                                </TableCell>
+                                              </TableRow>
+                                            ),
+                                          )}
                                         </TableBody>
                                       </Table>
                                     </div>
@@ -1213,11 +1401,17 @@ Contractor: ${newProject.contractor}
                                   {/* Estimated & Actual Hours Footer */}
                                   <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
                                     <div className="flex justify-between items-center text-xs">
-                                      <span className="font-medium text-gray-700 dark:text-gray-300">Estimated Max Hours:</span>
-                                      <span className="font-mono font-semibold">{project.estimatedHours || "N/A"}</span>
+                                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                                        Estimated Max Hours:
+                                      </span>
+                                      <span className="font-mono font-semibold">
+                                        {project.estimatedHours || "N/A"}
+                                      </span>
                                     </div>
                                     <div className="flex justify-between items-center text-xs">
-                                      <span className="font-medium text-gray-700 dark:text-gray-300">Actual Hours:</span>
+                                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                                        Actual Hours:
+                                      </span>
                                       <span className="w-16 border-b border-gray-400 dark:border-gray-600"></span>
                                     </div>
                                   </div>
@@ -1227,77 +1421,119 @@ Contractor: ${newProject.contractor}
                                 <div className="space-y-4 h-full flex flex-col">
                                   <div className="h-full flex flex-col">
                                     <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                      <Trophy className="h-3 w-3" /> Bonus & Performance
+                                      <Trophy className="h-3 w-3" /> Scope of
+                                      Work
                                     </h4>
 
-                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 flex flex-col h-full shadow-sm">
-                                      <div className="flex-1 space-y-6">
-                                        {/* 1. Qualitäts- und Termintreuebonus */}
-                                        <div className="space-y-2">
-                                          <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-                                            1. Qualitäts- und Termintreuebonus
-                                          </h5>
-                                          <div className="bg-gray-50 dark:bg-gray-900/10 rounded p-2 flex items-center justify-between border">
-                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Bonus Amount</span>
-                                            <span className="text-xs font-mono text-muted-foreground font-semibold">+ € 0</span>
-                                          </div>
+                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
+                                      <div className="flex-1 space-y-5 text-xs">
+                                        {/* Unit Count Header */}
+                                        <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
+                                          <span className="font-medium text-muted-foreground">
+                                            Indoor Units
+                                          </span>
+                                          <Badge
+                                            variant="secondary"
+                                            className="text-sm font-bold px-2.5 py-0.5"
+                                          >
+                                            {project.indoorUnits || 0}
+                                          </Badge>
                                         </div>
 
-                                        {/* 2. Mengenzuschlag & Total Calculation */}
-                                        {(() => {
-                                          const pDate = new Date(project.start);
-                                          const pMonth = pDate.toLocaleString("default", { month: "short" });
+                                        {/* Work Types */}
+                                        <div className="space-y-2">
+                                          <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
+                                            Base Installation
+                                          </div>
+                                          {project.selectedWorkTypes &&
+                                          project.selectedWorkTypes.length >
+                                            0 ? (
+                                            <div className="grid gap-2">
+                                              {project.selectedWorkTypes.map(
+                                                (type: string) => {
+                                                  // Calculate cost for this type based on units
+                                                  const units =
+                                                    project.indoorUnits || 0;
+                                                  const unitCosts =
+                                                    PRICING_MATRIX.baseCosts[
+                                                      units
+                                                    ] || {};
+                                                  const cost =
+                                                    (unitCosts as any)[type] ||
+                                                    0;
 
-                                          // Count logic
-                                          const count = projects.filter(p => {
-                                            const d = new Date(p.start);
-                                            return d.getMonth() === pDate.getMonth() &&
-                                              d.getFullYear() === pDate.getFullYear() &&
-                                              (p.partner === project.partner || p.contractor === project.contractor)
-                                          }).length;
+                                                  return (
+                                                    <div
+                                                      key={type}
+                                                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                    >
+                                                      <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
+                                                        {WORK_TYPE_LABELS[
+                                                          type
+                                                        ] || type}
+                                                      </span>
+                                                      <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                        € {cost}
+                                                      </span>
+                                                    </div>
+                                                  );
+                                                },
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <p className="text-muted-foreground italic text-[11px] py-1">
+                                              No specific work types selected.
+                                            </p>
+                                          )}
+                                        </div>
 
-                                          let tier = "None";
-                                          let bonus = 0;
-                                          if (count >= 36) { tier = "36+"; bonus = 200; }
-                                          else if (count >= 12) { tier = "12-36"; bonus = 100; }
-                                          else if (count >= 8) { tier = "08-12"; bonus = 50; }
-
-                                          const qualityBonus = 0;
-                                          const totalBonus = qualityBonus + bonus;
-
-                                          return (
-                                            <>
-                                              <div className="space-y-2">
-                                                <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-                                                  2. Mengenzuschlag
-                                                </h5>
-                                                <div className="bg-blue-50 dark:bg-blue-900/10 rounded p-2 text-xs space-y-1">
-                                                  <div className="flex justify-between font-semibold text-blue-800 dark:text-blue-300">
-                                                    <span>Mengenzuschlag</span>
-                                                    <span>Tier: {tier}</span>
-                                                  </div>
-                                                  <div className="flex justify-between text-blue-600 dark:text-blue-400">
-                                                    <span>Projects ({pMonth}):</span>
-                                                    <span>{count}</span>
-                                                  </div>
-                                                  <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-blue-200 mt-1 pt-1">
-                                                    <span>Bonus Amount:</span>
-                                                    <span>€ {bonus}</span>
-                                                  </div>
-                                                </div>
+                                        {/* Additional Services */}
+                                        {project.selectedAdditionalServices &&
+                                          project.selectedAdditionalServices
+                                            .length > 0 && (
+                                            <div className="space-y-2 mt-4">
+                                              <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                                Extras
                                               </div>
-
-                                              <div className="mt-auto pt-4 border-t border-dashed">
-                                                <div className="flex justify-between items-center text-sm">
-                                                  <span className="font-bold text-gray-900 dark:text-gray-100">Total Bonus</span>
-                                                  <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">
-                                                    € {totalBonus}
-                                                  </span>
-                                                </div>
+                                              <div className="grid gap-2">
+                                                {project.selectedAdditionalServices.map(
+                                                  (serviceId: string) => {
+                                                    const service =
+                                                      ADDITIONAL_SERVICES.find(
+                                                        (s) =>
+                                                          s.id === serviceId,
+                                                      );
+                                                    return (
+                                                      <div
+                                                        key={serviceId}
+                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                      >
+                                                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                          {service?.label ||
+                                                            serviceId}
+                                                        </span>
+                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                          €{" "}
+                                                          {service?.price || 0}
+                                                        </span>
+                                                      </div>
+                                                    );
+                                                  },
+                                                )}
                                               </div>
-                                            </>
-                                          );
-                                        })()}
+                                            </div>
+                                          )}
+                                      </div>
+
+                                      <div className="pt-4 mt-4 border-t">
+                                        <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                                          <span className="font-bold text-blue-900 dark:text-blue-100">
+                                            Total Amount
+                                          </span>
+                                          <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                                            {project.amount}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1305,8 +1541,7 @@ Contractor: ${newProject.contractor}
                               </div>
                             </TableCell>
                           </TableRow>
-                        )
-                        }
+                        )}
                       </Fragment>
                     );
                   })
@@ -1351,11 +1586,16 @@ Contractor: ${newProject.contractor}
                 .filter((p) => p.status !== "Scheduled")
                 .map((item, i) => {
                   // Calculate stats for accordion details
-                  const { penalty, daysLate, isOverdue, penaltyPercentage, netAmount } =
-                    calculatePenalty(
-                      item.amount,
-                      item.scheduledStart || item.start,
-                    );
+                  const {
+                    penalty,
+                    daysLate,
+                    isOverdue,
+                    penaltyPercentage,
+                    netAmount,
+                  } = calculatePenalty(
+                    item.amount,
+                    item.scheduledStart || item.start,
+                  );
                   const isExpanded = expandedRows.has(i);
 
                   return (
@@ -1453,25 +1693,47 @@ Contractor: ${newProject.contractor}
                               <div className="space-y-4 h-full flex flex-col">
                                 <div className="flex flex-col h-full">
                                   <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <FileText className="h-3 w-3" /> Customer Details
+                                    <FileText className="h-3 w-3" /> Customer
+                                    Details
                                   </h4>
                                   <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
                                     <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
-                                      <span className="text-muted-foreground text-xs">Customer No:</span>
-                                      <span className="font-medium">{item.customerNumber || "N/A"}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Customer No:
+                                      </span>
+                                      <span className="font-medium">
+                                        {item.customerNumber || "N/A"}
+                                      </span>
 
-                                      <span className="text-muted-foreground text-xs">Phone:</span>
-                                      <span className="font-medium">{item.customerPhone || "N/A"}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Phone:
+                                      </span>
+                                      <span className="font-medium">
+                                        {item.customerPhone || "N/A"}
+                                      </span>
 
-                                      <span className="text-muted-foreground text-xs">Email:</span>
-                                      <span className="font-medium truncate" title={item.customerEmail}>{item.customerEmail || "N/A"}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Email:
+                                      </span>
+                                      <span
+                                        className="font-medium truncate"
+                                        title={item.customerEmail}
+                                      >
+                                        {item.customerEmail || "N/A"}
+                                      </span>
 
-                                      <span className="text-muted-foreground text-xs">Location:</span>
-                                      <span className="font-medium">{item.address}</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Location:
+                                      </span>
+                                      <span className="font-medium">
+                                        {item.address}
+                                      </span>
                                     </div>
                                     {item.description && (
                                       <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
-                                        <span className="text-xs text-muted-foreground block mb-2 shrink-0">Notes:</span>
+                                        <span className="text-xs text-muted-foreground block mb-2 shrink-0">
+                                          Notes:
+                                        </span>
                                         <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
                                           {item.description}
                                         </p>
@@ -1484,19 +1746,32 @@ Contractor: ${newProject.contractor}
                               {/* Column 2: Assigned Workers (Existing) */}
                               <div className="space-y-4 h-full flex flex-col">
                                 <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                  <HardHat className="h-3 w-3" /> Assigned Workers
+                                  <HardHat className="h-3 w-3" /> Assigned
+                                  Workers
                                 </h4>
 
                                 <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
                                   <div className="grid grid-cols-[100px_1fr] gap-2">
-                                    <span className="text-muted-foreground text-xs">Contractor:</span>
-                                    <span className="font-medium">{item.contractor || "N/A"}</span>
+                                    <span className="text-muted-foreground text-xs">
+                                      Contractor:
+                                    </span>
+                                    <span className="font-medium">
+                                      {item.contractor || "N/A"}
+                                    </span>
 
-                                    <span className="text-muted-foreground text-xs">Partner:</span>
-                                    <span className="font-medium">{item.partner || "N/A"}</span>
+                                    <span className="text-muted-foreground text-xs">
+                                      Partner:
+                                    </span>
+                                    <span className="font-medium">
+                                      {item.partner || "N/A"}
+                                    </span>
 
-                                    <span className="text-muted-foreground text-xs">Mediator:</span>
-                                    <span className="font-medium">{item.mediator || "N/A"}</span>
+                                    <span className="text-muted-foreground text-xs">
+                                      Mediator:
+                                    </span>
+                                    <span className="font-medium">
+                                      {item.mediator || "N/A"}
+                                    </span>
                                   </div>
                                 </div>
 
@@ -1505,29 +1780,54 @@ Contractor: ${newProject.contractor}
                                     <Table>
                                       <TableHeader className="bg-gray-50/50">
                                         <TableRow className="h-8 hover:bg-transparent">
-                                          <TableHead className="h-8 text-[10px] font-semibold">Name</TableHead>
-                                          <TableHead className="h-8 text-[10px] font-semibold text-center">Cert</TableHead>
-                                          <TableHead className="h-8 text-[10px] font-semibold text-center">A1</TableHead>
-                                          <TableHead className="h-8 text-[10px] font-semibold text-center">Success</TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold">
+                                            Name
+                                          </TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                            Cert
+                                          </TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                            A1
+                                          </TableHead>
+                                          <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                            Success
+                                          </TableHead>
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
-                                        {item.workers.map((workerId: string) => (
-                                          <TableRow key={workerId} className="h-8 hover:bg-transparent border-0">
-                                            <TableCell className="py-1">
-                                              <div className="flex items-center gap-2">
-                                                <Avatar className="h-5 w-5 border">
-                                                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`} />
-                                                  <AvatarFallback className="text-[9px]">{workerId.charAt(0)}</AvatarFallback>
-                                                </Avatar>
-                                                <span className="text-xs font-medium truncate max-w-[100px]">Worker {workerId}</span>
-                                              </div>
-                                            </TableCell>
-                                            <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
-                                            <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
-                                            <TableCell className="py-1 text-center text-xs text-green-600 font-medium">100%</TableCell>
-                                          </TableRow>
-                                        ))}
+                                        {item.workers.map(
+                                          (workerId: string) => (
+                                            <TableRow
+                                              key={workerId}
+                                              className="h-8 hover:bg-transparent border-0"
+                                            >
+                                              <TableCell className="py-1">
+                                                <div className="flex items-center gap-2">
+                                                  <Avatar className="h-5 w-5 border">
+                                                    <AvatarImage
+                                                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
+                                                    />
+                                                    <AvatarFallback className="text-[9px]">
+                                                      {workerId.charAt(0)}
+                                                    </AvatarFallback>
+                                                  </Avatar>
+                                                  <span className="text-xs font-medium truncate max-w-[100px]">
+                                                    Worker {workerId}
+                                                  </span>
+                                                </div>
+                                              </TableCell>
+                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">
+                                                Yes
+                                              </TableCell>
+                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">
+                                                Yes
+                                              </TableCell>
+                                              <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                100%
+                                              </TableCell>
+                                            </TableRow>
+                                          ),
+                                        )}
                                       </TableBody>
                                     </Table>
                                   </div>
@@ -1540,145 +1840,302 @@ Contractor: ${newProject.contractor}
                                 {/* Estimated & Actual Hours Footer */}
                                 <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
                                   <div className="flex justify-between items-center text-xs">
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">Estimated Max Hours:</span>
-                                    <span className="font-mono font-semibold">{item.estimatedHours || "N/A"}</span>
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                      Estimated Max Hours:
+                                    </span>
+                                    <span className="font-mono font-semibold">
+                                      {item.estimatedHours || "N/A"}
+                                    </span>
                                   </div>
                                   <div className="flex justify-between items-center text-xs">
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">Actual Hours:</span>
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                      Actual Hours:
+                                    </span>
                                     <div className="flex items-center gap-1">
                                       <Input
                                         className="h-6 w-20 text-xs text-right bg-white dark:bg-gray-950 px-1 py-0 h-7"
                                         placeholder="0"
                                         value={item.actualHours || ""}
-                                        onChange={(e) => handleActualHoursChange(item, e.target.value)}
+                                        onChange={(e) =>
+                                          handleActualHoursChange(
+                                            item,
+                                            e.target.value,
+                                          )
+                                        }
                                       />
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Column 3: Bonus & Performance Stats */}
+                              {/* Column 3: Scope of Work */}
                               <div className="space-y-4 h-full flex flex-col">
                                 <div className="h-full flex flex-col">
                                   <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <Trophy className="h-3 w-3" /> Bonus & Performance
+                                    <Trophy className="h-3 w-3" /> Scope of Work
                                   </h4>
 
-                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 flex flex-col h-full shadow-sm">
-                                    <div className="flex-1 space-y-6">
-                                      {/* 1. Qualitäts- und Termintreuebonus */}
-                                      <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                          <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                                            1. Qualitäts- und Termintreuebonus
-                                            <Checkbox
-                                              checked={item.qualityBonusChecked || false}
-                                              onCheckedChange={(checked) => handleProjectFieldChange(item, 'qualityBonusChecked', checked)}
-                                              className="h-3.5 w-3.5"
-                                            />
-                                          </h5>
-                                        </div>
-
-                                        <div className={`bg-gray-50 dark:bg-gray-900/10 rounded p-2 border space-y-2 ${!item.qualityBonusChecked ? 'opacity-50' : ''}`}>
-                                          {/* Status Badge */}
-                                          <div className="flex justify-between items-center text-xs">
-                                            <span className="text-muted-foreground">Status:</span>
-                                            <Badge
-                                              variant={isOverdue ? "destructive" : "secondary"}
-                                              className={`h-5 px-1.5 ${isOverdue ? "bg-red-100 text-red-700 hover:bg-red-200 border-0" : "bg-green-100 text-green-700 hover:bg-green-200 border-0"}`}
-                                            >
-                                              {isOverdue ? "Overdue" : "On Time"}
-                                            </Badge>
-                                          </div>
-
-                                          {/* Indoor Units Input */}
-                                          <div className="flex justify-between items-center text-xs">
-                                            <span className="text-muted-foreground">Indoor Units:</span>
-                                            <Input
-                                              type="number"
-                                              className="h-6 w-16 text-right text-xs px-1"
-                                              value={item.indoorUnits || ""}
-                                              onChange={(e) => handleProjectFieldChange(item, 'indoorUnits', e.target.value)}
-                                              placeholder="0"
-                                              disabled={!item.qualityBonusChecked}
-                                            />
-                                          </div>
-
-                                          {/* Calculated Amount */}
-                                          <div className="flex justify-between items-center text-xs pt-2 border-t border-dashed">
-                                            <span className="font-medium text-gray-700 dark:text-gray-300">Bonus Amount</span>
-                                            <span className="font-mono font-semibold text-blue-600">
-                                              + € {((parseInt(item.indoorUnits) || 0) * 50).toLocaleString()}
-                                            </span>
-                                          </div>
-                                        </div>
+                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
+                                    <div className="flex-1 space-y-5 text-xs">
+                                      {/* Unit Count Header */}
+                                      <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
+                                        <span className="font-medium text-muted-foreground">
+                                          Indoor Units
+                                        </span>
+                                        <Badge
+                                          variant="secondary"
+                                          className="text-sm font-bold px-2.5 py-0.5"
+                                        >
+                                          {item.indoorUnits || 0}
+                                        </Badge>
                                       </div>
 
-                                      {/* 2. Mengenzuschlag & Total Calculation */}
-                                      {(() => {
-                                        const pDate = new Date(item.start);
-                                        const pMonth = pDate.toLocaleString("default", { month: "short" });
+                                      {/* Work Types */}
+                                      <div className="space-y-2">
+                                        <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
+                                          Base Installation
+                                        </div>
+                                        {item.selectedWorkTypes &&
+                                        item.selectedWorkTypes.length > 0 ? (
+                                          <div className="grid gap-2">
+                                            {item.selectedWorkTypes.map(
+                                              (type: string) => {
+                                                // Calculate cost for this type based on units
+                                                const units =
+                                                  item.indoorUnits || 0;
+                                                const unitCosts =
+                                                  PRICING_MATRIX.baseCosts[
+                                                    units
+                                                  ] || {};
+                                                const cost =
+                                                  (unitCosts as any)[type] || 0;
 
-                                        // Count logic - Based on Subcontractor's Performance (Monthly)
-                                        const count = projects.filter(p => {
-                                          const d = new Date(p.start);
-                                          return d.getMonth() === pDate.getMonth() &&
-                                            d.getFullYear() === pDate.getFullYear() &&
-                                            (p.sub === item.sub) // Filter by Subcontractor
-                                        }).length;
+                                                return (
+                                                  <div
+                                                    key={type}
+                                                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                  >
+                                                    <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
+                                                      {WORK_TYPE_LABELS[type] ||
+                                                        type}
+                                                    </span>
+                                                    <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                      € {cost}
+                                                    </span>
+                                                  </div>
+                                                );
+                                              },
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p className="text-muted-foreground italic text-[11px] py-1">
+                                            No specific work types selected.
+                                          </p>
+                                        )}
+                                      </div>
 
-                                        let tier = "None";
-                                        let quantityBonusAmount = 0;
-                                        if (count >= 36) { tier = "36+"; quantityBonusAmount = 200; }
-                                        else if (count >= 12) { tier = "12-36"; quantityBonusAmount = 100; }
-                                        else if (count >= 8) { tier = "08-12"; quantityBonusAmount = 50; }
-
-                                        // Totals
-                                        const qualityAmount = item.qualityBonusChecked ? (parseInt(item.indoorUnits) || 0) * 50 : 0;
-                                        const quantityAmountFinal = item.quantityBonusChecked ? quantityBonusAmount : 0;
-                                        const totalBonus = qualityAmount + quantityAmountFinal;
-
-                                        return (
-                                          <>
-                                            <div className="space-y-2">
-                                              <div className="flex items-center justify-between">
-                                                <h5 className="text-xs font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                                                  2. Mengenzuschlag
-                                                  <Checkbox
-                                                    checked={item.quantityBonusChecked || false}
-                                                    onCheckedChange={(checked) => handleProjectFieldChange(item, 'quantityBonusChecked', checked)}
-                                                    className="h-3.5 w-3.5"
-                                                  />
-                                                </h5>
-                                              </div>
-
-                                              <div className={`bg-blue-50 dark:bg-blue-900/10 rounded p-2 text-xs space-y-1 ${!item.quantityBonusChecked ? 'opacity-50' : ''}`}>
-                                                <div className="flex justify-between font-semibold text-blue-800 dark:text-blue-300">
-                                                  <span>Mengenzuschlag</span>
-                                                  <span>Tier: {tier}</span>
-                                                </div>
-                                                <div className="flex justify-between text-blue-600 dark:text-blue-400">
-                                                  <span>Projects ({pMonth}):</span>
-                                                  <span>{count}</span>
-                                                </div>
-                                                <div className="flex justify-between font-bold text-blue-700 dark:text-blue-300 border-t border-blue-200 mt-1 pt-1">
-                                                  <span>Bonus Amount:</span>
-                                                  <span>€ {quantityBonusAmount}</span>
-                                                </div>
-                                              </div>
+                                      {/* Additional Services */}
+                                      {item.selectedAdditionalServices &&
+                                        item.selectedAdditionalServices.length >
+                                          0 && (
+                                          <div className="space-y-2 mt-4">
+                                            <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                              Extras
                                             </div>
-
-                                            <div className="mt-auto pt-4 border-t border-dashed">
-                                              <div className="flex justify-between items-center text-sm">
-                                                <span className="font-bold text-gray-900 dark:text-gray-100">Total Bonus</span>
-                                                <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200">
-                                                  € {totalBonus.toLocaleString()}
-                                                </span>
-                                              </div>
+                                            <div className="grid gap-2">
+                                              {item.selectedAdditionalServices.map(
+                                                (serviceId: string) => {
+                                                  const service =
+                                                    ADDITIONAL_SERVICES.find(
+                                                      (s) => s.id === serviceId,
+                                                    );
+                                                  return (
+                                                    <div
+                                                      key={serviceId}
+                                                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                    >
+                                                      <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                        {service?.label ||
+                                                          serviceId}
+                                                      </span>
+                                                      <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                        € {service?.price || 0}
+                                                      </span>
+                                                    </div>
+                                                  );
+                                                },
+                                              )}
                                             </div>
-                                          </>
-                                        );
-                                      })()}
+                                          </div>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-4 mt-4 border-t">
+                                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                                        <span className="font-bold text-blue-900 dark:text-blue-100">
+                                          Total Amount
+                                        </span>
+                                        <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                                          €{" "}
+                                          {netAmount.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Additional Work Section (Full Width) */}
+                            <div className="px-4 pb-4">
+                              <div className="pt-6 mt-6 border-t border-dashed">
+                                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                                  <PlusCircle className="h-3 w-3" /> In-Progress
+                                  Additional Work
+                                </h4>
+
+                                <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 shadow-sm space-y-4">
+                                  {/* List of Additional Works */}
+                                  {item.additionalWorks &&
+                                    item.additionalWorks.length > 0 && (
+                                      <div className="space-y-2 mb-4">
+                                        <div className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-xs font-medium text-muted-foreground pb-2 border-b px-2">
+                                          <span>Description</span>
+                                          <span className="text-right">
+                                            Price
+                                          </span>
+                                          <span className="text-center">
+                                            Receipt
+                                          </span>
+                                          <span></span>
+                                        </div>
+                                        {item.additionalWorks.map(
+                                          (work: any, wIndex: number) => (
+                                            <div
+                                              key={wIndex}
+                                              className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-sm items-center px-2"
+                                            >
+                                              <span className="font-medium truncate">
+                                                {work.description}
+                                              </span>
+                                              <span className="font-mono text-right text-gray-600">
+                                                € {work.price.toFixed(2)}
+                                              </span>
+                                              <div className="flex justify-center">
+                                                {work.receiptName ? (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-[10px] bg-green-50 text-green-700 border-green-200 truncate max-w-full"
+                                                  >
+                                                    <FileText className="h-3 w-3 mr-1" />{" "}
+                                                    {work.receiptName}
+                                                  </Badge>
+                                                ) : (
+                                                  <span className="text-xs text-muted-foreground italic">
+                                                    No receipt
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div></div>
+                                            </div>
+                                          ),
+                                        )}
+                                        <div className="flex justify-between items-center pt-2 mt-2 border-t px-2">
+                                          <span className="text-xs font-bold">
+                                            Total Additional Cost
+                                          </span>
+                                          <span className="font-mono font-bold text-blue-600">
+                                            €{" "}
+                                            {item.additionalWorks
+                                              .reduce(
+                                                (sum: number, w: any) =>
+                                                  sum + (w.price || 0),
+                                                0,
+                                              )
+                                              .toFixed(2)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  {/* Add New Item Form - Polished Layout */}
+                                  <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                                    <div className="grid gap-4">
+                                      {/* Row 1: Description */}
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                          Description
+                                        </label>
+                                        <Input
+                                          placeholder="e.g. Additional cabling for living room unit..."
+                                          className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 focus:ring-blue-500/20"
+                                          value={
+                                            additionalWorkInputs[i]
+                                              ?.description || ""
+                                          }
+                                          onChange={(e) =>
+                                            handleAdditionalWorkInputChange(
+                                              i,
+                                              "description",
+                                              e.target.value,
+                                            )
+                                          }
+                                        />
+                                      </div>
+
+                                      {/* Row 2: Details & Action */}
+                                      <div className="flex flex-col md:flex-row gap-4 items-end">
+                                        <div className="w-full md:w-32 space-y-1.5">
+                                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                            Price
+                                          </label>
+                                          <div className="relative">
+                                            <span className="absolute left-2.5 top-2.5 text-gray-400 text-xs">
+                                              €
+                                            </span>
+                                            <Input
+                                              type="number"
+                                              placeholder="0.00"
+                                              className="pl-6 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 font-mono text-sm"
+                                              value={
+                                                additionalWorkInputs[i]
+                                                  ?.price || ""
+                                              }
+                                              onChange={(e) =>
+                                                handleAdditionalWorkInputChange(
+                                                  i,
+                                                  "price",
+                                                  e.target.value,
+                                                )
+                                              }
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div className="flex-1 space-y-1.5 min-w-0">
+                                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                            Receipt
+                                          </label>
+                                          <Input
+                                            id={`receipt-upload-${i}`}
+                                            type="file"
+                                            className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-xs py-1.5 h-10 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-600 hover:file:bg-gray-200"
+                                          />
+                                        </div>
+
+                                        <Button
+                                          size="default"
+                                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[100px]"
+                                          onClick={() =>
+                                            handleAddAdditionalWorkItem(i, item)
+                                          }
+                                        >
+                                          <PlusCircle className="h-4 w-4 mr-2" />{" "}
+                                          Add
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -1741,82 +2198,626 @@ Contractor: ${newProject.contractor}
             </div>
           </div>
         </div>
-      </div >
+      </div>
 
       {/* Success Modal */}
-      < Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen} >
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="h-5 w-5" /> Project Sent to Financial
-              Dashboard
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" /> Generate Invoices
             </DialogTitle>
             <DialogDescription>
-              The project has been marked as ready for invoicing and sent to the
-              Financial Dashboard.
+              Review and edit invoice details for all parties before generating.
             </DialogDescription>
           </DialogHeader>
 
           {currentInvoice && (
-            <div className="space-y-4">
-              <div className="bg-muted p-4 rounded-lg space-y-3 text-sm">
-                <div className="flex justify-between font-medium">
-                  <span>Project</span>
-                  <span>{currentInvoice.project}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Wait List Total</span>
-                  <span>€ {currentInvoice.numericAmount.toLocaleString()}</span>
-                </div>
-                <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between font-semibold text-blue-600 pb-2">
-                    <span>Total 30% Commission</span>
-                    <span>
-                      € {currentInvoice.totalCommission.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="pl-4 space-y-1 text-xs text-muted-foreground">
-                    <div className="flex justify-between">
-                      <span>
-                        Your Company (
-                        {currentInvoice.hasMediator ? "10%" : "15%"})
+            <Tabs defaultValue="partner" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsTrigger value="partner">Partner Invoice</TabsTrigger>
+                <TabsTrigger value="subcontractor">Subcontractor</TabsTrigger>
+                <TabsTrigger value="company">
+                  {currentInvoice?.hasMediator ? "Mediator" : "Mediator (N/A)"}
+                </TabsTrigger>
+              </TabsList>
+
+              {/* PARTNER INVOICE TAB */}
+              <TabsContent value="partner" className="space-y-4">
+                <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
+                  {/* Header Info */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Project
                       </span>
-                      <span>
-                        € {currentInvoice.companyShare.toLocaleString()}
+                      <span className="font-medium">
+                        {currentInvoice.project}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>
-                        Partner ({currentInvoice.hasMediator ? "10%" : "15%"})
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Subcontractor
                       </span>
-                      <span>
-                        € {currentInvoice.partnerShare.toLocaleString()}
+                      <span className="font-medium">
+                        {currentInvoice.projectData?.sub || "Not assigned"}
                       </span>
-                    </div>
-                    {currentInvoice.hasMediator && (
-                      <div className="flex justify-between">
-                        <span>Mediator (10%)</span>
-                        <span>
-                          € {currentInvoice.mediatorShare.toLocaleString()}
+                      {currentInvoice.projectData?.subId && (
+                        <span className="text-xs text-muted-foreground ml-1">
+                          (ID: {currentInvoice.projectData.subId})
                         </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* Scope of Work */}
+                  <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-2">
+                    <h4 className="font-semibold uppercase text-muted-foreground">
+                      Scope of Work
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-muted-foreground block">
+                          Indoor Units:
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.indoorUnits || 0} Units
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">
+                          Installation:
+                        </span>
+                        <span className="font-medium">Standard Montage</span>
+                      </div>
+                    </div>
+                    {currentInvoice.projectData?.selectedAdditionalServices
+                      ?.length > 0 && (
+                      <div>
+                        <span className="text-muted-foreground block mb-1">
+                          Additional Services:
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {currentInvoice.projectData.selectedAdditionalServices.map(
+                            (s: string, idx: number) => (
+                              <Badge
+                                key={idx}
+                                variant="secondary"
+                                className="text-[10px] px-1 py-0 h-5"
+                              >
+                                {ADDITIONAL_SERVICES.find((as) => as.id === s)
+                                  ?.label || s}
+                              </Badge>
+                            ),
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 text-xs bg-blue-50 p-2 rounded text-blue-700">
-                <Rocket className="h-3 w-3" />
-                <span>Project data synchronized.</span>
-              </div>
-            </div>
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* Project Value (Editable) */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold flex justify-between">
+                      <span>Total Project Value (Net)</span>
+                      <span className="text-muted-foreground font-normal text-xs">
+                        Based on Pricing Matrix
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500 font-mono">
+                        €
+                      </span>
+                      <Input
+                        type="number"
+                        className="pl-8 font-mono font-medium"
+                        value={invoiceEditState.projectValue}
+                        onChange={(e) =>
+                          setInvoiceEditState({
+                            ...invoiceEditState,
+                            projectValue: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bonuses Section */}
+                  <div className="space-y-4 bg-gray-50 dark:bg-gray-900/10 p-4 rounded-md border text-sm">
+                    <h4 className="font-semibold text-xs uppercase text-muted-foreground mb-2">
+                      Performance Bonuses
+                    </h4>
+
+                    {/* Quality Bonus */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="quality-bonus"
+                          checked={invoiceEditState.qualityBonus.enabled}
+                          onCheckedChange={(checked) =>
+                            setInvoiceEditState({
+                              ...invoiceEditState,
+                              qualityBonus: {
+                                ...invoiceEditState.qualityBonus,
+                                enabled: !!checked,
+                              },
+                            })
+                          }
+                        />
+                        <div>
+                          <label
+                            htmlFor="quality-bonus"
+                            className="font-medium cursor-pointer"
+                          >
+                            Quality Bonus
+                          </label>
+                          <span className="block text-xs text-muted-foreground">
+                            {invoiceEditState.qualityBonus.label}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-24">
+                        <Input
+                          type="number"
+                          className="h-8 font-mono text-right"
+                          disabled={!invoiceEditState.qualityBonus.enabled}
+                          value={invoiceEditState.qualityBonus.amount}
+                          onChange={(e) =>
+                            setInvoiceEditState({
+                              ...invoiceEditState,
+                              qualityBonus: {
+                                ...invoiceEditState.qualityBonus,
+                                amount: parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quantity Bonus */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="quantity-bonus"
+                          checked={invoiceEditState.quantityBonus.enabled}
+                          onCheckedChange={(checked) =>
+                            setInvoiceEditState({
+                              ...invoiceEditState,
+                              quantityBonus: {
+                                ...invoiceEditState.quantityBonus,
+                                enabled: !!checked,
+                              },
+                            })
+                          }
+                        />
+                        <div>
+                          <label
+                            htmlFor="quantity-bonus"
+                            className="font-medium cursor-pointer"
+                          >
+                            Quantity Bonus
+                          </label>
+                          <span className="block text-xs text-muted-foreground">
+                            {invoiceEditState.quantityBonus.label}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-24">
+                        <Input
+                          type="number"
+                          className="h-8 font-mono text-right"
+                          disabled={!invoiceEditState.quantityBonus.enabled}
+                          value={invoiceEditState.quantityBonus.amount}
+                          onChange={(e) =>
+                            setInvoiceEditState({
+                              ...invoiceEditState,
+                              quantityBonus: {
+                                ...invoiceEditState.quantityBonus,
+                                amount: parseFloat(e.target.value) || 0,
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* Totals Calculation */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-muted-foreground text-sm">
+                      <span>
+                        Base Share ({invoiceEditState.partnerSharePercent}% of
+                        Value)
+                      </span>
+                      <span className="font-mono">
+                        €{" "}
+                        {(
+                          invoiceEditState.projectValue *
+                          (invoiceEditState.partnerSharePercent / 100)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground text-sm">
+                      <span>Total Bonuses</span>
+                      <span className="font-mono text-green-600">
+                        + €{" "}
+                        {(
+                          (invoiceEditState.qualityBonus.enabled
+                            ? invoiceEditState.qualityBonus.amount
+                            : 0) +
+                          (invoiceEditState.quantityBonus.enabled
+                            ? invoiceEditState.quantityBonus.amount
+                            : 0)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded font-bold text-blue-700 dark:text-blue-300 mt-2">
+                      <span>Total Payable to Partner</span>
+                      <span className="text-lg">
+                        €{" "}
+                        {(
+                          invoiceEditState.projectValue *
+                            (invoiceEditState.partnerSharePercent / 100) +
+                          (invoiceEditState.qualityBonus.enabled
+                            ? invoiceEditState.qualityBonus.amount
+                            : 0) +
+                          (invoiceEditState.quantityBonus.enabled
+                            ? invoiceEditState.quantityBonus.amount
+                            : 0)
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* Review Checkbox */}
+                  <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded border border-yellow-200 dark:border-yellow-800">
+                    <Checkbox
+                      id="review-partner"
+                      checked={invoiceEditState.reviewed.partner}
+                      onCheckedChange={(checked) =>
+                        setInvoiceEditState({
+                          ...invoiceEditState,
+                          reviewed: {
+                            ...invoiceEditState.reviewed,
+                            partner: !!checked,
+                          },
+                        })
+                      }
+                    />
+                    <label
+                      htmlFor="review-partner"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      I have verified the Partner invoice details.
+                    </label>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* SUBCONTRACTOR TAB */}
+              <TabsContent value="subcontractor" className="space-y-4">
+                <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
+                  {/* Header Info */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Subcontractor
+                      </span>
+                      <span className="font-medium">
+                        {currentInvoice.projectData?.sub || "Not Assigned"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Project
+                      </span>
+                      <span className="font-medium">
+                        {currentInvoice.project}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold">
+                      Agreed Fee Amount
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-gray-500 font-mono">
+                        €
+                      </span>
+                      <Input
+                        type="number"
+                        className="pl-8 font-mono font-medium"
+                        placeholder="0.00"
+                        value={invoiceEditState.subcontractorFee}
+                        onChange={(e) =>
+                          setInvoiceEditState({
+                            ...invoiceEditState,
+                            subcontractorFee: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enter the agreed fixed fee or calculated amount for the
+                      subcontractor.
+                    </p>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* Review Checkbox */}
+                  <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded border border-yellow-200 dark:border-yellow-800">
+                    <Checkbox
+                      id="review-sub"
+                      checked={invoiceEditState.reviewed.subcontractor}
+                      onCheckedChange={(checked) =>
+                        setInvoiceEditState({
+                          ...invoiceEditState,
+                          reviewed: {
+                            ...invoiceEditState.reviewed,
+                            subcontractor: !!checked,
+                          },
+                        })
+                      }
+                    />
+                    <label
+                      htmlFor="review-sub"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      I have verified the Subcontractor invoice details.
+                    </label>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* MEDIATOR TAB */}
+              <TabsContent value="company" className="space-y-4">
+                {currentInvoice.hasMediator ? (
+                  <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Mediator
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.mediator}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Partner
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.partner}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-dashed my-2"></div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-muted-foreground text-sm">
+                        <span>Project Value</span>
+                        <span className="font-mono">
+                          € {invoiceEditState.projectValue.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground text-sm">
+                        <span>
+                          Commission Share (
+                          {invoiceEditState.mediatorSharePercent}
+                          %)
+                        </span>
+                        <span className="font-mono">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue *
+                            (invoiceEditState.mediatorSharePercent / 100)
+                          ).toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded font-bold text-blue-700 dark:text-blue-300 mt-2">
+                        <span>Total Payable to Mediator</span>
+                        <span className="text-lg">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue *
+                            (invoiceEditState.mediatorSharePercent / 100)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-dashed my-2"></div>
+
+                    {/* Review Checkbox */}
+                    <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded border border-yellow-200 dark:border-yellow-800">
+                      <Checkbox
+                        id="review-mediator"
+                        checked={invoiceEditState.reviewed.mediator}
+                        onCheckedChange={(checked) =>
+                          setInvoiceEditState({
+                            ...invoiceEditState,
+                            reviewed: {
+                              ...invoiceEditState.reviewed,
+                              mediator: !!checked,
+                            },
+                          })
+                        }
+                      />
+                      <label
+                        htmlFor="review-mediator"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        I have verified the Mediator invoice details.
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-10 text-center text-muted-foreground border rounded bg-gray-50 flex flex-col items-center justify-center gap-2">
+                    <AlertCircle className="h-8 w-8 text-gray-300" />
+                    <p>No Mediator assigned to this project.</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
 
-          <DialogFooter>
-            <Button onClick={() => setSuccessModalOpen(false)}>Close</Button>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setSuccessModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-blue-600 text-white"
+              disabled={
+                !invoiceEditState.reviewed.partner ||
+                !invoiceEditState.reviewed.subcontractor ||
+                (currentInvoice?.hasMediator &&
+                  !invoiceEditState.reviewed.mediator)
+              }
+              onClick={() => {
+                // 1. Update Project Status locally
+                const updatedProjects = [...projects];
+                // Try to find by ID (currentInvoice.projectData.id) or fallback to reference/index if ID missing
+                let realIndex = -1;
+                if (currentInvoice.projectData?.id) {
+                  realIndex = updatedProjects.findIndex(
+                    (p) => p.id === currentInvoice.projectData.id,
+                  );
+                }
+
+                // Fallback: match by title/partner if ID not found (unlikely)
+                if (realIndex === -1) {
+                  realIndex = updatedProjects.findIndex(
+                    (p) => p === currentInvoice.projectData,
+                  );
+                }
+
+                if (realIndex !== -1) {
+                  updatedProjects[realIndex].status = "Invoiced";
+                  updatedProjects[realIndex].statusColor =
+                    "bg-gray-500 text-white";
+                  updatedProjects[realIndex].invoiceStatus = "Sent";
+                  // Update abnahme? Usually Invoiced implies Abnahme done.
+                  setProjects(updatedProjects);
+                  localStorage.setItem(
+                    "prostruktion_projects_v1",
+                    JSON.stringify(updatedProjects),
+                  );
+                }
+
+                // 2. Generate Financial Records (Invoices)
+                const existingInvoices = JSON.parse(
+                  localStorage.getItem("prostruktion_invoices") || "[]",
+                );
+                const newInvoices = [];
+                const nowStr = new Date().toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                });
+
+                // PARTNER Invoice
+                const partnerAmount =
+                  invoiceEditState.projectValue *
+                    (invoiceEditState.partnerSharePercent / 100) +
+                  (invoiceEditState.qualityBonus.enabled
+                    ? invoiceEditState.qualityBonus.amount
+                    : 0) +
+                  (invoiceEditState.quantityBonus.enabled
+                    ? invoiceEditState.quantityBonus.amount
+                    : 0);
+
+                newInvoices.push({
+                  id: Date.now(),
+                  project: currentInvoice.project,
+                  partner: currentInvoice.projectData.partner,
+                  mediator: currentInvoice.hasMediator
+                    ? currentInvoice.mediator
+                    : "-",
+                  emp: currentInvoice.projectData.contractor, // Employer/Contractor
+                  date: nowStr,
+                  amount: partnerAmount,
+                  type: "Partner Invoice", // Custom field not in original schema but useful, or put in action
+                  action: "Partner Invoice",
+                  status: "Sent",
+                  days: "Now",
+                });
+
+                // MEDIATOR Invoice
+                if (currentInvoice.hasMediator) {
+                  const mediatorAmount =
+                    invoiceEditState.projectValue *
+                    (invoiceEditState.mediatorSharePercent / 100);
+                  newInvoices.push({
+                    id: Date.now() + 1,
+                    project: currentInvoice.project,
+                    partner: currentInvoice.projectData.partner, // Context
+                    mediator: currentInvoice.mediator, // Recipient
+                    emp: currentInvoice.projectData.contractor,
+                    date: nowStr,
+                    amount: mediatorAmount,
+                    action: "Mediator Invoice",
+                    status: "Sent",
+                    days: "Now",
+                  });
+                }
+
+                // SUBCONTRACTOR Invoice
+                if (
+                  invoiceEditState.subcontractorFee > 0 ||
+                  currentInvoice.projectData.sub
+                ) {
+                  newInvoices.push({
+                    id: Date.now() + 2,
+                    project: currentInvoice.project,
+                    partner: currentInvoice.projectData.partner,
+                    mediator: "-",
+                    // Using 'emp' or 'partner' field to store Subcontractor Name for display
+                    emp: currentInvoice.projectData.sub || "Subcontractor",
+                    date: nowStr,
+                    amount: invoiceEditState.subcontractorFee,
+                    action: "Subcontractor Invoice",
+                    status: "Sent",
+                    days: "Now",
+                  });
+                }
+
+                localStorage.setItem(
+                  "prostruktion_invoices",
+                  JSON.stringify([...existingInvoices, ...newInvoices]),
+                );
+
+                // Close
+                setSuccessModalOpen(false);
+              }}
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Send Included Invoices
+            </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog >
+      </Dialog>
       <Dialog open={addProjectOpen} onOpenChange={setAddProjectOpen}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -2002,40 +3003,58 @@ Contractor: ${newProject.contractor}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="customerNumber" className="text-xs font-medium">
+                  <label
+                    htmlFor="customerNumber"
+                    className="text-xs font-medium"
+                  >
                     Customer Number
                   </label>
                   <Input
                     id="customerNumber"
                     value={newProject.customerNumber}
                     onChange={(e) =>
-                      setNewProject({ ...newProject, customerNumber: e.target.value })
+                      setNewProject({
+                        ...newProject,
+                        customerNumber: e.target.value,
+                      })
                     }
                     placeholder="e.g. KD-12345"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="customerPhone" className="text-xs font-medium">
+                  <label
+                    htmlFor="customerPhone"
+                    className="text-xs font-medium"
+                  >
                     Customer Phone
                   </label>
                   <Input
                     id="customerPhone"
                     value={newProject.customerPhone}
                     onChange={(e) =>
-                      setNewProject({ ...newProject, customerPhone: e.target.value })
+                      setNewProject({
+                        ...newProject,
+                        customerPhone: e.target.value,
+                      })
                     }
                     placeholder="e.g. +49 123 456789"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="customerEmail" className="text-xs font-medium">
+                  <label
+                    htmlFor="customerEmail"
+                    className="text-xs font-medium"
+                  >
                     Customer Email
                   </label>
                   <Input
                     id="customerEmail"
                     value={newProject.customerEmail}
                     onChange={(e) =>
-                      setNewProject({ ...newProject, customerEmail: e.target.value })
+                      setNewProject({
+                        ...newProject,
+                        customerEmail: e.target.value,
+                      })
                     }
                     placeholder="e.g. client@example.com"
                   />
@@ -2125,50 +3144,71 @@ Contractor: ${newProject.contractor}
                         {/* Name & Avatar */}
                         <div className="w-[140px] flex items-center gap-2">
                           <Avatar className="h-7 w-7 border">
-                            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.name}`} />
-                            <AvatarFallback>{worker.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            <AvatarImage
+                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.name}`}
+                            />
+                            <AvatarFallback>
+                              {worker.name.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
                           </Avatar>
-                          <div className="text-sm font-medium leading-none truncate" title={worker.name}>
+                          <div
+                            className="text-sm font-medium leading-none truncate"
+                            title={worker.name}
+                          >
                             {worker.name}
                           </div>
                         </div>
 
                         {/* Role / Trade */}
-                        <div className="w-[100px] text-xs text-muted-foreground capitalize truncate" title={worker.trade || worker.role || "Worker"}>
+                        <div
+                          className="w-[100px] text-xs text-muted-foreground capitalize truncate"
+                          title={worker.trade || worker.role || "Worker"}
+                        >
                           {worker.trade || worker.role || "Worker"}
                         </div>
 
                         {/* A1 Status */}
                         <div className="w-[80px] text-center">
-                          <Badge variant="secondary" className="text-[9px] bg-gray-50 text-gray-500 hover:bg-gray-100 font-normal border px-1">
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] bg-gray-50 text-gray-500 hover:bg-gray-100 font-normal border px-1"
+                          >
                             {worker.a1Status || "No File"}
                           </Badge>
                         </div>
 
                         {/* Certification */}
                         <div className="w-[100px] text-center">
-                          <Badge variant="secondary" className="text-[9px] bg-gray-50 text-gray-500 hover:bg-gray-100 font-normal border px-1">
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] bg-gray-50 text-gray-500 hover:bg-gray-100 font-normal border px-1"
+                          >
                             {worker.certStatus || "No Certificate"}
                           </Badge>
                         </div>
 
                         {/* Stats */}
                         <div className="w-[70px] text-center text-xs flex items-center justify-center gap-1 text-muted-foreground">
-                          <CheckCircle2 className="h-3 w-3" /> {worker.completedProjects || 0}
+                          <CheckCircle2 className="h-3 w-3" />{" "}
+                          {worker.completedProjects || 0}
                         </div>
                         <div className="w-[70px] text-center text-xs flex items-center justify-center gap-1 text-muted-foreground">
-                          <AlertCircle className="h-3 w-3" /> {worker.complaints || 0}
+                          <AlertCircle className="h-3 w-3" />{" "}
+                          {worker.complaints || 0}
                         </div>
                         <div className="w-[60px] text-center text-xs text-green-600 font-medium">
                           {worker.successRate || 100}%
                         </div>
-
                       </div>
                     ))
                   ) : (
                     <div className="text-center text-sm text-muted-foreground p-8 flex flex-col items-center justify-center gap-2">
                       <Users className="h-8 w-8 text-muted-foreground/50" />
-                      <p>{newProject.sub || newProject.partner ? "No workers found for selected companies." : "Select Subcontractor or Partner to see workers."}</p>
+                      <p>
+                        {newProject.sub || newProject.partner
+                          ? "No workers found for selected companies."
+                          : "Select Subcontractor or Partner to see workers."}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -2176,23 +3216,242 @@ Contractor: ${newProject.contractor}
             </div>
           </div>
 
-          {/* Manual Pricing Section */}
+          {/* Pricing Calculator Section */}
           <div className="border-t pt-4 mt-4">
             <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
-              <Calculator className="h-4 w-4" /> Project Pricing & Details
+              <Calculator className="h-4 w-4" /> Project Pricing & Scope
             </h3>
 
             <div className="grid gap-6">
+              {/* Indoor Units Slider */}
+              <div className="space-y-3 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-medium">
+                    Number of Indoor Units
+                  </label>
+                  <span className="text-lg font-bold bg-white dark:bg-slate-800 px-3 py-1 rounded border shadow-sm">
+                    {newProject.indoorUnits}
+                  </span>
+                </div>
+                <Input
+                  type="range"
+                  min="0"
+                  max="16"
+                  step="1"
+                  value={newProject.indoorUnits}
+                  onChange={(e) => {
+                    const units = parseInt(e.target.value);
+                    const currentCosts = PRICING_MATRIX.baseCosts[units] || {};
+
+                    // Recalculate price
+                    let basePrice = 0;
+                    newProject.selectedWorkTypes.forEach((type) => {
+                      basePrice += (currentCosts as any)[type] || 0;
+                    });
+
+                    let servicesPrice = 0;
+                    newProject.selectedAdditionalServices.forEach(
+                      (serviceId) => {
+                        const service = ADDITIONAL_SERVICES.find(
+                          (s) => s.id === serviceId,
+                        );
+                        if (service) servicesPrice += service.price;
+                      },
+                    );
+
+                    setNewProject({
+                      ...newProject,
+                      indoorUnits: units,
+                      amount: (basePrice + servicesPrice).toString(),
+                    });
+                  }}
+                  className="cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground px-1">
+                  <span>0</span>
+                  <span>8</span>
+                  <span>16</span>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Work Types Selection */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium block border-b pb-1 mb-2">
+                    Base Work Types
+                  </label>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                    {Object.entries(WORK_TYPE_LABELS).map(([key, label]) => {
+                      const unitCosts =
+                        PRICING_MATRIX.baseCosts[newProject.indoorUnits] || {};
+                      const cost = (unitCosts as any)[key] || 0;
+
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center space-x-2 bg-white dark:bg-slate-950 p-2 rounded border hover:bg-slate-50 transition-colors"
+                        >
+                          <Checkbox
+                            id={`work-${key}`}
+                            checked={newProject.selectedWorkTypes.includes(key)}
+                            onCheckedChange={(checked) => {
+                              let newTypes = [...newProject.selectedWorkTypes];
+                              if (checked) {
+                                newTypes.push(key);
+                              } else {
+                                newTypes = newTypes.filter((t) => t !== key);
+                              }
+
+                              // Recalculate
+                              const currentCosts =
+                                PRICING_MATRIX.baseCosts[
+                                  newProject.indoorUnits
+                                ] || {};
+                              let basePrice = 0;
+                              newTypes.forEach((type) => {
+                                basePrice += (currentCosts as any)[type] || 0;
+                              });
+
+                              let servicesPrice = 0;
+                              newProject.selectedAdditionalServices.forEach(
+                                (serviceId) => {
+                                  const service = ADDITIONAL_SERVICES.find(
+                                    (s) => s.id === serviceId,
+                                  );
+                                  if (service) servicesPrice += service.price;
+                                },
+                              );
+
+                              setNewProject({
+                                ...newProject,
+                                selectedWorkTypes: newTypes,
+                                amount: (basePrice + servicesPrice).toString(),
+                              });
+                            }}
+                          />
+                          <div className="flex-1">
+                            <label
+                              htmlFor={`work-${key}`}
+                              className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer block"
+                            >
+                              {label}
+                            </label>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              € {cost}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Additional Services Selection */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium block border-b pb-1 mb-2">
+                    Additional Services
+                  </label>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                    {ADDITIONAL_SERVICES.map((service) => (
+                      <div
+                        key={service.id}
+                        className="flex items-center space-x-2 bg-white dark:bg-slate-950 p-2 rounded border hover:bg-slate-50 transition-colors"
+                      >
+                        <Checkbox
+                          id={`service-${service.id}`}
+                          checked={newProject.selectedAdditionalServices.includes(
+                            service.id,
+                          )}
+                          onCheckedChange={(checked) => {
+                            let newServices = [
+                              ...newProject.selectedAdditionalServices,
+                            ];
+                            if (checked) {
+                              newServices.push(service.id);
+                            } else {
+                              newServices = newServices.filter(
+                                (s) => s !== service.id,
+                              );
+                            }
+
+                            // Recalculate
+                            const currentCosts =
+                              PRICING_MATRIX.baseCosts[
+                                newProject.indoorUnits
+                              ] || {};
+                            let basePrice = 0;
+                            newProject.selectedWorkTypes.forEach((type) => {
+                              basePrice += (currentCosts as any)[type] || 0;
+                            });
+
+                            let servicesPrice = 0;
+                            newServices.forEach((serviceId) => {
+                              const s = ADDITIONAL_SERVICES.find(
+                                (item) => item.id === serviceId,
+                              );
+                              if (s) servicesPrice += s.price;
+                            });
+
+                            setNewProject({
+                              ...newProject,
+                              selectedAdditionalServices: newServices,
+                              amount: (basePrice + servicesPrice).toString(),
+                            });
+                          }}
+                        />
+                        <div className="flex-1">
+                          <label
+                            htmlFor={`service-${service.id}`}
+                            className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer block"
+                          >
+                            {service.label}
+                          </label>
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            € {service.price}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Calculation Display */}
+              <div className="space-y-2 bg-slate-100 dark:bg-slate-900 p-4 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="font-semibold text-sm">Estimated Total</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Based on {newProject.indoorUnits} units,{" "}
+                    {newProject.selectedWorkTypes.length} work types, and{" "}
+                    {newProject.selectedAdditionalServices.length} add-ons.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-bold text-primary">
+                    €{" "}
+                    {parseFloat(newProject.amount || "0").toLocaleString(
+                      undefined,
+                      { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+                    )}
+                  </span>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <label htmlFor="description" className="text-sm font-medium">
-                  Description / Email Paste
+                  Project Description / Notes
                 </label>
                 <Textarea
                   id="description"
-                  placeholder="Paste the project assignment email here..."
-                  className="min-h-[200px] font-mono text-xs"
+                  placeholder="Additional notes..."
+                  className="min-h-[100px] font-mono text-xs"
                   value={newProject.description}
-                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                  onChange={(e) =>
+                    setNewProject({
+                      ...newProject,
+                      description: e.target.value,
+                    })
+                  }
                 />
               </div>
 
@@ -2204,27 +3463,32 @@ Contractor: ${newProject.contractor}
                   id="estimatedHours"
                   placeholder="e.g. 40"
                   value={newProject.estimatedHours}
-                  onChange={(e) => setNewProject({ ...newProject, estimatedHours: e.target.value })}
+                  onChange={(e) =>
+                    setNewProject({
+                      ...newProject,
+                      estimatedHours: e.target.value,
+                    })
+                  }
                 />
               </div>
 
+              {/* Editable Amount Override */}
               <div className="space-y-2">
-                <label htmlFor="amount" className="text-sm font-medium">
-                  Total Price (€)
+                <label
+                  htmlFor="amount"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Final Amount Override (if needed)
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-muted-foreground">€</span>
-                  <Input
-                    id="amount"
-                    placeholder="0.00"
-                    className="pl-8"
-                    value={newProject.amount}
-                    onChange={(e) => setNewProject({ ...newProject, amount: e.target.value })}
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Enter the total project value including all services.
-                </p>
+                <Input
+                  id="amount"
+                  placeholder="0.00"
+                  value={newProject.amount}
+                  onChange={(e) =>
+                    setNewProject({ ...newProject, amount: e.target.value })
+                  }
+                  className="h-8 text-xs w-full sm:w-1/3"
+                />
               </div>
             </div>
           </div>
@@ -2242,6 +3506,6 @@ Contractor: ${newProject.contractor}
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+    </div>
   );
 }

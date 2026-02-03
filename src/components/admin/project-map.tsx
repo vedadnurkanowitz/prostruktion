@@ -95,6 +95,57 @@ const PROJECT_STATUS_COLORS: Record<string, string> = {
   Finished: "#16a34a",
 };
 
+// Geocoding cache to avoid repeated API calls
+const geocodeCache: Record<string, { lat: number; lng: number } | null> = {};
+
+// Nominatim Geocoding Function
+const geocodeAddress = async (
+  address: string,
+): Promise<{ lat: number; lng: number } | null> => {
+  if (!address || address.trim() === "") return null;
+
+  // Check cache first
+  if (geocodeCache[address] !== undefined) {
+    return geocodeCache[address];
+  }
+
+  try {
+    // Nominatim requires a proper User-Agent
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+      {
+        headers: {
+          "User-Agent": "Prostruktion/1.0",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      console.warn("Nominatim geocoding failed:", response.status);
+      geocodeCache[address] = null;
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (data && data.length > 0) {
+      const result = {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+      };
+      geocodeCache[address] = result;
+      return result;
+    }
+
+    geocodeCache[address] = null;
+    return null;
+  } catch (error) {
+    console.error("Geocoding error:", error);
+    geocodeCache[address] = null;
+    return null;
+  }
+};
+
 // Default workers for demo
 // Default workers removed for clean slate
 const DEFAULT_WORKERS: Worker[] = [];
@@ -163,189 +214,220 @@ export default function ProjectMap() {
   useEffect(() => {
     if (!mapRef.current) return;
 
-    let projects: Project[] = [];
+    let isMounted = true;
 
-    // Load Projects and Archive
-    const storedProjects = localStorage.getItem("prostruktion_projects_v1");
-    const storedArchive = localStorage.getItem("prostruktion_archive");
+    const initializeMap = async () => {
+      let projects: Project[] = [];
 
-    let rawProjects: Project[] = [];
-    if (storedProjects) {
-      try {
-        rawProjects = [...rawProjects, ...JSON.parse(storedProjects)];
-      } catch (e) {}
-    }
-    if (storedArchive) {
-      try {
-        rawProjects = [...rawProjects, ...JSON.parse(storedArchive)];
-      } catch (e) {}
-    }
+      // Load Projects and Archive
+      const storedProjects = localStorage.getItem("prostruktion_projects_v1");
+      const storedArchive = localStorage.getItem("prostruktion_archive");
 
-    if (rawProjects.length > 0) {
-      try {
-        // Load real complaints aggregation
-        const storedComplaints = localStorage.getItem(
-          "prostruktion_complaints",
-        );
-        const realComplaintsMap: Record<string, number> = {};
-        if (storedComplaints) {
-          try {
-            const parsedC = JSON.parse(storedComplaints);
-            if (Array.isArray(parsedC)) {
-              parsedC.forEach((c: any) => {
-                if (c.project && (c.status1 === "red" || c.count > 0)) {
-                  realComplaintsMap[c.project] =
-                    (realComplaintsMap[c.project] || 0) + 1;
-                }
-              });
+      let rawProjects: Project[] = [];
+      if (storedProjects) {
+        try {
+          rawProjects = [...rawProjects, ...JSON.parse(storedProjects)];
+        } catch (e) {}
+      }
+      if (storedArchive) {
+        try {
+          rawProjects = [...rawProjects, ...JSON.parse(storedArchive)];
+        } catch (e) {}
+      }
+
+      if (rawProjects.length > 0) {
+        try {
+          // Load real complaints aggregation
+          const storedComplaints = localStorage.getItem(
+            "prostruktion_complaints",
+          );
+          const realComplaintsMap: Record<string, number> = {};
+          if (storedComplaints) {
+            try {
+              const parsedC = JSON.parse(storedComplaints);
+              if (Array.isArray(parsedC)) {
+                parsedC.forEach((c: any) => {
+                  if (c.project && (c.status1 === "red" || c.count > 0)) {
+                    realComplaintsMap[c.project] =
+                      (realComplaintsMap[c.project] || 0) + 1;
+                  }
+                });
+              }
+            } catch (e) {
+              console.error("Error parsing complaints", e);
             }
-          } catch (e) {
-            console.error("Error parsing complaints", e);
           }
+
+          // Geocode projects that don't have coordinates
+          const geocodedProjects = await Promise.all(
+            rawProjects.map(async (p, index) => {
+              const isArchived =
+                p.status === "In Warranty" ||
+                p.status === "Expiring" ||
+                p.status === "Expired";
+
+              let latLng = { lat: p.lat, lng: p.lng };
+
+              // Only geocode if we don't have coordinates
+              if (!p.lat || !p.lng) {
+                // Add delay between geocoding requests (Nominatim rate limit: 1 req/sec)
+                if (index > 0) {
+                  await new Promise((resolve) => setTimeout(resolve, 1100));
+                }
+
+                const geocoded = await geocodeAddress(p.address);
+                if (geocoded) {
+                  latLng = geocoded;
+
+                  // Save geocoded coordinates back to localStorage
+                  const updatedProjects = JSON.parse(
+                    localStorage.getItem("prostruktion_projects_v1") || "[]",
+                  );
+                  const projectIndex = updatedProjects.findIndex(
+                    (proj: any) => proj.project === p.project,
+                  );
+                  if (projectIndex !== -1) {
+                    updatedProjects[projectIndex].lat = geocoded.lat;
+                    updatedProjects[projectIndex].lng = geocoded.lng;
+                    localStorage.setItem(
+                      "prostruktion_projects_v1",
+                      JSON.stringify(updatedProjects),
+                    );
+                  }
+                } else {
+                  // Fallback: center of Germany if geocoding fails
+                  latLng = { lat: 51.1657, lng: 10.4515 };
+                }
+              }
+
+              // Determine complaints
+              const realCount = realComplaintsMap[p.project] || 0;
+              let complaints = realCount;
+
+              if (complaints === 0 && (p.status === "Finished" || isArchived)) {
+                complaints = p.complaints !== undefined ? p.complaints : 0;
+              }
+
+              return {
+                ...p,
+                lat: latLng.lat,
+                lng: latLng.lng,
+                complaints,
+                isArchived,
+              };
+            }),
+          );
+
+          if (!isMounted) return;
+
+          // Filter projects
+          projects = geocodedProjects.filter((p: any) => {
+            const isFinished = p.status === "Finished" || p.isArchived;
+            if (isFinished && (!p.complaints || p.complaints <= 0))
+              return false;
+            if (filterSub !== "all" && p.sub !== filterSub) return false;
+            if (
+              filterPartner !== "all" &&
+              p.partner !== filterPartner &&
+              p.mediator !== filterPartner
+            )
+              return false;
+            if (filterContractor !== "all" && p.contractor !== filterContractor)
+              return false;
+            return true;
+          });
+        } catch (e) {
+          console.error("Error parsing projects for map", e);
+        }
+      }
+
+      if (!isMounted) return;
+
+      const features = projects.map((project) => {
+        const feature = new Feature({
+          geometry: new Point(fromLonLat([project.lng!, project.lat!])),
+          project: project,
+        });
+
+        const color = PROJECT_STATUS_COLORS[project.status] || "#64748b";
+
+        if (project.complaints && project.complaints > 0) {
+          feature.setStyle(
+            new Style({
+              text: new Text({
+                text: "!",
+                font: "900 24px sans-serif",
+                fill: new Fill({ color: "#ef4444" }),
+                stroke: new Stroke({ color: "#ffffff", width: 3 }),
+                offsetY: 0,
+              }),
+              zIndex: 10,
+            }),
+          );
+        } else {
+          feature.setStyle(
+            new Style({
+              image: new Circle({
+                radius: 10,
+                fill: new Fill({ color: color }),
+                stroke: new Stroke({ color: "#ffffff", width: 2 }),
+              }),
+            }),
+          );
         }
 
-        const parsed = rawProjects.map((p) => {
-          // Normalize status for map logic
-          const isArchived =
-            p.status === "In Warranty" ||
-            p.status === "Expiring" ||
-            p.status === "Expired";
-
-          // Mock data enrichment for demo purposes
-          const latLng =
-            !p.lat || !p.lng
-              ? {
-                  lat: getRandomInRange(50.5, 53.5, 5),
-                  lng: getRandomInRange(9.0, 13.5, 5),
-                }
-              : { lat: p.lat, lng: p.lng };
-
-          // Determine complaints
-          const realCount = realComplaintsMap[p.project] || 0;
-
-          // If we have real complaints, use that.
-          // Otherwise, fall back to stored/random count for Finished projects (Demo Mode)
-          let complaints = realCount;
-
-          if (complaints === 0 && (p.status === "Finished" || isArchived)) {
-            complaints = p.complaints !== undefined ? p.complaints : 0;
-          }
-
-          return {
-            ...p,
-            ...latLng,
-            complaints,
-            isArchived, // Pass flag if needed later, though not in Project type strictly, JS allows it
-          };
-        });
-
-        // Filter:
-        // 1. Show ALL non-finished projects (Active, Scheduled, In Abnahme)
-        // 2. Hide "Finished" projects UNLESS they have complaints
-        // 3. Apply Dropdown Filters
-        projects = parsed.filter((p: any) => {
-          // Status/Complaint Check
-          const isFinished = p.status === "Finished" || p.isArchived;
-
-          if (isFinished && (!p.complaints || p.complaints <= 0)) return false;
-
-          // Dropdown Filters
-          if (filterSub !== "all" && p.sub !== filterSub) return false;
-          if (
-            filterPartner !== "all" &&
-            p.partner !== filterPartner &&
-            p.mediator !== filterPartner
-          )
-            return false;
-          if (filterContractor !== "all" && p.contractor !== filterContractor)
-            return false;
-
-          return true;
-        });
-      } catch (e) {
-        console.error("Error parsing projects for map", e);
-      }
-    }
-
-    const features = projects.map((project) => {
-      const feature = new Feature({
-        geometry: new Point(fromLonLat([project.lng!, project.lat!])),
-        project: project,
+        return feature;
       });
 
-      const color = PROJECT_STATUS_COLORS[project.status] || "#64748b";
+      const vectorSource = new VectorSource({ features });
+      const vectorLayer = new VectorLayer({ source: vectorSource });
 
-      if (project.complaints && project.complaints > 0) {
-        feature.setStyle(
-          new Style({
-            text: new Text({
-              text: "!",
-              font: "900 24px sans-serif",
-              fill: new Fill({ color: "#ef4444" }),
-              stroke: new Stroke({ color: "#ffffff", width: 3 }),
-              offsetY: 0,
-            }),
-            zIndex: 10, // Ensure it sits on top if overlapping
-          }),
-        );
-      } else {
-        feature.setStyle(
-          new Style({
-            image: new Circle({
-              radius: 10,
-              fill: new Fill({ color: color }),
-              stroke: new Stroke({ color: "#ffffff", width: 2 }),
-            }),
-          }),
-        );
-      }
+      const popup = new Overlay({
+        element: popupRef.current!,
+        positioning: "bottom-center",
+        stopEvent: true,
+        offset: [0, -15],
+      });
 
-      return feature;
-    });
+      const olMap = new OLMap({
+        target: mapRef.current!,
+        layers: [new TileLayer({ source: new OSM() }), vectorLayer],
+        view: new View({
+          center: fromLonLat([10.4515, 51.1657]),
+          zoom: 6,
+        }),
+        overlays: [popup],
+      });
 
-    const vectorSource = new VectorSource({ features });
-    const vectorLayer = new VectorLayer({ source: vectorSource });
+      olMap.on("click", (evt) => {
+        const feature = olMap.forEachFeatureAtPixel(evt.pixel, (f) => f);
+        if (feature) {
+          const proj = feature.get("project") as Project;
+          setSelectedProject(proj);
+          setShowDetails(false);
+          popup.setPosition(evt.coordinate);
+        } else {
+          setSelectedProject(null);
+          setShowDetails(false);
+          popup.setPosition(undefined);
+        }
+      });
 
-    const popup = new Overlay({
-      element: popupRef.current!,
-      positioning: "bottom-center",
-      stopEvent: true,
-      offset: [0, -15],
-    });
+      olMap.on("pointermove", (evt) => {
+        const hit = olMap.hasFeatureAtPixel(evt.pixel);
+        olMap.getTargetElement().style.cursor = hit ? "pointer" : "";
+      });
 
-    const olMap = new OLMap({
-      target: mapRef.current,
-      layers: [new TileLayer({ source: new OSM() }), vectorLayer],
-      view: new View({
-        center: fromLonLat([10.4515, 51.1657]),
-        zoom: 6,
-      }),
-      overlays: [popup],
-    });
+      setMap(olMap);
+    };
 
-    olMap.on("click", (evt) => {
-      const feature = olMap.forEachFeatureAtPixel(evt.pixel, (f) => f);
-      if (feature) {
-        const proj = feature.get("project") as Project;
-        setSelectedProject(proj);
-        setShowDetails(false);
-        popup.setPosition(evt.coordinate);
-      } else {
-        setSelectedProject(null);
-        setShowDetails(false);
-        popup.setPosition(undefined);
-      }
-    });
-
-    olMap.on("pointermove", (evt) => {
-      const hit = olMap.hasFeatureAtPixel(evt.pixel);
-      olMap.getTargetElement().style.cursor = hit ? "pointer" : "";
-    });
-
-    setMap(olMap);
+    initializeMap();
 
     return () => {
-      olMap.setTarget(undefined);
+      isMounted = false;
+      if (map) {
+        map.setTarget(undefined);
+      }
     };
   }, [
     filterSub,

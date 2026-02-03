@@ -2526,17 +2526,36 @@ Contractor: ${newProject.contractor}
                               </div>
                             </div>
                           </div>
-                          <span
-                            className={`font-mono font-bold text-sm ${
-                              invoiceEditState.qualityBonus.enabled
-                                ? "text-blue-600 dark:text-blue-400"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            {invoiceEditState.qualityBonus.enabled
-                              ? `+ € ${invoiceEditState.qualityBonus.amount}`
-                              : "€ 0"}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-sm font-medium ${
+                                invoiceEditState.qualityBonus.enabled
+                                  ? "text-blue-600 dark:text-blue-400"
+                                  : "text-gray-400"
+                              }`}
+                            >
+                              + €
+                            </span>
+                            <Input
+                              type="number"
+                              disabled={!invoiceEditState.qualityBonus.enabled}
+                              value={invoiceEditState.qualityBonus.amount || 0}
+                              onChange={(e) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  qualityBonus: {
+                                    ...invoiceEditState.qualityBonus,
+                                    amount: parseFloat(e.target.value) || 0,
+                                  },
+                                })
+                              }
+                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                                invoiceEditState.qualityBonus.enabled
+                                  ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
+                            />
+                          </div>
                         </div>
                       </div>
 
@@ -2593,17 +2612,36 @@ Contractor: ${newProject.contractor}
                               </div>
                             </div>
                           </div>
-                          <span
-                            className={`font-mono font-bold text-sm ${
-                              invoiceEditState.quantityBonus.enabled
-                                ? "text-green-600 dark:text-green-400"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            {invoiceEditState.quantityBonus.enabled
-                              ? `+ € ${invoiceEditState.quantityBonus.amount}`
-                              : "€ 0"}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-sm font-medium ${
+                                invoiceEditState.quantityBonus.enabled
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-gray-400"
+                              }`}
+                            >
+                              + €
+                            </span>
+                            <Input
+                              type="number"
+                              disabled={!invoiceEditState.quantityBonus.enabled}
+                              value={invoiceEditState.quantityBonus.amount || 0}
+                              onChange={(e) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  quantityBonus: {
+                                    ...invoiceEditState.quantityBonus,
+                                    amount: parseFloat(e.target.value) || 0,
+                                  },
+                                })
+                              }
+                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                                invoiceEditState.quantityBonus.enabled
+                                  ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>

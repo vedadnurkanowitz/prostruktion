@@ -654,7 +654,7 @@ Contractor: ${newProject.contractor}
         description:
           newProject.description ||
           metadata +
-            `\n\nPricing Details:\nUnits: ${newProject.indoorUnits}\nWork Types: ${newProject.selectedWorkTypes.join(", ")}\nServices: ${newProject.selectedAdditionalServices.join(", ")}`, // Use description if provided, else metadata
+          `\n\nPricing Details:\nUnits: ${newProject.indoorUnits}\nWork Types: ${newProject.selectedWorkTypes.join(", ")}\nServices: ${newProject.selectedAdditionalServices.join(", ")}`, // Use description if provided, else metadata
         contract_value: parseFloat(newProject.amount) || 0,
         partner_id: newProject.partnerId || null,
         broker_id: newProject.mediatorId || null,
@@ -817,8 +817,8 @@ Contractor: ${newProject.contractor}
     // 1. Calculate Base Values
     const numericAmount = parseFloat(
       (project.amount || "").replace(/[^0-9.-]+/g, "") ||
-        project.contract_value ||
-        0,
+      project.contract_value ||
+      0,
     );
 
     // 2. Calculate Quality Bonus
@@ -1336,7 +1336,7 @@ Contractor: ${newProject.contractor}
                                   </div>
 
                                   {project.workers &&
-                                  project.workers.length > 0 ? (
+                                    project.workers.length > 0 ? (
                                     <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
                                       <Table>
                                         <TableHeader className="bg-gray-50/50">
@@ -1446,7 +1446,7 @@ Contractor: ${newProject.contractor}
                                             Base Installation
                                           </div>
                                           {project.selectedWorkTypes &&
-                                          project.selectedWorkTypes.length >
+                                            project.selectedWorkTypes.length >
                                             0 ? (
                                             <div className="grid gap-2">
                                               {project.selectedWorkTypes.map(
@@ -1456,7 +1456,7 @@ Contractor: ${newProject.contractor}
                                                     project.indoorUnits || 0;
                                                   const unitCosts =
                                                     PRICING_MATRIX.baseCosts[
-                                                      units
+                                                    units
                                                     ] || {};
                                                   const cost =
                                                     (unitCosts as any)[type] ||
@@ -1896,7 +1896,7 @@ Contractor: ${newProject.contractor}
                                           Base Installation
                                         </div>
                                         {item.selectedWorkTypes &&
-                                        item.selectedWorkTypes.length > 0 ? (
+                                          item.selectedWorkTypes.length > 0 ? (
                                           <div className="grid gap-2">
                                             {item.selectedWorkTypes.map(
                                               (type: string) => {
@@ -1905,7 +1905,7 @@ Contractor: ${newProject.contractor}
                                                   item.indoorUnits || 0;
                                                 const unitCosts =
                                                   PRICING_MATRIX.baseCosts[
-                                                    units
+                                                  units
                                                   ] || {};
                                                 const cost =
                                                   (unitCosts as any)[type] || 0;
@@ -1937,7 +1937,7 @@ Contractor: ${newProject.contractor}
                                       {/* Additional Services */}
                                       {item.selectedAdditionalServices &&
                                         item.selectedAdditionalServices.length >
-                                          0 && (
+                                        0 && (
                                           <div className="space-y-2 mt-4">
                                             <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
                                               Extras
@@ -2225,11 +2225,11 @@ Contractor: ${newProject.contractor}
               {/* PARTNER INVOICE TAB */}
               <TabsContent value="partner" className="space-y-4">
                 <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
-                  {/* Header Info */}
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  {/* 1. Header Info (6 fields grid) */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Project
+                        Project Name
                       </span>
                       <span className="font-medium">
                         {currentInvoice.project}
@@ -2237,27 +2237,53 @@ Contractor: ${newProject.contractor}
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Project ID
+                      </span>
+                      <span className="font-medium">{currentInvoice.id}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Contractor
+                      </span>
+                      <span className="font-medium">
+                        {currentInvoice.contractor || "N/A"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
                         Subcontractor
                       </span>
                       <span className="font-medium">
-                        {currentInvoice.projectData?.sub || "Not assigned"}
+                        {currentInvoice.projectData?.sub || "N/A"}
                       </span>
-                      {currentInvoice.projectData?.subId && (
-                        <span className="text-xs text-muted-foreground ml-1">
-                          (ID: {currentInvoice.projectData.subId})
-                        </span>
-                      )}
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Mediator
+                      </span>
+                      <span className="font-medium">
+                        {currentInvoice.projectData?.mediator || "N/A"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Prostruktion
+                      </span>
+                      <span className="font-medium text-blue-600">
+                        PROSTRUKTION
+                      </span>
                     </div>
                   </div>
 
                   <div className="border-t border-dashed my-2"></div>
 
-                  {/* Scope of Work */}
+                  {/* 2. Scope of Work (With Bonuses at bottom) */}
                   <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-3">
                     <h4 className="font-semibold uppercase text-muted-foreground">
                       Scope of Work
                     </h4>
 
+                    {/* Existing Work List */}
                     <div className="space-y-1">
                       <span className="text-muted-foreground block font-semibold mb-1">
                         Work Types (
@@ -2265,7 +2291,7 @@ Contractor: ${newProject.contractor}
                         Units):
                       </span>
                       {currentInvoice.projectData?.selectedWorkTypes?.length >
-                      0 ? (
+                        0 ? (
                         <ul className="space-y-1">
                           {currentInvoice.projectData.selectedWorkTypes.map(
                             (type: string) => {
@@ -2273,7 +2299,7 @@ Contractor: ${newProject.contractor}
                                 currentInvoice.projectData?.indoorUnits || 0;
                               const cost =
                                 PRICING_MATRIX.baseCosts[units]?.[
-                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                                 ] || 0;
 
                               return (
@@ -2302,244 +2328,210 @@ Contractor: ${newProject.contractor}
                       )}
                     </div>
 
-                    {currentInvoice.projectData?.selectedAdditionalServices
-                      ?.length > 0 && (
-                      <div>
-                        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
-                        <span className="text-muted-foreground block font-semibold mb-1">
-                          Additional Services:
-                        </span>
-                        <div className="flex flex-wrap gap-1">
-                          {currentInvoice.projectData.selectedAdditionalServices.map(
-                            (s: string, idx: number) => {
-                              const service = ADDITIONAL_SERVICES.find(
-                                (as) => as.id === s,
-                              );
-                              return (
-                                <Badge
-                                  key={idx}
-                                  variant="secondary"
-                                  className="text-[10px] px-2 py-0.5 h-auto whitespace-normal text-left"
-                                >
-                                  {service?.label || s}
-                                  {service?.price
-                                    ? ` (€ ${service.price})`
-                                    : ""}
-                                </Badge>
-                              );
-                            },
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    {/* Bonuses Checkboxes Integrated Here */}
+                    <div className="pt-4 mt-4 border-t border-dashed space-y-2">
+                      <h5 className="font-semibold text-[10px] uppercase text-muted-foreground">
+                        Bonuses
+                      </h5>
 
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Project Value (Editable) */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold flex justify-between">
-                      <span>Total Project Value (Net)</span>
-                      <span className="text-muted-foreground font-normal text-xs">
-                        Based on Pricing Matrix
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500 font-mono">
-                        €
-                      </span>
-                      <Input
-                        type="number"
-                        className="pl-8 font-mono font-medium"
-                        value={invoiceEditState.projectValue}
-                        onChange={(e) =>
-                          setInvoiceEditState({
-                            ...invoiceEditState,
-                            projectValue: parseFloat(e.target.value) || 0,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Bonuses Section */}
-                  <div className="space-y-4 bg-gray-50 dark:bg-gray-900/10 p-4 rounded-md border text-sm">
-                    <h4 className="font-semibold text-xs uppercase text-muted-foreground mb-2">
-                      Performance Bonuses
-                    </h4>
-
-                    {/* Quality Bonus */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="quality-bonus"
-                          checked={invoiceEditState.qualityBonus.enabled}
-                          onCheckedChange={(checked) =>
-                            setInvoiceEditState({
-                              ...invoiceEditState,
-                              qualityBonus: {
-                                ...invoiceEditState.qualityBonus,
-                                enabled: !!checked,
-                              },
-                            })
-                          }
-                        />
-                        <div>
+                      {/* Quantity Bonus Checkbox */}
+                      <div className="flex items-center justify-between bg-white dark:bg-gray-950 p-2 rounded border">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="quantity-bonus-chk"
+                            checked={invoiceEditState.quantityBonus.enabled}
+                            onCheckedChange={(checked) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                quantityBonus: {
+                                  ...invoiceEditState.quantityBonus,
+                                  enabled: !!checked,
+                                },
+                              })
+                            }
+                          />
                           <label
-                            htmlFor="quality-bonus"
-                            className="font-medium cursor-pointer"
-                          >
-                            Quality Bonus
-                          </label>
-                          <span className="block text-xs text-muted-foreground">
-                            {invoiceEditState.qualityBonus.label}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="w-24">
-                        <Input
-                          type="number"
-                          className="h-8 font-mono text-right"
-                          disabled={!invoiceEditState.qualityBonus.enabled}
-                          value={invoiceEditState.qualityBonus.amount}
-                          onChange={(e) =>
-                            setInvoiceEditState({
-                              ...invoiceEditState,
-                              qualityBonus: {
-                                ...invoiceEditState.qualityBonus,
-                                amount: parseFloat(e.target.value) || 0,
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    {/* Quantity Bonus */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="quantity-bonus"
-                          checked={invoiceEditState.quantityBonus.enabled}
-                          onCheckedChange={(checked) =>
-                            setInvoiceEditState({
-                              ...invoiceEditState,
-                              quantityBonus: {
-                                ...invoiceEditState.quantityBonus,
-                                enabled: !!checked,
-                              },
-                            })
-                          }
-                        />
-                        <div>
-                          <label
-                            htmlFor="quantity-bonus"
-                            className="font-medium cursor-pointer"
+                            htmlFor="quantity-bonus-chk"
+                            className="cursor-pointer select-none"
                           >
                             Quantity Bonus
                           </label>
-                          <span className="block text-xs text-muted-foreground">
-                            {invoiceEditState.quantityBonus.label}
+                        </div>
+                        <span className="font-mono font-medium text-green-600">
+                          {invoiceEditState.quantityBonus.enabled
+                            ? `+ € ${invoiceEditState.quantityBonus.amount}`
+                            : "€ 0"}
+                        </span>
+                      </div>
+
+                      {/* Termintreue (Quality) Bonus Checkbox */}
+                      <div className="flex items-center justify-between bg-white dark:bg-gray-950 p-2 rounded border">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="quality-bonus-chk"
+                            checked={invoiceEditState.qualityBonus.enabled}
+                            onCheckedChange={(checked) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                qualityBonus: {
+                                  ...invoiceEditState.qualityBonus,
+                                  enabled: !!checked,
+                                },
+                              })
+                            }
+                          />
+                          <label
+                            htmlFor="quality-bonus-chk"
+                            className="cursor-pointer select-none"
+                          >
+                            Termintreue Bonus
+                          </label>
+                        </div>
+                        <span className="font-mono font-medium text-green-600">
+                          {invoiceEditState.qualityBonus.enabled
+                            ? `+ € ${invoiceEditState.qualityBonus.amount}`
+                            : "€ 0"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* 3. Payment Distribution (New Component) */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm uppercase text-gray-900 dark:text-gray-100">
+                      Payment Distribution
+                    </h4>
+                    <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border overflow-hidden">
+                      {/* Contractor (Total) */}
+                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800 bg-gray-100/50 dark:bg-gray-800/50">
+                        <span className="font-semibold text-sm">
+                          Contractor (Total)
+                        </span>
+                        <span className="font-mono font-bold">
+                          €{" "}
+                          {invoiceEditState.projectValue.toLocaleString(
+                            undefined,
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            },
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Subcontractor (70%) */}
+                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Subcontractor (70%)
+                        </span>
+                        <span className="font-mono font-medium">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue * 0.7
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+
+                      {/* Mediator (10% or -) */}
+                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Mediator ({currentInvoice.hasMediator ? "10%" : "N/A"}
+                          )
+                        </span>
+                        <span className="font-mono font-medium">
+                          {currentInvoice.hasMediator
+                            ? `€ ${(
+                              invoiceEditState.projectValue * 0.1
+                            ).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                            })}`
+                            : "-"}
+                        </span>
+                      </div>
+
+                      {/* Prostruktion (10% or 15%) */}
+                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Prostruktion (
+                          {currentInvoice.hasMediator ? "10%" : "15%"})
+                        </span>
+                        <span className="font-mono font-medium">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue *
+                            (currentInvoice.hasMediator ? 0.1 : 0.15)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+
+                      {/* Partner (10% or 15% + Bonuses) */}
+                      <div className="flex justify-between items-center p-3 bg-blue-50/50 dark:bg-blue-900/10">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            Partner (
+                            {currentInvoice.hasMediator ? "10%" : "15%"})
+                          </span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400">
+                            + Bonuses: €{" "}
+                            {(
+                              (invoiceEditState.qualityBonus.enabled
+                                ? invoiceEditState.qualityBonus.amount
+                                : 0) +
+                              (invoiceEditState.quantityBonus.enabled
+                                ? invoiceEditState.quantityBonus.amount
+                                : 0)
+                            ).toLocaleString()}
                           </span>
                         </div>
-                      </div>
-                      <div className="w-24">
-                        <Input
-                          type="number"
-                          className="h-8 font-mono text-right"
-                          disabled={!invoiceEditState.quantityBonus.enabled}
-                          value={invoiceEditState.quantityBonus.amount}
-                          onChange={(e) =>
-                            setInvoiceEditState({
-                              ...invoiceEditState,
-                              quantityBonus: {
-                                ...invoiceEditState.quantityBonus,
-                                amount: parseFloat(e.target.value) || 0,
-                              },
-                            })
-                          }
-                        />
+                        <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue *
+                            (currentInvoice.hasMediator ? 0.1 : 0.15) +
+                            (invoiceEditState.qualityBonus.enabled
+                              ? invoiceEditState.qualityBonus.amount
+                              : 0) +
+                            (invoiceEditState.quantityBonus.enabled
+                              ? invoiceEditState.quantityBonus.amount
+                              : 0)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Totals Calculation */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-muted-foreground text-sm">
-                      <span>
-                        Base Share ({invoiceEditState.partnerSharePercent}% of
-                        Value)
-                      </span>
-                      <span className="font-mono">
-                        €{" "}
-                        {(
-                          invoiceEditState.projectValue *
-                          (invoiceEditState.partnerSharePercent / 100)
-                        ).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground text-sm">
-                      <span>Total Bonuses</span>
-                      <span className="font-mono text-green-600">
-                        + €{" "}
-                        {(
-                          (invoiceEditState.qualityBonus.enabled
-                            ? invoiceEditState.qualityBonus.amount
-                            : 0) +
-                          (invoiceEditState.quantityBonus.enabled
-                            ? invoiceEditState.quantityBonus.amount
-                            : 0)
-                        ).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded font-bold text-blue-700 dark:text-blue-300 mt-2">
-                      <span>Total Payable to Partner</span>
-                      <span className="text-lg">
-                        €{" "}
-                        {(
-                          invoiceEditState.projectValue *
-                            (invoiceEditState.partnerSharePercent / 100) +
-                          (invoiceEditState.qualityBonus.enabled
-                            ? invoiceEditState.qualityBonus.amount
-                            : 0) +
-                          (invoiceEditState.quantityBonus.enabled
-                            ? invoiceEditState.quantityBonus.amount
-                            : 0)
-                        ).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Review Checkbox */}
-                  <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded border border-yellow-200 dark:border-yellow-800">
-                    <Checkbox
-                      id="review-partner"
-                      checked={invoiceEditState.reviewed.partner}
-                      onCheckedChange={(checked) =>
-                        setInvoiceEditState({
-                          ...invoiceEditState,
-                          reviewed: {
-                            ...invoiceEditState.reviewed,
-                            partner: !!checked,
-                          },
-                        })
-                      }
-                    />
-                    <label
-                      htmlFor="review-partner"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      I have verified the Partner invoice details.
-                    </label>
                   </div>
                 </div>
+
+                {/* Review Checkbox */}
+                <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded border border-yellow-200 dark:border-yellow-800">
+                  <Checkbox
+                    id="review-partner"
+                    checked={invoiceEditState.reviewed.partner}
+                    onCheckedChange={(checked) =>
+                      setInvoiceEditState({
+                        ...invoiceEditState,
+                        reviewed: {
+                          ...invoiceEditState.reviewed,
+                          partner: !!checked,
+                        },
+                      })
+                    }
+                  />
+                  <label
+                    htmlFor="review-partner"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    I have verified the Partner invoice details.
+                  </label>
+                </div>
+
               </TabsContent>
 
               {/* SUBCONTRACTOR TAB */}
@@ -2778,7 +2770,7 @@ Contractor: ${newProject.contractor}
                 // PARTNER Invoice
                 const partnerAmount =
                   invoiceEditState.projectValue *
-                    (invoiceEditState.partnerSharePercent / 100) +
+                  (invoiceEditState.partnerSharePercent / 100) +
                   (invoiceEditState.qualityBonus.enabled
                     ? invoiceEditState.qualityBonus.amount
                     : 0) +
@@ -2854,7 +2846,7 @@ Contractor: ${newProject.contractor}
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog >
       <Dialog open={addProjectOpen} onOpenChange={setAddProjectOpen}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -3342,7 +3334,7 @@ Contractor: ${newProject.contractor}
                               // Recalculate
                               const currentCosts =
                                 PRICING_MATRIX.baseCosts[
-                                  newProject.indoorUnits
+                                newProject.indoorUnits
                                 ] || {};
                               let basePrice = 0;
                               newTypes.forEach((type) => {
@@ -3414,7 +3406,7 @@ Contractor: ${newProject.contractor}
                             // Recalculate
                             const currentCosts =
                               PRICING_MATRIX.baseCosts[
-                                newProject.indoorUnits
+                              newProject.indoorUnits
                               ] || {};
                             let basePrice = 0;
                             newProject.selectedWorkTypes.forEach((type) => {
@@ -3543,6 +3535,6 @@ Contractor: ${newProject.contractor}
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

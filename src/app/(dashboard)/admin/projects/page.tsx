@@ -2619,25 +2619,36 @@ Contractor: ${newProject.contractor}
                     <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border overflow-hidden">
                       {/* Contractor (Total) */}
                       <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800 bg-gray-100/50 dark:bg-gray-800/50">
-                        <span className="font-semibold text-sm">
-                          Contractor (Total)
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-sm">
+                            Contractor: {currentInvoice.contractor || "Unknown"}
+                          </span>
+                          <span className="text-[10px] text-gray-500 font-normal">
+                            Base + Bonuses
+                          </span>
+                        </div>
                         <span className="font-mono font-bold">
                           €{" "}
-                          {invoiceEditState.projectValue.toLocaleString(
-                            undefined,
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            },
-                          )}
+                          {(
+                            invoiceEditState.projectValue +
+                            (invoiceEditState.quantityBonus.enabled
+                              ? invoiceEditState.quantityBonus.amount
+                              : 0) +
+                            (invoiceEditState.qualityBonus.enabled
+                              ? invoiceEditState.qualityBonus.amount
+                              : 0)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </span>
                       </div>
 
-                      {/* Subcontractor (70%) */}
+                      {/* Subcontractor (70% of Base) */}
                       <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Subcontractor (70%)
+                          Subcontractor: {currentInvoice.sub || "Unknown"} (70%
+                          Base)
                         </span>
                         <span className="font-mono font-medium">
                           €{" "}
@@ -2653,13 +2664,20 @@ Contractor: ${newProject.contractor}
                       {/* Mediator (10% or -) */}
                       <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Mediator ({currentInvoice.hasMediator ? "10%" : "N/A"}
-                          )
+                          Mediator: {currentInvoice.mediator || "N/A"} (
+                          {currentInvoice.hasMediator ? "10%" : "N/A"})
                         </span>
                         <span className="font-mono font-medium">
                           {currentInvoice.hasMediator
                             ? `€ ${(
-                                invoiceEditState.projectValue * 0.1
+                                (invoiceEditState.projectValue +
+                                  (invoiceEditState.quantityBonus.enabled
+                                    ? invoiceEditState.quantityBonus.amount
+                                    : 0) +
+                                  (invoiceEditState.qualityBonus.enabled
+                                    ? invoiceEditState.qualityBonus.amount
+                                    : 0)) *
+                                0.1
                               ).toLocaleString(undefined, {
                                 minimumFractionDigits: 2,
                               })}`
@@ -2676,7 +2694,13 @@ Contractor: ${newProject.contractor}
                         <span className="font-mono font-medium">
                           €{" "}
                           {(
-                            invoiceEditState.projectValue *
+                            (invoiceEditState.projectValue +
+                              (invoiceEditState.quantityBonus.enabled
+                                ? invoiceEditState.quantityBonus.amount
+                                : 0) +
+                              (invoiceEditState.qualityBonus.enabled
+                                ? invoiceEditState.qualityBonus.amount
+                                : 0)) *
                             (currentInvoice.hasMediator ? 0.1 : 0.15)
                           ).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
@@ -2688,32 +2712,24 @@ Contractor: ${newProject.contractor}
                       <div className="flex justify-between items-center p-3 bg-blue-50/50 dark:bg-blue-900/10">
                         <div className="flex flex-col">
                           <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                            Partner (
+                            Partner: {currentInvoice.partner || "Unknown"} (
                             {currentInvoice.hasMediator ? "10%" : "15%"})
                           </span>
                           <span className="text-xs text-blue-600 dark:text-blue-400">
-                            + Bonuses: €{" "}
-                            {(
-                              (invoiceEditState.qualityBonus.enabled
-                                ? invoiceEditState.qualityBonus.amount
-                                : 0) +
-                              (invoiceEditState.quantityBonus.enabled
-                                ? invoiceEditState.quantityBonus.amount
-                                : 0)
-                            ).toLocaleString()}
+                            Based on Total + Bonuses
                           </span>
                         </div>
                         <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
                           €{" "}
                           {(
-                            invoiceEditState.projectValue *
-                              (currentInvoice.hasMediator ? 0.1 : 0.15) +
-                            (invoiceEditState.qualityBonus.enabled
-                              ? invoiceEditState.qualityBonus.amount
-                              : 0) +
-                            (invoiceEditState.quantityBonus.enabled
-                              ? invoiceEditState.quantityBonus.amount
-                              : 0)
+                            (invoiceEditState.projectValue +
+                              (invoiceEditState.quantityBonus.enabled
+                                ? invoiceEditState.quantityBonus.amount
+                                : 0) +
+                              (invoiceEditState.qualityBonus.enabled
+                                ? invoiceEditState.qualityBonus.amount
+                                : 0)) *
+                            (currentInvoice.hasMediator ? 0.1 : 0.15)
                           ).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
                           })}

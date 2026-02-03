@@ -508,77 +508,107 @@ export default function AdminProjects() {
     const fetchProjects = async () => {
       const supabase = createClient();
       try {
-        // Fetch projects with joined Profiles for Partner and Broker names
-        // Note: Supabase join syntax requires correct foreign key setup.
-        // Assuming 'partner_id' references 'profiles.id' and 'broker_id' references 'profiles.id'.
-        // We use alias 'partner:partner_id' and 'broker:broker_id' if relations are set up.
-        // If not, we might fail. But let's try standard relation select.
-
-        // "partner:partner_id(full_name)" maps the relation to a 'partner' object
+        // Fetch projects with all related data using new schema
         const { data, error } = await supabase.from("projects").select(`
             *,
-            partner_profile:partner_id(full_name, email, company_name),
-            broker_profile:broker_id(full_name, email)
+            customer:customer_id(id, customer_number, name, email, phone, address),
+            partner_profile:partner_id(id, full_name, email, company_name),
+            broker_profile:broker_id(id, full_name, email),
+            contractor:contractor_id(id, name, company_name),
+            subcontractor:subcontractor_id(id, name, company_name),
+            project_work_types(work_type_key, price),
+            project_additional_services(service_id, price)
           `);
 
-        if (data && !error) {
+        if (data && !error && data.length > 0) {
           // Map DB projects to UI shape
-          const mappedProjects = data.map((p: any) => ({
-            project: p.title,
-            address: p.description
-              ? p.description.split("\n")[0].replace("Address: ", "")
-              : "",
-            contractor: p.description
-              ? p.description.match(/Contractor: (.*)/)?.[1] || ""
-              : "",
-            // Use the joined profile name, fallback to generic if missing but ID exists
-            partner:
-              p.partner_profile?.company_name ||
-              p.partner_profile?.full_name ||
-              (p.partner_id ? "Partner" : ""),
-            mediator:
-              p.broker_profile?.full_name || (p.broker_id ? "Mediator" : ""),
-            sub: p.description
-              ? p.description.match(/Subcontractor: (.*?) \(/)?.[1] || ""
-              : "",
-            estimatedHours: p.description
-              ? p.description.match(/Estimated Max Hours: (.*)/)?.[1] || "N/A"
-              : "N/A",
-            start: new Date(p.created_at || Date.now()).toLocaleDateString(
-              "en-US",
-              { year: "numeric", month: "short", day: "numeric" },
-            ),
-            amount: `€ ${p.contract_value?.toLocaleString() || "0"}`,
-            status: p.status === "active" ? "Scheduled" : p.status,
-            statusColor: "bg-purple-600", // Default
-            abnahme: "No",
-            invoiceHeader: "Create Invoice",
-            invoiceStatus: "Ready",
-            workers: [],
-            id: p.id,
-          }));
+          const mappedProjects = data.map((p: any) => {
+            // Extract work types and services from joined data
+            const selectedWorkTypes =
+              p.project_work_types?.map((wt: any) => wt.work_type_key) || [];
+            const selectedAdditionalServices =
+              p.project_additional_services?.map((s: any) => s.service_id) ||
+              [];
 
-          setProjects((prev) => {
-            return mappedProjects.length > 0 ? mappedProjects : prev;
+            // Determine status color
+            let statusColor = "bg-purple-600 text-white";
+            if (p.status === "In Progress")
+              statusColor = "bg-orange-500 text-white";
+            if (p.status === "In Abnahme")
+              statusColor = "bg-yellow-500 text-black";
+            if (p.status === "Finished")
+              statusColor = "bg-green-600 text-white";
+
+            return {
+              id: p.id,
+              project: p.title,
+              address: p.address || "",
+              description: p.description || "",
+              contractor:
+                p.contractor?.company_name || p.contractor?.name || "",
+              partner:
+                p.partner_profile?.company_name ||
+                p.partner_profile?.full_name ||
+                "",
+              partnerId: p.partner_id,
+              mediator: p.broker_profile?.full_name || "",
+              mediatorId: p.broker_id,
+              sub: p.subcontractor?.company_name || p.subcontractor?.name || "",
+              subId: p.subcontractor_id,
+              customerNumber: p.customer?.customer_number || "",
+              customerEmail: p.customer?.email || "",
+              customerPhone: p.customer?.phone || "",
+              estimatedHours: p.estimated_hours || "",
+              indoorUnits: p.indoor_units || 0,
+              selectedWorkTypes,
+              selectedAdditionalServices,
+              start: p.actual_start
+                ? new Date(p.actual_start).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })
+                : new Date(p.created_at || Date.now()).toLocaleDateString(
+                  "en-US",
+                  { year: "numeric", month: "short", day: "numeric" },
+                ),
+              scheduledStart: p.scheduled_start || "",
+              amount: `€ ${p.contract_value?.toLocaleString() || "0"}`,
+              status: p.status || "Scheduled",
+              statusColor,
+              abnahme: p.status === "In Abnahme" ? "Yes" : "No",
+              invoiceHeader: "Create Invoice",
+              invoiceStatus: "Ready",
+              workers: [],
+            };
           });
+
+          setProjects(mappedProjects);
+          // Update localStorage to keep in sync
+          localStorage.setItem(
+            "prostruktion_projects_v1",
+            JSON.stringify(mappedProjects),
+          );
+          return; // Skip localStorage fallback if we got Supabase data
         }
       } catch (error) {
         console.error("Error fetching projects from Supabase:", error);
       }
+
+      // Fallback to localStorage if Supabase fetch fails or returns empty
+      const storedProjects = localStorage.getItem("prostruktion_projects_v1");
+      if (storedProjects) {
+        try {
+          setProjects(JSON.parse(storedProjects));
+        } catch (e) {
+          setProjects([]);
+        }
+      } else {
+        setProjects([]);
+      }
     };
 
     fetchProjects();
-
-    const storedProjects = localStorage.getItem("prostruktion_projects_v1");
-    if (storedProjects) {
-      try {
-        setProjects(JSON.parse(storedProjects));
-      } catch (e) {
-        setProjects([]);
-      }
-    } else {
-      setProjects([]);
-    }
 
     const storedArchive = localStorage.getItem("prostruktion_archive");
     if (storedArchive) {
@@ -611,20 +641,136 @@ export default function AdminProjects() {
 
   const handleAddProject = async () => {
     // Basic validation
-    if (!newProject.project) return; // Amount is auto-calc
+    if (!newProject.project) return;
 
+    const supabase = createClient();
+    let supabaseProjectId: string | null = null;
+
+    // Save to Supabase using new schema
+    try {
+      // 1. Create or find customer
+      let customerId: string | null = null;
+      if (newProject.customerNumber || newProject.customerEmail) {
+        // Check if customer exists
+        const { data: existingCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("customer_number", newProject.customerNumber)
+          .maybeSingle();
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+        } else {
+          // Create new customer
+          const { data: newCustomer, error: customerError } = await supabase
+            .from("customers")
+            .insert({
+              customer_number: newProject.customerNumber || null,
+              name: newProject.project, // Use project name as customer name fallback
+              email: newProject.customerEmail || null,
+              phone: newProject.customerPhone || null,
+              address: newProject.address || null,
+            })
+            .select("id")
+            .single();
+
+          if (!customerError && newCustomer) {
+            customerId = newCustomer.id;
+          }
+        }
+      }
+
+      // 2. Insert project
+      const { data: insertedProject, error: projectError } = await supabase
+        .from("projects")
+        .insert({
+          title: newProject.project,
+          address: newProject.address,
+          description: newProject.description || null,
+          contract_value: parseFloat(newProject.amount) || 0,
+          status: "Scheduled",
+          scheduled_start: newProject.scheduledStart || null,
+          estimated_hours: newProject.estimatedHours || null,
+          indoor_units: newProject.indoorUnits || 0,
+          customer_id: customerId,
+          partner_id: newProject.partnerId || null,
+          broker_id: newProject.mediatorId || null,
+          contractor_id: newProject.contractorId || null,
+          subcontractor_id: newProject.subId || null,
+        })
+        .select("id")
+        .single();
+
+      if (projectError) {
+        console.error("Failed to insert project:", projectError);
+      } else if (insertedProject) {
+        supabaseProjectId = insertedProject.id;
+
+        // 3. Insert work types
+        if (newProject.selectedWorkTypes.length > 0) {
+          const workTypeInserts = newProject.selectedWorkTypes.map((type) => {
+            const units = newProject.indoorUnits || 0;
+            const price =
+              PRICING_MATRIX.baseCosts[units]?.[
+              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+              ] || 0;
+            return {
+              project_id: insertedProject.id,
+              work_type_key: type,
+              price: price,
+            };
+          });
+
+          await supabase.from("project_work_types").insert(workTypeInserts);
+        }
+
+        // 4. Insert additional services
+        if (newProject.selectedAdditionalServices.length > 0) {
+          const serviceInserts = newProject.selectedAdditionalServices.map(
+            (serviceId) => {
+              const service = ADDITIONAL_SERVICES.find(
+                (s) => s.id === serviceId,
+              );
+              return {
+                project_id: insertedProject.id,
+                service_id: serviceId,
+                price: service?.price || 0,
+              };
+            },
+          );
+
+          await supabase
+            .from("project_additional_services")
+            .insert(serviceInserts);
+        }
+
+        // 5. Insert workers
+        if (newProject.workers.length > 0) {
+          const workerInserts = newProject.workers.map((workerId) => ({
+            project_id: insertedProject.id,
+            worker_id: workerId,
+          }));
+
+          await supabase.from("project_workers").insert(workerInserts);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save project to Supabase:", e);
+    }
+
+    // Update local state for UI
     const projectData = {
       ...newProject,
+      id: supabaseProjectId, // Store Supabase ID
       status: "Scheduled",
-      statusColor: "bg-purple-600 text-white", // Added text-white
+      statusColor: "bg-purple-600 text-white",
       abnahme: "No",
       invoiceHeader: "Create Invoice",
       invoiceStatus: "Ready",
       amount: isNaN(parseFloat(newProject.amount))
         ? newProject.amount
         : `€ ${parseFloat(newProject.amount).toLocaleString()}`,
-      description: newProject.description, // Store manual description
-      // Save calculation details for reference - REMOVED calcState
+      description: newProject.description,
       calculationDetails: null,
     };
 
@@ -663,7 +809,6 @@ Contractor: ${newProject.contractor}
     } catch (e) {
       console.error("Failed to save project to Supabase:", e);
     }
-
     setAddProjectOpen(false);
     setNewProject({
       project: "",

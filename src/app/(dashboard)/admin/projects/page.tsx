@@ -2480,6 +2480,66 @@ Contractor: ${newProject.contractor}
                         <Gift className="h-3 w-3" /> Bonuses & Performance
                       </h5>
 
+                      {/* Quality Bonus Card */}
+                      <div
+                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                          invoiceEditState.qualityBonus.enabled
+                            ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
+                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="quality-bonus-chk"
+                              checked={invoiceEditState.qualityBonus.enabled}
+                              onCheckedChange={(checked) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  qualityBonus: {
+                                    ...invoiceEditState.qualityBonus,
+                                    enabled: !!checked,
+                                  },
+                                })
+                              }
+                              className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                            />
+                            <div>
+                              <label
+                                htmlFor="quality-bonus-chk"
+                                className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                              >
+                                Quality Bonus
+                              </label>
+                              <div className="mt-0.5">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${
+                                    invoiceEditState.qualityBonus.enabled
+                                      ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
+                                      : "text-gray-500 border-gray-300"
+                                  }`}
+                                >
+                                  {invoiceEditState.qualityBonus.label ||
+                                    "Indoor Units"}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                          <span
+                            className={`font-mono font-bold text-sm ${
+                              invoiceEditState.qualityBonus.enabled
+                                ? "text-blue-600 dark:text-blue-400"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            {invoiceEditState.qualityBonus.enabled
+                              ? `+ € ${invoiceEditState.qualityBonus.amount}`
+                              : "€ 0"}
+                          </span>
+                        </div>
+                      </div>
+
                       {/* Quantity Bonus Card */}
                       <div
                         className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
@@ -2542,66 +2602,6 @@ Contractor: ${newProject.contractor}
                           >
                             {invoiceEditState.quantityBonus.enabled
                               ? `+ € ${invoiceEditState.quantityBonus.amount}`
-                              : "€ 0"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Quality Bonus Card */}
-                      <div
-                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
-                          invoiceEditState.qualityBonus.enabled
-                            ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
-                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              id="quality-bonus-chk"
-                              checked={invoiceEditState.qualityBonus.enabled}
-                              onCheckedChange={(checked) =>
-                                setInvoiceEditState({
-                                  ...invoiceEditState,
-                                  qualityBonus: {
-                                    ...invoiceEditState.qualityBonus,
-                                    enabled: !!checked,
-                                  },
-                                })
-                              }
-                              className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                            />
-                            <div>
-                              <label
-                                htmlFor="quality-bonus-chk"
-                                className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                              >
-                                Quality Bonus
-                              </label>
-                              <div className="mt-0.5">
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${
-                                    invoiceEditState.qualityBonus.enabled
-                                      ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
-                                      : "text-gray-500 border-gray-300"
-                                  }`}
-                                >
-                                  {invoiceEditState.qualityBonus.label ||
-                                    "Indoor Units"}
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-                          <span
-                            className={`font-mono font-bold text-sm ${
-                              invoiceEditState.qualityBonus.enabled
-                                ? "text-blue-600 dark:text-blue-400"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            {invoiceEditState.qualityBonus.enabled
-                              ? `+ € ${invoiceEditState.qualityBonus.amount}`
                               : "€ 0"}
                           </span>
                         </div>

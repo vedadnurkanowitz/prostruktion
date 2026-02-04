@@ -8,14 +8,26 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function inspectSchema() {
   console.log("Inspecting Projects Table...");
 
-  const { data, error } = await supabase.from("projects").select("*").limit(1);
+  const { data, error } = await supabase.from("projects").select("*");
 
   if (error) {
     console.error("Error:", error);
-  } else if (data && data.length > 0) {
-    console.log("Columns in projects table:", Object.keys(data[0]));
-  } else {
-    console.log("No projects found to inspect columns.");
+    return;
+  }
+
+  if (data) {
+    const allIds = data.map((p: any) => ({
+      id: p.id,
+      customer_id: p.customer_id,
+      title: p.title,
+    }));
+    console.log("All Projects:", JSON.stringify(allIds, null, 2));
+
+    if (data.length > 0) {
+      console.log("Project Data Sample:", JSON.stringify(data[0], null, 2));
+    } else {
+      console.log("No projects found to inspect columns.");
+    }
   }
 }
 

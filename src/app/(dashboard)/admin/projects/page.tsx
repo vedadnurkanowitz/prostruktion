@@ -2789,17 +2789,17 @@ export default function AdminProjects() {
                       </div>
 
                       {/* Partner (10% or 15% + Bonuses) */}
-                      <div className="flex justify-between items-center p-3 bg-blue-50/50 dark:bg-blue-900/10">
+                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
                         <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
                             Partner: {currentInvoice.partner || "Unknown"} (
                             {currentInvoice.hasMediator ? "10%" : "15%"})
                           </span>
-                          <span className="text-xs text-blue-600 dark:text-blue-400">
+                          <span className="text-xs text-gray-500 dark:text-gray-500">
                             Based on Total + Bonuses
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                        <span className="font-mono font-medium">
                           €{" "}
                           {(
                             (invoiceEditState.projectValue +
@@ -2812,6 +2812,7 @@ export default function AdminProjects() {
                             (currentInvoice.hasMediator ? 0.1 : 0.15)
                           ).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
                           })}
                         </span>
                       </div>
@@ -2878,7 +2879,7 @@ export default function AdminProjects() {
                         Work Types:
                       </span>
                       {currentInvoice.projectData?.selectedWorkTypes?.length >
-                        0 ? (
+                      0 ? (
                         <ul className="space-y-1">
                           {currentInvoice.projectData.selectedWorkTypes.map(
                             (type: string) => {
@@ -2886,7 +2887,7 @@ export default function AdminProjects() {
                                 currentInvoice.projectData?.indoorUnits || 0;
                               const baseCost =
                                 PRICING_MATRIX.baseCosts[units]?.[
-                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                                 ] || 0;
                               const subCost = baseCost * 0.7; // 70% share
 
@@ -2919,47 +2920,47 @@ export default function AdminProjects() {
                     {/* Additional Services */}
                     {currentInvoice.projectData?.selectedAdditionalServices
                       ?.length > 0 && (
-                        <div>
-                          <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
-                          <span className="text-muted-foreground block font-semibold mb-1">
-                            Additional Services:
-                          </span>
-                          <div className="space-y-1">
-                            {currentInvoice.projectData.selectedAdditionalServices.map(
-                              (s: string) => {
-                                const service = ADDITIONAL_SERVICES.find(
-                                  (as) => as.id === s,
-                                );
-                                // 70% calculation for additional services as well
-                                const basePrice = service?.price || 0;
-                                const subPrice = basePrice * 0.7;
+                      <div>
+                        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                        <span className="text-muted-foreground block font-semibold mb-1">
+                          Additional Services:
+                        </span>
+                        <div className="space-y-1">
+                          {currentInvoice.projectData.selectedAdditionalServices.map(
+                            (s: string) => {
+                              const service = ADDITIONAL_SERVICES.find(
+                                (as) => as.id === s,
+                              );
+                              // 70% calculation for additional services as well
+                              const basePrice = service?.price || 0;
+                              const subPrice = basePrice * 0.7;
 
-                                return (
-                                  <div
-                                    key={s}
-                                    className="flex items-start gap-2 justify-between"
-                                  >
-                                    <div className="flex items-start gap-2">
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[10px] px-1.5 py-0 h-auto font-normal"
-                                      >
-                                        Extra
-                                      </Badge>
-                                      <span className="leading-tight text-xs">
-                                        {service?.label || s}
-                                      </span>
-                                    </div>
-                                    <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                      € {subPrice.toFixed(2)}
+                              return (
+                                <div
+                                  key={s}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] px-1.5 py-0 h-auto font-normal"
+                                    >
+                                      Extra
+                                    </Badge>
+                                    <span className="leading-tight text-xs">
+                                      {service?.label || s}
                                     </span>
                                   </div>
-                                );
-                              },
-                            )}
-                          </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {subPrice.toFixed(2)}
+                                  </span>
+                                </div>
+                              );
+                            },
+                          )}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t border-dashed my-2"></div>
@@ -2978,7 +2979,7 @@ export default function AdminProjects() {
                               currentInvoice.projectData?.indoorUnits || 0;
                             const base =
                               PRICING_MATRIX.baseCosts[units]?.[
-                              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                               ] || 0;
                             return acc + base * 0.7;
                           },
@@ -3052,7 +3053,10 @@ export default function AdminProjects() {
                         <span className="text-muted-foreground block text-xs uppercase font-semibold">
                           Project Address
                         </span>
-                        <span className="font-medium truncate block" title={currentInvoice.address}>
+                        <span
+                          className="font-medium truncate block"
+                          title={currentInvoice.address}
+                        >
                           {currentInvoice.address || "N/A"}
                         </span>
                       </div>

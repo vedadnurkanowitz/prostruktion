@@ -313,7 +313,7 @@ export default function AdminProjects() {
         // Note: Assuming 'contacts' table is used for external entities
         const { data: contacts, error: contactsError } = await supabase
           .from("contacts")
-          .select("id, name, company_name, role, mediator_id");
+          .select("id, name, company_name, role, mediator_id, metrics");
 
         if (contactsError)
           console.warn("Error fetching contacts:", contactsError);
@@ -353,30 +353,14 @@ export default function AdminProjects() {
                     id: c.id,
                     name,
                     // If it's a subcontractor, pass mediator_id or lookup name if we can (simplified later)
-                    mediatorId: c.mediator_id,
+                    mediatorId:
+                      c.mediator_id || (c.metrics as any)?.manual_mediator_id,
                   });
                 }
               });
           }
 
-          // Add from LocalStorage
-          try {
-            const stored = localStorage.getItem(localKey);
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              parsed.forEach((item: any) => {
-                if (!merged.has(item.name)) {
-                  merged.set(item.name, {
-                    id: `local-${item.name}`,
-                    name: item.name,
-                    mediator: item.mediator, // special for subs
-                  });
-                }
-              });
-            }
-          } catch (e) {
-            console.error(`Error loading ${localKey}:`, e);
-          }
+          // Add from LocalStorage - REMOVED
 
           return Array.from(merged.values());
         };

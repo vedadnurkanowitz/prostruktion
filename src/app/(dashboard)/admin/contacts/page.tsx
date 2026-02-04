@@ -268,24 +268,54 @@ export default function ContactsPage() {
     // 2. Remove from Supabase
     try {
       const supabase = createClient();
-      // ID in state might be 'sub-xxxxx' (generated) or uuid (real).
-      // If it starts with 'sub-', 'cont-', etc it's likely a LS contact, but let's try to delete by ID anyway if it looks like a UUID,
-      // or try to match by email if possible.
+      console.log("Attempting to delete contact:", id, email);
 
-      let shouldDeleteByEmail =
-        id.startsWith("sub-") ||
-        id.startsWith("cont-") ||
-        id.startsWith("part-") ||
-        id.startsWith("med-");
+      // Try deleting from 'contacts' table first (primary source now)
+      // Check if ID is a valid UUID (database ID) or a local mock string
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id,
+        );
 
-      if (!shouldDeleteByEmail) {
-        await supabase.from("profiles").delete().eq("id", id);
+      let error = null;
+
+      if (isUuid) {
+        const { error: delError } = await supabase
+          .from("contacts")
+          .delete()
+          .eq("id", id);
+        error = delError;
+        // Also try deleting from profiles if it was a user, just in case (optional, but good for cleanup if mixed)
+        if (!delError) {
+          await supabase.from("profiles").delete().eq("id", id);
+        }
       } else if (email) {
-        // Fallback: delete by email if ID was client-generated mock
-        await supabase.from("profiles").delete().eq("email", email);
+        // Fallback for mock-IDs or legacy data: Delete by email
+        const { error: delError } = await supabase
+          .from("contacts")
+          .delete()
+          .eq("email", email);
+        error = delError;
+      } else {
+        console.warn("Cannot delete contact: Invalid ID and no email.");
+        alert("Cannot delete: Invalid ID and no email found.");
+        setIsDeleting(false);
+        return;
+      }
+
+      if (error) {
+        console.error("Error removing from Supabase:", error);
+        alert("Failed to delete from database: " + error.message);
+        setIsDeleting(false);
+        return; // Don't remove from UI if DB failed
+      } else {
+        console.log("Successfully deleted from Supabase");
       }
     } catch (e) {
-      console.error("Error removing from Supabase", e);
+      console.error("Critical error removing from Supabase", e);
+      alert("Critical error deleting contact: " + String(e));
+      setIsDeleting(false);
+      return;
     }
 
     // 3. Update Local State
@@ -346,7 +376,8 @@ export default function ContactsPage() {
             alert("Error creating mediator: " + medError.message);
           } else if (medData) {
             // 2. Add mediator_id to subcontractor data
-            (contactData as any).mediator_id = medData.id;
+            // WORKAROUND: Use 'metrics' column because 'mediator_id' column has strict FK to 'profiles' table
+            (contactData as any).metrics = { manual_mediator_id: medData.id };
           }
         }
 
@@ -506,6 +537,9 @@ export default function ContactsPage() {
             role = c.role;
           }
 
+          const rawMediatorId =
+            c.mediator_id || (c.metrics as any)?.manual_mediator_id;
+
           allContacts.push({
             id: c.id,
             name: c.name,
@@ -521,7 +555,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
-            mediator: c.mediator_id, // This is ID now, might need lookup if we want name
+            mediator: rawMediatorId, // Use the resolved ID
             documents: [], // Handle documents if stored in Supabase later
             stage: "active", // Default stage
           });

@@ -895,53 +895,54 @@ export default function AdminProjects() {
           }
         }
       }
-    } catch (e) {
+
+      // Update local state for UI
+      const projectData = {
+        ...newProject,
+        id: supabaseProjectId, // Store Supabase ID
+        status: isEditing ? undefined : "Scheduled", // Don't override status if editing
+        statusColor: isEditing ? undefined : "bg-purple-600 text-white",
+        abnahme: "No", // simplified
+        invoiceHeader: "Create Invoice",
+        invoiceStatus: "Ready",
+        amount: isNaN(parseGermanFloat(newProject.amount))
+          ? newProject.amount
+          : `€ ${parseGermanFloat(newProject.amount).toLocaleString("de-DE")}`,
+        description: newProject.description,
+        calculationDetails: null,
+      };
+
+      if (isEditing) {
+        const updatedProjects = projects.map((p) =>
+          p.id === editingId
+            ? {
+                ...p,
+                ...projectData,
+                status: p.status,
+                statusColor: p.statusColor,
+              }
+            : p,
+        );
+        setProjects(updatedProjects);
+        localStorage.setItem(
+          "prostruktion_projects_v1",
+          JSON.stringify(updatedProjects),
+        );
+      } else {
+        const updatedProjects = [projectData, ...projects];
+        setProjects(updatedProjects);
+        localStorage.setItem(
+          "prostruktion_projects_v1",
+          JSON.stringify(updatedProjects),
+        );
+      }
+
+      setAddProjectOpen(false);
+      resetProjectForm();
+    } catch (e: any) {
       console.error("Failed to save project to Supabase:", e);
+      alert("Failed to save project: " + (e.message || "Unknown error"));
     }
-
-    // Update local state for UI
-    const projectData = {
-      ...newProject,
-      id: supabaseProjectId, // Store Supabase ID
-      status: isEditing ? undefined : "Scheduled", // Don't override status if editing
-      statusColor: isEditing ? undefined : "bg-purple-600 text-white",
-      abnahme: "No", // simplified
-      invoiceHeader: "Create Invoice",
-      invoiceStatus: "Ready",
-      amount: isNaN(parseGermanFloat(newProject.amount))
-        ? newProject.amount
-        : `€ ${parseGermanFloat(newProject.amount).toLocaleString("de-DE")}`,
-      description: newProject.description,
-      calculationDetails: null,
-    };
-
-    if (isEditing) {
-      const updatedProjects = projects.map((p) =>
-        p.id === editingId
-          ? {
-              ...p,
-              ...projectData,
-              status: p.status,
-              statusColor: p.statusColor,
-            }
-          : p,
-      );
-      setProjects(updatedProjects);
-      localStorage.setItem(
-        "prostruktion_projects_v1",
-        JSON.stringify(updatedProjects),
-      );
-    } else {
-      const updatedProjects = [projectData, ...projects];
-      setProjects(updatedProjects);
-      localStorage.setItem(
-        "prostruktion_projects_v1",
-        JSON.stringify(updatedProjects),
-      );
-    }
-
-    setAddProjectOpen(false);
-    resetProjectForm();
   };
 
   const handleEditClick = (project: any) => {

@@ -510,26 +510,77 @@ export default function AdminProjects() {
       const supabase = createClient();
       try {
         // Fetch projects with related data using validated schema
-        const { data, error } = await supabase
+        // Fetch projects (removed customer/contractor joins due to missing FKs)
+        const { data: projectsData, error: projectsError } = await supabase
           .from("projects")
           .select(
             `
             *,
-            customer:customers(id, customer_number, name, email, phone, address),
             partner_profile:profiles!partner_id(id, full_name, email, company_name),
             broker_profile:profiles!broker_id(id, full_name, email),
-            contractor:contacts!contractor_id(id, name, company_name),
-            subcontractor:contacts!subcontractor_id(id, name, company_name),
             project_work_types(work_type_key, price),
             project_additional_services(service_id, price)
           `,
           )
           .order("created_at", { ascending: false });
 
-        if (data && !error) {
+        if (projectsData && !projectsError) {
+          // Manual Joins: Fetch related data since FKs might be missing in DB
+          const customerIds = Array.from(
+            new Set(projectsData.map((p) => p.customer_id).filter(Boolean)),
+          );
+          const contactIds = Array.from(
+            new Set(
+              projectsData
+                .flatMap((p) => [p.contractor_id, p.subcontractor_id])
+                .filter(Boolean),
+            ),
+          );
+
+          // Fetch Customers
+          let customersMap: Record<string, any> = {};
+          if (customerIds.length > 0) {
+            const { data: customers } = await supabase
+              .from("customers")
+              .select("id, customer_number, name, email, phone, address")
+              .in("id", customerIds);
+            if (customers) {
+              customersMap = customers.reduce(
+                (acc, c) => {
+                  acc[c.id] = c;
+                  return acc;
+                },
+                {} as Record<string, any>,
+              );
+            }
+          }
+
+          // Fetch Contacts (Contractors/Subcontractors)
+          let contactsMap: Record<string, any> = {};
+          if (contactIds.length > 0) {
+            const { data: contacts } = await supabase
+              .from("contacts")
+              .select("id, name, company_name")
+              .in("id", contactIds);
+            if (contacts) {
+              contactsMap = contacts.reduce(
+                (acc, c) => {
+                  acc[c.id] = c;
+                  return acc;
+                },
+                {} as Record<string, any>,
+              );
+            }
+          }
+
           // Map DB projects to UI shape
-          const mappedProjects = data.map((p: any) => {
-            // Extract work types and services from joined data
+          const mappedProjects = projectsData.map((p: any) => {
+            // Join manually
+            const customer = customersMap[p.customer_id];
+            const contractor = contactsMap[p.contractor_id];
+            const subcontractor = contactsMap[p.subcontractor_id];
+
+            // Extract work types and services
             const selectedWorkTypes =
               p.project_work_types?.map((wt: any) => wt.work_type_key) || [];
             const selectedAdditionalServices =
@@ -550,8 +601,7 @@ export default function AdminProjects() {
               project: p.title,
               address: p.address || "",
               description: p.description || "",
-              contractor:
-                p.contractor?.company_name || p.contractor?.name || "",
+              contractor: contractor?.company_name || contractor?.name || "",
               partner:
                 p.partner_profile?.company_name ||
                 p.partner_profile?.full_name ||
@@ -559,11 +609,11 @@ export default function AdminProjects() {
               partnerId: p.partner_id,
               mediator: p.broker_profile?.full_name || "",
               mediatorId: p.broker_id,
-              sub: p.subcontractor?.company_name || p.subcontractor?.name || "",
+              sub: subcontractor?.company_name || subcontractor?.name || "",
               subId: p.subcontractor_id,
-              customerNumber: p.customer?.customer_number || "",
-              customerEmail: p.customer?.email || "",
-              customerPhone: p.customer?.phone || "",
+              customerNumber: customer?.customer_number || "",
+              customerEmail: customer?.email || "",
+              customerPhone: customer?.phone || "",
               estimatedHours: p.estimated_hours || "",
               indoorUnits: p.indoor_units || 0,
               selectedWorkTypes,
@@ -590,14 +640,13 @@ export default function AdminProjects() {
           });
 
           setProjects(mappedProjects);
-          // Update localStorage to keep in sync
           localStorage.setItem(
             "prostruktion_projects_v1",
             JSON.stringify(mappedProjects),
           );
-          return; // Skip localStorage fallback if we got Supabase data
-        } else if (error) {
-          console.error("Supabase fetch error:", error);
+          return;
+        } else if (projectsError) {
+          console.error("Supabase fetch error:", projectsError);
         }
       } catch (error) {
         console.error("Error fetching projects from Supabase:", error);

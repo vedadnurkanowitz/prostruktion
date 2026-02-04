@@ -62,6 +62,27 @@ import { createClient } from "@/lib/supabase/client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// Helper to parse German currency strings (e.g. "4.820,00" -> 4820.00)
+// Also handles "4.820" -> 4820 (treats dot as thousands separator)
+const parseGermanFloat = (str: string | number | undefined | null) => {
+  if (typeof str === "number") return str;
+  if (!str) return 0;
+
+  const val = str.toString();
+
+  // 1. Remove all non-numeric characters except '.' and ',' and '-'
+  // This removes € symbols, spaces, etc.
+  const clean = val.replace(/[^0-9.,-]/g, "");
+
+  // 2. Remove dots (thousands separators)
+  const noDots = clean.replace(/\./g, "");
+
+  // 3. Replace comma with dot (decimal separator)
+  const withDecimal = noDots.replace(",", ".");
+
+  return parseFloat(withDecimal) || 0;
+};
+
 export default function AdminProjects() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
@@ -464,7 +485,7 @@ export default function AdminProjects() {
   // Calculate Penalty Helper
   const calculatePenalty = (amountStr: string, startDateStr: string) => {
     // 1. Parse Amount
-    const amount = parseFloat(amountStr.replace(/[^0-9.-]+/g, ""));
+    const amount = parseGermanFloat(amountStr);
     if (isNaN(amount) || !startDateStr)
       return { penalty: 0, daysLate: 0, isOverdue: false, netAmount: amount };
 
@@ -744,7 +765,7 @@ export default function AdminProjects() {
           title: newProject.project,
           address: newProject.address || null,
           description: newProject.description || null,
-          contract_value: parseFloat(newProject.amount) || 0,
+          contract_value: parseGermanFloat(newProject.amount) || 0,
           status: "Scheduled",
           scheduled_start: newProject.scheduledStart || null,
           estimated_hours: newProject.estimatedHours
@@ -837,9 +858,9 @@ export default function AdminProjects() {
       abnahme: "No",
       invoiceHeader: "Create Invoice",
       invoiceStatus: "Ready",
-      amount: isNaN(parseFloat(newProject.amount))
+      amount: isNaN(parseGermanFloat(newProject.amount))
         ? newProject.amount
-        : `€ ${parseFloat(newProject.amount).toLocaleString()}`,
+        : `€ ${parseGermanFloat(newProject.amount).toLocaleString("de-DE")}`,
       description: newProject.description,
       calculationDetails: null,
     };
@@ -1003,10 +1024,8 @@ export default function AdminProjects() {
 
   const handleCreateInvoice = (project: any, index: number) => {
     // 1. Calculate Base Values
-    const numericAmount = parseFloat(
-      (project.amount || "").replace(/[^0-9.-]+/g, "") ||
-        project.contract_value ||
-        0,
+    const numericAmount = parseGermanFloat(
+      project.amount || project.contract_value || 0,
     );
 
     // 2. Calculate Quality Bonus
@@ -2587,7 +2606,8 @@ export default function AdminProjects() {
                                   ...invoiceEditState,
                                   qualityBonus: {
                                     ...invoiceEditState.qualityBonus,
-                                    amount: parseFloat(e.target.value) || 0,
+                                    amount:
+                                      parseGermanFloat(e.target.value) || 0,
                                   },
                                 })
                               }
@@ -2673,7 +2693,8 @@ export default function AdminProjects() {
                                   ...invoiceEditState,
                                   quantityBonus: {
                                     ...invoiceEditState.quantityBonus,
-                                    amount: parseFloat(e.target.value) || 0,
+                                    amount:
+                                      parseGermanFloat(e.target.value) || 0,
                                   },
                                 })
                               }

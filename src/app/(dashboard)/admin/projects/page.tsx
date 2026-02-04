@@ -2850,49 +2850,155 @@ export default function AdminProjects() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Subcontractor
-                      </span>
-                      <span className="font-medium">
-                        {currentInvoice.projectData?.sub || "Not Assigned"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Project
+                        Project Name
                       </span>
                       <span className="font-medium">
                         {currentInvoice.project}
                       </span>
                     </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Project ID
+                      </span>
+                      <span className="font-medium">{currentInvoice.id}</span>
+                    </div>
                   </div>
 
                   <div className="border-t border-dashed my-2"></div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold">
-                      Agreed Fee Amount
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-gray-500 font-mono">
-                        €
+                  {/* Scope of Work (Subcontractor View - 70%) */}
+                  <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-3">
+                    <h4 className="font-semibold uppercase text-muted-foreground">
+                      Scope of Work (Subcontractor Share - 70%)
+                    </h4>
+
+                    {/* Work List */}
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground block font-semibold mb-1">
+                        Work Types:
                       </span>
-                      <Input
-                        type="number"
-                        className="pl-8 font-mono font-medium"
-                        placeholder="0.00"
-                        value={invoiceEditState.subcontractorFee}
-                        onChange={(e) =>
-                          setInvoiceEditState({
-                            ...invoiceEditState,
-                            subcontractorFee: parseFloat(e.target.value) || 0,
-                          })
-                        }
-                      />
+                      {currentInvoice.projectData?.selectedWorkTypes?.length >
+                        0 ? (
+                        <ul className="space-y-1">
+                          {currentInvoice.projectData.selectedWorkTypes.map(
+                            (type: string) => {
+                              const units =
+                                currentInvoice.projectData?.indoorUnits || 0;
+                              const baseCost =
+                                PRICING_MATRIX.baseCosts[units]?.[
+                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                ] || 0;
+                              const subCost = baseCost * 0.7; // 70% share
+
+                              return (
+                                <li
+                                  key={type}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
+                                    <span className="leading-tight text-xs">
+                                      {WORK_TYPE_LABELS[type] || type}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {subCost.toFixed(2)}
+                                  </span>
+                                </li>
+                              );
+                            },
+                          )}
+                        </ul>
+                      ) : (
+                        <span className="text-muted-foreground italic">
+                          No specific work types selected.
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Enter the agreed fixed fee or calculated amount for the
-                      subcontractor.
-                    </p>
+
+                    {/* Additional Services */}
+                    {currentInvoice.projectData?.selectedAdditionalServices
+                      ?.length > 0 && (
+                        <div>
+                          <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                          <span className="text-muted-foreground block font-semibold mb-1">
+                            Additional Services:
+                          </span>
+                          <div className="space-y-1">
+                            {currentInvoice.projectData.selectedAdditionalServices.map(
+                              (s: string) => {
+                                const service = ADDITIONAL_SERVICES.find(
+                                  (as) => as.id === s,
+                                );
+                                // 70% calculation for additional services as well
+                                const basePrice = service?.price || 0;
+                                const subPrice = basePrice * 0.7;
+
+                                return (
+                                  <div
+                                    key={s}
+                                    className="flex items-start gap-2 justify-between"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] px-1.5 py-0 h-auto font-normal"
+                                      >
+                                        Extra
+                                      </Badge>
+                                      <span className="leading-tight text-xs">
+                                        {service?.label || s}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                      € {subPrice.toFixed(2)}
+                                    </span>
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                        </div>
+                      )}
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
+                  {/* Total Calculation */}
+                  <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                    <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
+                      Total Payable to Subcontractor
+                    </span>
+                    <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
+                      €{" "}
+                      {(
+                        (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                          (acc: number, type: string) => {
+                            const units =
+                              currentInvoice.projectData?.indoorUnits || 0;
+                            const base =
+                              PRICING_MATRIX.baseCosts[units]?.[
+                              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                              ] || 0;
+                            return acc + base * 0.7;
+                          },
+                          0,
+                        ) || 0) +
+                        (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                          (acc: number, s: string) => {
+                            const service = ADDITIONAL_SERVICES.find(
+                              (as) => as.id === s,
+                            );
+                            const base = service?.price || 0;
+                            return acc + base * 0.7;
+                          },
+                          0,
+                        ) || 0)
+                      ).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
                   </div>
 
                   <div className="border-t border-dashed my-2"></div>
@@ -2926,13 +3032,36 @@ export default function AdminProjects() {
               <TabsContent value="company" className="space-y-4">
                 {currentInvoice.hasMediator ? (
                   <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    {/* Header Info */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                          Mediator
+                          Project Name
                         </span>
                         <span className="font-medium">
-                          {currentInvoice.mediator}
+                          {currentInvoice.project}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Project ID
+                        </span>
+                        <span className="font-medium">{currentInvoice.id}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Project Address
+                        </span>
+                        <span className="font-medium truncate block" title={currentInvoice.address}>
+                          {currentInvoice.address || "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Subcontractor
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.sub || "N/A"}
                         </span>
                       </div>
                       <div>
@@ -2940,38 +3069,77 @@ export default function AdminProjects() {
                           Partner
                         </span>
                         <span className="font-medium">
-                          {currentInvoice.projectData?.partner}
+                          {currentInvoice.projectData?.partner || "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Mediator
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.mediator}
                         </span>
                       </div>
                     </div>
 
                     <div className="border-t border-dashed my-2"></div>
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-muted-foreground text-sm">
-                        <span>Project Value</span>
-                        <span className="font-mono">
-                          € {invoiceEditState.projectValue.toFixed(2)}
+                    <div className="space-y-4">
+                      {/* Base Value */}
+                      <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          Base Project Value
                         </span>
-                      </div>
-                      <div className="flex justify-between text-muted-foreground text-sm">
-                        <span>
-                          Commission Share (
-                          {invoiceEditState.mediatorSharePercent}
-                          %)
-                        </span>
-                        <span className="font-mono">
+                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
                           €{" "}
-                          {(
-                            invoiceEditState.projectValue *
-                            (invoiceEditState.mediatorSharePercent / 100)
-                          ).toFixed(2)}
+                          {invoiceEditState.projectValue.toLocaleString(
+                            undefined,
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            },
+                          )}
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded font-bold text-blue-700 dark:text-blue-300 mt-2">
-                        <span>Total Payable to Mediator</span>
-                        <span className="text-lg">
+                      {/* Total with Bonuses */}
+                      <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            Total Value (with Bonuses)
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Base + Quality Bonus + Quantity Bonus
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue +
+                            (invoiceEditState.qualityBonus.enabled
+                              ? invoiceEditState.qualityBonus.amount
+                              : 0) +
+                            (invoiceEditState.quantityBonus.enabled
+                              ? invoiceEditState.quantityBonus.amount
+                              : 0)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+
+                      {/* Mediator Share */}
+                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
+                            Total Payable to Mediator
+                          </span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400">
+                            (10% of Base Value)
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
                           €{" "}
                           {(
                             invoiceEditState.projectValue *

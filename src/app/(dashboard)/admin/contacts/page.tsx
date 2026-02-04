@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SubcontractorDetail } from "@/components/admin/subcontractor-detail";
+import { KanbanBoard, Lead, LeadStage } from "@/components/admin/contacts/kanban-board";
 
 type Contact = {
   id: string;
@@ -87,6 +88,11 @@ type Contact = {
   mediator?: string;
   contractor?: string;
   documents?: any[];
+  // CRM Fields
+  stage?: LeadStage;
+  notes?: string;
+  value?: number;
+  nextStep?: string;
 };
 
 type Worker = {
@@ -157,6 +163,7 @@ const generateMockWorkers = (count: number): Worker[] => {
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "pipeline">("list");
 
   // View State for Drill-down
   const [selectedSubcontractor, setSelectedSubcontractor] =
@@ -334,7 +341,9 @@ export default function ContactsPage() {
       complaints: 0,
       activeComplaints: 0,
       completedProjects: 0,
+
       successRate: 0, // Default 0 or 100?
+      stage: "new", // Default stage for new contacts
     };
 
     // If creating a subcontractor with a mediator, create separate mediator contact too
@@ -403,7 +412,9 @@ export default function ContactsPage() {
         mediator: newContact.mediatorName || newContact.mediator, // Use new name if created
         contractor: newContact.contractor, // Link to contractor
         address: newContact.address,
+
         logo: logoPreview, // Store logo as base64
+        stage: "new",
       });
       localStorage.setItem(storageKey, JSON.stringify(existing));
     }
@@ -529,6 +540,7 @@ export default function ContactsPage() {
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
+            stage: "active", // Supabase users are likely active
           });
         });
       }
@@ -564,6 +576,7 @@ export default function ContactsPage() {
             mediator: s.mediator,
             contractor: s.contractor,
             documents: s.documents || [],
+            stage: s.stage || "new",
           });
         });
       }
@@ -739,6 +752,38 @@ export default function ContactsPage() {
       setSubWorkers(generateMockWorkers(28)); // Mock 28 workers to match image
       setSelectedSubcontractor(contact);
     }
+  }
+  const handleLeadsChange = (updatedLeads: any[]) => {
+    // Update local state
+    setContacts(prev => {
+      const newContacts = [...prev];
+      updatedLeads.forEach(lead => {
+        const index = newContacts.findIndex(c => c.id === lead.id);
+        if (index !== -1) {
+          newContacts[index] = { ...newContacts[index], ...lead };
+
+          // Persist to LocalStorage
+          const contact = newContacts[index];
+          let storageKey = "";
+          if (contact.role === "subcontractor") storageKey = "prostruktion_subcontractors";
+          else if (contact.role === "contractor") storageKey = "prostruktion_contractors";
+          else if (contact.role === "partner") storageKey = "prostruktion_partners";
+          else if (contact.role === "broker") storageKey = "prostruktion_mediators";
+
+          if (storageKey) {
+            const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            const update = existing.map((item: any) => {
+              if (item.name === contact.name || item.email === contact.email) {
+                return { ...item, stage: contact.stage };
+              }
+              return item;
+            });
+            localStorage.setItem(storageKey, JSON.stringify(update));
+          }
+        }
+      });
+      return newContacts;
+    });
   };
 
   // ----- RENDER: WORKERS DETAIL VIEW -----
@@ -756,7 +801,27 @@ export default function ContactsPage() {
     <div className="space-y-6">
       {/* Page Title */}
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Contacts</h2>
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold tracking-tight">Contacts</h2>
+          <div className="flex bg-muted p-1 rounded-lg">
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              className="h-8"
+            >
+              <Users className="h-4 w-4 mr-2" /> List
+            </Button>
+            <Button
+              variant={viewMode === "pipeline" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("pipeline")}
+              className="h-8"
+            >
+              <LayoutDashboard className="h-4 w-4 mr-2" /> Pipeline
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Top Stats Cards */}
@@ -1129,351 +1194,363 @@ export default function ContactsPage() {
           </Dialog>
         </div>
       </div>
+      {viewMode === "pipeline" ? (
+        <div className="h-[calc(100vh-250px)]">
+          <KanbanBoard
+            leads={(filteredContacts as any[]).filter(c => c.stage !== 'active')}
+            onLeadsChange={handleLeadsChange}
+          />
+        </div>
+      ) : (
+        <>
 
-      <div className="text-sm text-muted-foreground">
-        {filteredContacts.length} Contacts found
-      </div>
 
-      {/* Main Table */}
-      <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
-        <Table>
-          <TableHeader className="bg-gray-50/80 dark:bg-gray-900/50">
-            <TableRow>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Company Name
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Contact Type
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
-                Reg. Workers
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
-                Active Proj.
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
-                Completed
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
-                Complaints
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
-                Active Compl.
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
-                Success
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-right">
-                Actions
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="text-center py-10 text-muted-foreground"
-                >
-                  Loading data...
-                </TableCell>
-              </TableRow>
-            ) : filteredContacts.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="text-center py-10 text-muted-foreground"
-                >
-                  No contacts found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedContacts.map((contact, i) => (
-                <TableRow
-                  key={i}
-                  className="group hover:bg-blue-50/50 dark:hover:bg-blue-900/10"
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9 border-2 border-white shadow-sm">
-                        <AvatarImage
-                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${contact.companyName}`}
-                        />
-                        <AvatarFallback>
-                          {contact.companyName?.substring(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                        {contact.companyName}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex text-sm text-gray-700 dark:text-gray-300">
-                      {getRoleLabel(contact.role)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
-                    {contact.regWorkers}
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
-                    {contact.activeProjects}
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
-                    {contact.completedProjects}
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
-                    {contact.complaints}
-                  </TableCell>
-                  <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
-                    {contact.activeComplaints > 0 ? (
-                      <span className="text-red-500 font-medium">
-                        {contact.activeComplaints}
-                      </span>
-                    ) : (
-                      "0"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="text-sm font-medium text-green-600">
-                      {contact.successRate}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {(contact.role === "subcontractor" ||
-                        contact.role === "partner") && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-200"
-                            onClick={() => handleViewClick(contact)}
-                          >
-                            View <ChevronRight className="ml-1 h-3 w-3" />
-                          </Button>
-                        )}
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => handleDeleteClick(contact)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-
-        {/* Footer */}
-        <div className="flex flex-col md:flex-row items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50 gap-4">
           <div className="text-sm text-muted-foreground">
-            Showing{" "}
-            {filteredContacts.length > 0
-              ? (currentPage - 1) * itemsPerPage + 1
-              : 0}{" "}
-            to {Math.min(currentPage * itemsPerPage, filteredContacts.length)}{" "}
-            of {filteredContacts.length} entries
+            {filteredContacts.length} Contacts found
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            {Array.from(
-              {
-                length: Math.min(
-                  5,
-                  Math.ceil(filteredContacts.length / itemsPerPage),
-                ),
-              },
-              (_, i) => {
-                const totalPages = Math.ceil(
-                  filteredContacts.length / itemsPerPage,
-                );
-                let pageNum = i + 1;
-
-                // Simple sliding window if many pages
-                if (totalPages > 5 && currentPage > 3) {
-                  pageNum = currentPage - 2 + i;
-                }
-
-                if (pageNum > totalPages) return null;
-
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={currentPage === pageNum ? "secondary" : "outline"}
-                    size="sm"
-                    className={`h-8 w-8 p-0 ${currentPage === pageNum
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "text-muted-foreground"
-                      }`}
-                    onClick={() => setCurrentPage(pageNum)}
-                  >
-                    {pageNum}
-                  </Button>
-                );
-              },
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2 text-yellow-600 gap-1"
-              onClick={() =>
-                setCurrentPage((p) =>
-                  Math.min(
-                    Math.ceil(filteredContacts.length / itemsPerPage),
-                    p + 1,
-                  ),
-                )
-              }
-              disabled={
-                currentPage >= Math.ceil(filteredContacts.length / itemsPerPage)
-              }
-            >
-              Next Page <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => {
-                  const sizes = [10, 20, 50, 100];
-                  const currentIndex = sizes.indexOf(itemsPerPage);
-                  if (currentIndex > 0) {
-                    setItemsPerPage(sizes[currentIndex - 1]);
-                    setCurrentPage(1);
-                  }
-                }}
-                disabled={itemsPerPage === 10}
-              >
-                <ChevronLeft className="h-3 w-3" />
-              </Button>
-              <span className="text-xs font-medium text-muted-foreground w-16 text-center">
-                {itemsPerPage} / page
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => {
-                  const sizes = [10, 20, 50, 100];
-                  const currentIndex = sizes.indexOf(itemsPerPage);
-                  if (currentIndex < sizes.length - 1) {
-                    setItemsPerPage(sizes[currentIndex + 1]);
-                    setCurrentPage(1);
-                  }
-                }}
-                disabled={itemsPerPage === 100}
-              >
-                <ChevronRight className="h-3 w-3" />
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-2 text-muted-foreground"
-            >
-              Download CSV <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4 pt-6">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xl font-bold tracking-tight">Mediators</h3>
-          <Button
-            onClick={() => setIsAddMediatorOpen(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm h-9"
-          >
-            <Plus className="mr-2 h-4 w-4" /> Add Mediator
-          </Button>
-        </div>
-        <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
-          <Table>
-            <TableHeader className="bg-purple-50/50 dark:bg-purple-900/20">
-              <TableRow>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Name
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Role
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Email
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Phone
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-right">
-                  Status
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMediators.length === 0 ? (
+          {/* Main Table */}
+          <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-gray-50/80 dark:bg-gray-900/50">
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-6 text-muted-foreground"
-                  >
-                    No mediators found.
-                  </TableCell>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Company Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Contact Type
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
+                    Reg. Workers
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
+                    Active Proj.
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
+                    Completed
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
+                    Complaints
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
+                    Active Compl.
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-center">
+                    Success
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-right">
+                    Actions
+                  </TableHead>
                 </TableRow>
-              ) : (
-                filteredMediators.map((mediator, i) => (
-                  <TableRow key={i} className="hover:bg-purple-50/30">
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-purple-100 text-purple-700">
-                            {mediator.name.substring(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium text-sm">
-                          {mediator.name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {mediator.jobTitle || "Mediator"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {mediator.email}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {mediator.phone}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-0">
-                        {mediator.status}
-                      </Badge>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center py-10 text-muted-foreground"
+                    >
+                      Loading data...
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+                ) : filteredContacts.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center py-10 text-muted-foreground"
+                    >
+                      No contacts found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedContacts.map((contact, i) => (
+                    <TableRow
+                      key={i}
+                      className="group hover:bg-blue-50/50 dark:hover:bg-blue-900/10"
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9 border-2 border-white shadow-sm">
+                            <AvatarImage
+                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${contact.companyName}`}
+                            />
+                            <AvatarFallback>
+                              {contact.companyName?.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                            {contact.companyName}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex text-sm text-gray-700 dark:text-gray-300">
+                          {getRoleLabel(contact.role)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        {contact.regWorkers}
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        {contact.activeProjects}
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        {contact.completedProjects}
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        {contact.complaints}
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        {contact.activeComplaints > 0 ? (
+                          <span className="text-red-500 font-medium">
+                            {contact.activeComplaints}
+                          </span>
+                        ) : (
+                          "0"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-sm font-medium text-green-600">
+                          {contact.successRate}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {(contact.role === "subcontractor" ||
+                            contact.role === "partner") && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-200"
+                                onClick={() => handleViewClick(contact)}
+                              >
+                                View <ChevronRight className="ml-1 h-3 w-3" />
+                              </Button>
+                            )}
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleDeleteClick(contact)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+
+            {/* Footer */}
+            <div className="flex flex-col md:flex-row items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50 gap-4">
+              <div className="text-sm text-muted-foreground">
+                Showing{" "}
+                {filteredContacts.length > 0
+                  ? (currentPage - 1) * itemsPerPage + 1
+                  : 0}{" "}
+                to {Math.min(currentPage * itemsPerPage, filteredContacts.length)}{" "}
+                of {filteredContacts.length} entries
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {Array.from(
+                  {
+                    length: Math.min(
+                      5,
+                      Math.ceil(filteredContacts.length / itemsPerPage),
+                    ),
+                  },
+                  (_, i) => {
+                    const totalPages = Math.ceil(
+                      filteredContacts.length / itemsPerPage,
+                    );
+                    let pageNum = i + 1;
+
+                    // Simple sliding window if many pages
+                    if (totalPages > 5 && currentPage > 3) {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    if (pageNum > totalPages) return null;
+
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "secondary" : "outline"}
+                        size="sm"
+                        className={`h-8 w-8 p-0 ${currentPage === pageNum
+                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "text-muted-foreground"
+                          }`}
+                        onClick={() => setCurrentPage(pageNum)}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  },
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2 text-yellow-600 gap-1"
+                  onClick={() =>
+                    setCurrentPage((p) =>
+                      Math.min(
+                        Math.ceil(filteredContacts.length / itemsPerPage),
+                        p + 1,
+                      ),
+                    )
+                  }
+                  disabled={
+                    currentPage >= Math.ceil(filteredContacts.length / itemsPerPage)
+                  }
+                >
+                  Next Page <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const sizes = [10, 20, 50, 100];
+                      const currentIndex = sizes.indexOf(itemsPerPage);
+                      if (currentIndex > 0) {
+                        setItemsPerPage(sizes[currentIndex - 1]);
+                        setCurrentPage(1);
+                      }
+                    }}
+                    disabled={itemsPerPage === 10}
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs font-medium text-muted-foreground w-16 text-center">
+                    {itemsPerPage} / page
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const sizes = [10, 20, 50, 100];
+                      const currentIndex = sizes.indexOf(itemsPerPage);
+                      if (currentIndex < sizes.length - 1) {
+                        setItemsPerPage(sizes[currentIndex + 1]);
+                        setCurrentPage(1);
+                      }
+                    }}
+                    disabled={itemsPerPage === 100}
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2 text-muted-foreground"
+                >
+                  Download CSV <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+
+          <div className="space-y-4 pt-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-bold tracking-tight">Mediators</h3>
+              <Button
+                onClick={() => setIsAddMediatorOpen(true)}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground text-sm h-9"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Mediator
+              </Button>
+            </div>
+            <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
+              <Table>
+                <TableHeader className="bg-purple-50/50 dark:bg-purple-900/20">
+                  <TableRow>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                      Name
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                      Role
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                      Email
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                      Phone
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300 text-right">
+                      Status
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMediators.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center py-6 text-muted-foreground"
+                      >
+                        No mediators found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredMediators.map((mediator, i) => (
+                      <TableRow key={i} className="hover:bg-purple-50/30">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="bg-purple-100 text-purple-700">
+                                {mediator.name.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium text-sm">
+                              {mediator.name}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {mediator.jobTitle || "Mediator"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {mediator.email}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {mediator.phone}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-0">
+                            {mediator.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Add Mediator Dialog */}
       <Dialog open={isAddMediatorOpen} onOpenChange={setIsAddMediatorOpen}>
@@ -1563,6 +1640,6 @@ export default function ContactsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

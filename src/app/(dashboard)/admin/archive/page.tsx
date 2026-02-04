@@ -45,7 +45,12 @@ import {
   ThermometerSun,
   Wrench,
   Building2,
+  FileText,
+  HardHat,
+  Trophy,
+  PlusCircle,
 } from "lucide-react";
+import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Fragment } from "react";
 
@@ -62,6 +67,18 @@ export default function ArchivePage() {
   });
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
+  const WORK_TYPE_LABELS: Record<string, string> = {
+    montage: "Montage Innengeräte, Hydraulik-Modul,\nAußengerät (1)",
+    hydraulik: "Hydraulische Montage (2)",
+    kaelteInbetriebnahme: "Kältetechnische Inbetriebnahme (3)",
+    elektroAnschluss: "Elektroanschluss Unterverteilung (4)",
+    elektroInbetriebnahme: "Elektrotechnische Inbetriebnahme (5)",
+    bohrungen: "Bohrungen (6)",
+    kleinteile: "Kleinteilpauschale (7)",
+    kaeltemittel: "Kältemittel R32 (8)",
+    besichtigung: "Vor-Ort-Besichtigung",
+  };
 
   // Complaint Dialog State
   const [complaintOpen, setComplaintOpen] = useState(false);
@@ -353,13 +370,7 @@ export default function ArchivePage() {
                 Project & Address
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Contractor
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Partner
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Mediator
+                Project ID
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                 Subcontractor
@@ -369,9 +380,6 @@ export default function ArchivePage() {
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                 Status
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Amount (€)
               </TableHead>
               <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
                 Actions
@@ -415,9 +423,9 @@ export default function ArchivePage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{item.contractor}</TableCell>
-                    <TableCell>{item.partner}</TableCell>
-                    <TableCell>{item.mediator || "-"}</TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {item.id || "N/A"}
+                    </TableCell>
                     <TableCell>{item.sub}</TableCell>
                     <TableCell className="text-sm">
                       {item.abnahme || item.start}
@@ -429,7 +437,6 @@ export default function ArchivePage() {
                         {item.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{item.amount}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         size="sm"
@@ -446,149 +453,250 @@ export default function ArchivePage() {
                     </TableCell>
                   </TableRow>
                   {isExpanded && (
-                    <TableRow className="bg-gray-100 dark:bg-gray-800 border-t border-gray-200">
-                      <TableCell colSpan={10}>
-                        <div className="flex items-center gap-8 py-2 px-4 text-sm">
-                          <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground block">
-                              Abnahme Date
-                            </span>
-                            <span className="font-medium">
-                              {item.abnahme || "-"}
-                            </span>
+                    <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
+                      <TableCell colSpan={7} className="p-0">
+                        <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {/* Column 1: Project & Customer Details */}
+                          <div className="space-y-4 h-full flex flex-col">
+                            <div className="flex flex-col h-full">
+                              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                <FileText className="h-3 w-3" /> Customer Details
+                              </h4>
+                              <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
+                                <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
+                                  <span className="text-muted-foreground text-xs">Customer No:</span>
+                                  <span className="font-medium">{item.customerNumber || "N/A"}</span>
+
+                                  <span className="text-muted-foreground text-xs">Phone:</span>
+                                  <span className="font-medium">{item.customerPhone || "N/A"}</span>
+
+                                  <span className="text-muted-foreground text-xs">Email:</span>
+                                  <span className="font-medium truncate" title={item.customerEmail}>
+                                    {item.customerEmail || "N/A"}
+                                  </span>
+
+                                  <span className="text-muted-foreground text-xs">Location:</span>
+                                  <span className="font-medium">{item.address}</span>
+                                </div>
+                                {item.description && (
+                                  <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
+                                    <span className="text-xs text-muted-foreground block mb-2 shrink-0">
+                                      Notes:
+                                    </span>
+                                    <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
+                                      {item.description}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground block">
-                              Warranty End
-                            </span>
-                            <span className="font-medium">
-                              {item.warrantyEnd || "-"}
-                            </span>
+
+                          {/* Column 2: Assigned Workers */}
+                          <div className="space-y-4 h-full flex flex-col">
+                            <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                              <HardHat className="h-3 w-3" /> Assigned Workers
+                            </h4>
+
+                            <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
+                              <div className="grid grid-cols-[100px_1fr] gap-2">
+                                <span className="text-muted-foreground text-xs">Contractor:</span>
+                                <span className="font-medium">{item.contractor || "N/A"}</span>
+
+                                <span className="text-muted-foreground text-xs">Partner:</span>
+                                <span className="font-medium">{item.partner || "N/A"}</span>
+
+                                <span className="text-muted-foreground text-xs">Mediator:</span>
+                                <span className="font-medium">{item.mediator || "N/A"}</span>
+                              </div>
+                            </div>
+
+                            {item.workers && item.workers.length > 0 ? (
+                              <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
+                                <Table>
+                                  <TableHeader className="bg-gray-50/50">
+                                    <TableRow className="h-8 hover:bg-transparent">
+                                      <TableHead className="h-8 text-[10px] font-semibold">Name</TableHead>
+                                      <TableHead className="h-8 text-[10px] font-semibold text-center">Cert</TableHead>
+                                      <TableHead className="h-8 text-[10px] font-semibold text-center">A1</TableHead>
+                                      <TableHead className="h-8 text-[10px] font-semibold text-center">Success</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {item.workers.map((workerId: string) => (
+                                      <TableRow key={workerId} className="h-8 hover:bg-transparent border-0">
+                                        <TableCell className="py-1">
+                                          <div className="flex items-center gap-2">
+                                            <Avatar className="h-5 w-5 border">
+                                              <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`} />
+                                              <AvatarFallback className="text-[9px]">{workerId.charAt(0)}</AvatarFallback>
+                                            </Avatar>
+                                            <span className="text-xs font-medium truncate max-w-[100px]">
+                                              Worker {workerId}
+                                            </span>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
+                                        <TableCell className="py-1 text-xs text-muted-foreground text-center">Yes</TableCell>
+                                        <TableCell className="py-1 text-center text-xs text-green-600 font-medium">100%</TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
+                                No workers assigned.
+                              </div>
+                            )}
+
+                            {/* Estimated & Actual Hours Footer */}
+                            <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-medium text-gray-700 dark:text-gray-300">Estimated Max Hours:</span>
+                                <span className="font-mono font-semibold">{item.estimatedHours || "N/A"}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="font-medium text-gray-700 dark:text-gray-300">Actual Hours:</span>
+                                <span className="font-mono font-semibold">{item.actualHours || "0"}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground block">
-                              Status
-                            </span>
-                            <Badge
-                              className={`${item.statusColor} font-normal border-0 text-[10px] px-2 py-0.5 rounded capitalize whitespace-nowrap`}
-                            >
-                              {item.status}
-                            </Badge>
+
+                          {/* Column 3: Scope of Work */}
+                          <div className="space-y-4 h-full flex flex-col">
+                            <div className="h-full flex flex-col">
+                              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                <Trophy className="h-3 w-3" /> Scope of Work
+                              </h4>
+
+                              <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
+                                <div className="flex-1 space-y-5 text-xs">
+                                  {/* Unit Count Header */}
+                                  <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
+                                    <span className="font-medium text-muted-foreground">Indoor Units</span>
+                                    <Badge variant="secondary" className="text-sm font-bold px-2.5 py-0.5">
+                                      {item.indoorUnits || 0}
+                                    </Badge>
+                                  </div>
+
+                                  {/* Work Types */}
+                                  <div className="space-y-2">
+                                    <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
+                                      Base Installation
+                                    </div>
+                                    {item.selectedWorkTypes && item.selectedWorkTypes.length > 0 ? (
+                                      <div className="grid gap-2">
+                                        {item.selectedWorkTypes.map((type: string) => {
+                                          const units = item.indoorUnits || 0;
+                                          const unitCosts = PRICING_MATRIX.baseCosts[units] || {};
+                                          const cost = (unitCosts as any)[type] || 0;
+
+                                          return (
+                                            <div key={type} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0">
+                                              <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
+                                                {WORK_TYPE_LABELS[type] || type}
+                                              </span>
+                                              <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                € {cost}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <p className="text-muted-foreground italic text-[11px] py-1">
+                                        No specific work types selected.
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Additional Services */}
+                                  {item.selectedAdditionalServices && item.selectedAdditionalServices.length > 0 && (
+                                    <div className="space-y-2 mt-4">
+                                      <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                        Extras
+                                      </div>
+                                      <div className="grid gap-2">
+                                        {item.selectedAdditionalServices.map((serviceId: string) => {
+                                          const service = ADDITIONAL_SERVICES.find((s) => s.id === serviceId);
+                                          return (
+                                            <div key={serviceId} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0">
+                                              <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                {service?.label || serviceId}
+                                              </span>
+                                              <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                € {service?.price || 0}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="pt-4 mt-4 border-t">
+                                  <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                                    <span className="font-bold text-blue-900 dark:text-blue-100">Total Amount</span>
+                                    <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                                      {item.amount || "0"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="mt-4 border-t pt-4">
-                          <h4 className="font-semibold text-sm mb-3">
-                            Assigned Workers
-                          </h4>
-                          {(item.workers || ["w1", "w2"]).length > 0 ? (
-                            <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden">
-                              <Table>
-                                <TableHeader className="bg-gray-50/50 dark:bg-gray-900/50">
-                                  <TableRow>
-                                    <TableHead className="font-semibold text-xs py-2 h-9">
-                                      Name
-                                    </TableHead>
-                                    <TableHead className="font-semibold text-xs py-2 h-9">
-                                      Role
-                                    </TableHead>
-                                    <TableHead className="font-semibold text-xs py-2 h-9">
-                                      A1
-                                    </TableHead>
-                                    <TableHead className="font-semibold text-xs py-2 h-9">
-                                      Cooling
-                                    </TableHead>
-                                    <TableHead className="font-semibold text-xs text-center py-2 h-9">
-                                      Complaints
-                                    </TableHead>
-                                    <TableHead className="font-semibold text-xs text-center py-2 h-9">
-                                      Success Rate
-                                    </TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {(item.workers || ["w1", "w2"]).map(
-                                    (workerId: string) => {
-                                      // Worker details logic removed as DUMMY_WORKERS are cleaned up.
-                                      // For now, we'll just display the worker ID as a placeholder.
-                                      // In a real application, you would fetch worker details from an API or a different data source.
-                                      return (
-                                        <TableRow
-                                          key={workerId}
-                                          className="hover:bg-muted/50"
-                                        >
-                                          <TableCell className="py-2">
-                                            <div className="flex items-center gap-3">
-                                              <Avatar className="h-8 w-8 border bg-gray-100">
-                                                <AvatarImage
-                                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                />
-                                                <AvatarFallback>
-                                                  {workerId.charAt(0)}
-                                                </AvatarFallback>
-                                              </Avatar>
-                                              <div className="flex flex-col">
-                                                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                                                  Worker {workerId}
-                                                </span>
-                                                <span className="text-[10px] text-muted-foreground">
-                                                  Role N/A
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </TableCell>
-                                          <TableCell className="py-2 text-xs">
-                                            N/A
-                                          </TableCell>
-                                          <TableCell className="py-2">
-                                            <div className="flex items-center h-5 rounded overflow-hidden border border-gray-200 w-fit">
-                                              <span className="bg-yellow-400 text-yellow-950 text-[9px] font-bold px-1 h-full flex items-center justify-center">
-                                                A1
-                                              </span>
-                                              <span className="bg-yellow-300/50 text-yellow-700 px-1 h-full flex items-center justify-center border-l border-yellow-200">
-                                                <RotateCw className="h-3 w-3" />
-                                              </span>
-                                              <span
-                                                className={`h-full flex items-center gap-1 px-1.5 text-[10px] font-medium bg-gray-100 text-gray-700`}
-                                              >
-                                                Unknown
-                                              </span>
-                                            </div>
-                                          </TableCell>
-                                          <TableCell className="py-2">
-                                            <Badge
-                                              variant="outline"
-                                              className={`border-0 gap-1 pl-1 pr-2 py-0 text-[10px] h-5 font-normal bg-gray-50 text-gray-700 ring-1 ring-gray-200`}
-                                            >
-                                              <CheckCircle2
-                                                className={`h-3 w-3 fill-gray-200 text-gray-600`}
-                                              />
-                                              Unknown
-                                            </Badge>
-                                          </TableCell>
-                                          <TableCell className="py-2 text-center">
-                                            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                                              <Users className="h-3 w-3" /> 0
-                                            </div>
-                                          </TableCell>
-                                          <TableCell className="py-2 text-center">
-                                            <span className="text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
-                                              0%
-                                            </span>
-                                          </TableCell>
-                                        </TableRow>
-                                      );
-                                    },
-                                  )}
-                                </TableBody>
-                              </Table>
+                        {/* Additional Work Section (Archived - Read Only) */}
+                        {item.additionalWorks && item.additionalWorks.length > 0 && (
+                          <div className="px-4 pb-4">
+                            <div className="pt-6 mt-6 border-t border-dashed">
+                              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <PlusCircle className="h-3 w-3" /> Additional Work (Archived)
+                              </h4>
+
+                              <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 shadow-sm space-y-4">
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-xs font-medium text-muted-foreground pb-2 border-b px-2">
+                                    <span>Description</span>
+                                    <span className="text-right">Price</span>
+                                    <span className="text-center">Receipt</span>
+                                    <span></span>
+                                  </div>
+                                  {item.additionalWorks.map((work: any, wIndex: number) => (
+                                    <div key={wIndex} className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-sm items-center px-2">
+                                      <span className="font-medium truncate">{work.description}</span>
+                                      <span className="font-mono text-right text-gray-600">
+                                        € {work.price.toFixed(2)}
+                                      </span>
+                                      <div className="flex justify-center">
+                                        {work.receiptName ? (
+                                          <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200 truncate max-w-full">
+                                            <FileText className="h-3 w-3 mr-1" /> {work.receiptName}
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground italic">No receipt</span>
+                                        )}
+                                      </div>
+                                      <div></div>
+                                    </div>
+                                  ))}
+                                  <div className="flex justify-between items-center pt-2 mt-2 border-t px-2">
+                                    <span className="text-xs font-bold">Total Additional Cost</span>
+                                    <span className="font-mono font-bold text-blue-600">
+                                      €{" "}
+                                      {item.additionalWorks
+                                        .reduce((sum: number, w: any) => sum + (w.price || 0), 0)
+                                        .toFixed(2)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              No workers assigned.
-                            </p>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   )}

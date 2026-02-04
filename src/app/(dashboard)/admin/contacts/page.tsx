@@ -330,7 +330,12 @@ export default function ContactsPage() {
 
   const handleAddContact = () => {
     // Basic Validation
-    if (!newContact.name || !newContact.email) return;
+    if (!newContact.name || !newContact.email) {
+      alert("Please provide both Name and Email.");
+      return;
+    }
+
+    console.log("Attempting to save contact:", newContact);
 
     // Create new contact object
     // Save to Supabase (Contacts Table)

@@ -61,19 +61,23 @@ import {
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SubcontractorDetail } from "@/components/admin/subcontractor-detail";
-import { KanbanBoard, Lead, LeadStage } from "@/components/admin/contacts/kanban-board";
+import {
+  KanbanBoard,
+  Lead,
+  LeadStage,
+} from "@/components/admin/contacts/kanban-board";
 
 type Contact = {
   id: string;
   name: string;
   companyName?: string;
   role:
-  | "partner"
-  | "broker"
-  | "contractor"
-  | "subcontractor"
-  | "staff"
-  | "super_admin";
+    | "partner"
+    | "broker"
+    | "contractor"
+    | "subcontractor"
+    | "staff"
+    | "super_admin";
   jobTitle?: string;
   email?: string;
   phone?: string;
@@ -275,12 +279,16 @@ export default function ContactsPage() {
     if (storageKey) {
       try {
         const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
-        // Filter by name/email/company since generated IDs might not match LS logic perfectly 
-        // (LS logic in this file uses simple push, IDs are generated on load. 
+        // Filter by name/email/company since generated IDs might not match LS logic perfectly
+        // (LS logic in this file uses simple push, IDs are generated on load.
         // We match by name/company/email to be safe).
         const update = existing.filter((item: any) => {
           // Try to match somewhat loosely to ensure deletion
-          return item.name !== name && item.name !== companyName && item.name !== contactToDelete.name;
+          return (
+            item.name !== name &&
+            item.name !== companyName &&
+            item.name !== contactToDelete.name
+          );
         });
         localStorage.setItem(storageKey, JSON.stringify(update));
       } catch (e) {
@@ -291,11 +299,15 @@ export default function ContactsPage() {
     // 2. Remove from Supabase
     try {
       const supabase = createClient();
-      // ID in state might be 'sub-xxxxx' (generated) or uuid (real). 
+      // ID in state might be 'sub-xxxxx' (generated) or uuid (real).
       // If it starts with 'sub-', 'cont-', etc it's likely a LS contact, but let's try to delete by ID anyway if it looks like a UUID,
       // or try to match by email if possible.
 
-      let shouldDeleteByEmail = id.startsWith("sub-") || id.startsWith("cont-") || id.startsWith("part-") || id.startsWith("med-");
+      let shouldDeleteByEmail =
+        id.startsWith("sub-") ||
+        id.startsWith("cont-") ||
+        id.startsWith("part-") ||
+        id.startsWith("med-");
 
       if (!shouldDeleteByEmail) {
         await supabase.from("profiles").delete().eq("id", id);
@@ -303,7 +315,6 @@ export default function ContactsPage() {
         // Fallback: delete by email if ID was client-generated mock
         await supabase.from("profiles").delete().eq("email", email);
       }
-
     } catch (e) {
       console.error("Error removing from Supabase", e);
     }
@@ -322,143 +333,95 @@ export default function ContactsPage() {
     if (!newContact.name || !newContact.email) return;
 
     // Create new contact object
-    const newId = `${newContact.role}-${Date.now()}`;
-    // For mediators, we might want to capture company name vs contact name, but simplifying to name = companyName for now as per other Mocks
-    const contactObj: Contact = {
-      id: newId,
+    // Save to Supabase (Contacts Table)
+    const saveToSupabase = async () => {
+      try {
+        const supabase = createClient();
+
+        // Prepare base contact data
+        const contactData = {
+          name: newContact.name,
+          email: newContact.email,
+          phone: newContact.phone || null,
+          role: newContact.role,
+          company_name: newContact.name, // Using name as company name
+          address: newContact.address || null,
+          status: "Active",
+        };
+
+        let savedContactId = null;
+
+        // If creating a subcontractor with a mediator, first create/find the mediator
+        if (newContact.role === "subcontractor" && newContact.mediatorName) {
+          // 1. Create Mediator in Contacts
+          const { data: medData, error: medError } = await supabase
+            .from("contacts")
+            .insert({
+              name: newContact.mediatorName,
+              email: newContact.mediatorEmail || null,
+              phone: newContact.mediatorPhone || null,
+              role: "broker", // Mediator role
+              company_name: newContact.mediatorName,
+              status: "Active",
+            })
+            .select("id")
+            .single();
+
+          if (medError) {
+            console.error("Error creating mediator:", medError);
+            alert("Error creating mediator: " + medError.message);
+          } else if (medData) {
+            // 2. Add mediator_id to subcontractor data
+            (contactData as any).mediator_id = medData.id;
+          }
+        }
+
+        // Create Main Contact
+        const { data, error } = await supabase
+          .from("contacts")
+          .insert(contactData)
+          .select("id")
+          .single();
+
+        if (error) {
+          console.error("Error creating contact:", error);
+          alert("Error creating contact: " + error.message);
+          // Verify if it's a conflict or other issue
+        } else {
+          // Success
+          console.log("Contact saved to Supabase:", data);
+        }
+      } catch (e) {
+        console.warn("Failed to save contact to Supabase:", e);
+        alert("Failed to save contact to Supabase: " + String(e));
+      }
+    };
+    saveToSupabase();
+
+    // Update Local State directly to avoid reload (Mock ID until refresh)
+    // Generate local object for immediate feedback
+    const mockId = `temp-${Date.now()}`;
+    const newContactObj: Contact = {
+      id: mockId,
       name: newContact.name,
-      companyName: newContact.name,
-      role: newContact.role as any,
-      jobTitle:
-        newContact.role === "broker"
-          ? "Mediator"
-          : newContact.role.charAt(0).toUpperCase() + newContact.role.slice(1),
       email: newContact.email,
       phone: newContact.phone,
+      role: newContact.role as any,
+      companyName: newContact.name,
+      jobTitle:
+        newContact.role.charAt(0).toUpperCase() + newContact.role.slice(1),
       status: "Active",
       regWorkers: 0,
       activeProjects: 0,
       complaints: 0,
       activeComplaints: 0,
       completedProjects: 0,
-
-      successRate: 0, // Default 0 or 100?
-      stage: "new", // Default stage for new contacts
+      successRate: 0,
+      stage: "new",
+      mediator: newContact.mediatorName, // Keep for display
     };
 
-    // If creating a subcontractor with a mediator, create separate mediator contact too
-    if (newContact.role === "subcontractor" && newContact.mediatorName) {
-      const mediatorId = `med-${Date.now()}`;
-      const mediatorObj: Contact = {
-        id: mediatorId,
-        name: newContact.mediatorName,
-        companyName: newContact.mediatorName,
-        role: "broker",
-        jobTitle: "Mediator",
-        email: newContact.mediatorEmail,
-        phone: newContact.mediatorPhone,
-        status: "Active",
-        regWorkers: 0,
-        activeProjects: 0,
-        complaints: 0,
-        activeComplaints: 0,
-        completedProjects: 0,
-        successRate: 0,
-      };
-
-      // Save Mediator
-      const existingMeds = JSON.parse(
-        localStorage.getItem("prostruktion_mediators") || "[]",
-      );
-      existingMeds.push({
-        name: newContact.mediatorName,
-        companyName: newContact.mediatorName,
-        email: newContact.mediatorEmail,
-        phone: newContact.mediatorPhone,
-        status: "Active",
-      });
-      localStorage.setItem(
-        "prostruktion_mediators",
-        JSON.stringify(existingMeds),
-      );
-
-      // Link to Subcontractor
-      contactObj.mediator = newContact.mediatorName;
-
-      // Add to state
-      setContacts((prev) => [mediatorObj, ...prev]);
-    }
-
-    // Persist to LocalStorage
-    let storageKey = "";
-    if (newContact.role === "subcontractor")
-      storageKey = "prostruktion_subcontractors";
-    else if (newContact.role === "contractor")
-      storageKey = "prostruktion_contractors";
-    else if (newContact.role === "partner")
-      storageKey = "prostruktion_partners";
-    else if (newContact.role === "broker")
-      storageKey = "prostruktion_mediators";
-
-    if (storageKey) {
-      const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      existing.push({
-        name: newContact.name,
-        companyName: newContact.name,
-        email: newContact.email,
-        phone: newContact.phone,
-        status: "Active",
-        role: newContact.role,
-        mediator: newContact.mediatorName || newContact.mediator, // Use new name if created
-        contractor: newContact.contractor, // Link to contractor
-        address: newContact.address,
-
-        logo: logoPreview, // Store logo as base64
-        stage: "new",
-      });
-      localStorage.setItem(storageKey, JSON.stringify(existing));
-    }
-
-    // Save to Supabase (Best Effort)
-    const saveToSupabase = async () => {
-      try {
-        const supabase = createClient();
-        const supabaseId = self.crypto.randomUUID();
-
-        // Check if profiles table accepts manual insert (requires no FK on auth.users or loose constraint)
-        // Confirmed columns based on actions-users.ts: id, email, full_name, role, company_name, phone
-        await supabase.from("profiles").insert({
-          id: supabaseId,
-          full_name: newContact.name,
-          email: newContact.email,
-          role: newContact.role,
-          company_name: newContact.name, // Using name as company name per form logic
-          phone: newContact.phone,
-        });
-
-        // If including a mediator creation (for subcontractors)
-        if (newContact.role === "subcontractor" && newContact.mediatorName) {
-          const medId = self.crypto.randomUUID();
-          await supabase.from("profiles").insert({
-            id: medId,
-            full_name: newContact.mediatorName,
-            email: newContact.mediatorEmail,
-            role: "broker",
-            company_name: newContact.mediatorName,
-            phone: newContact.mediatorPhone,
-          });
-        }
-      } catch (e) {
-        console.warn(
-          "Failed to save contact to Supabase (likely schema restriction):",
-          e,
-        );
-      }
-    };
-    saveToSupabase();
-
-    // Update Local State directly to avoid reload
-    setContacts((prev) => [contactObj, ...prev]);
+    setContacts((prev) => [newContactObj, ...prev]);
 
     setAddContactOpen(false);
     // Reset form
@@ -752,26 +715,32 @@ export default function ContactsPage() {
       setSubWorkers(generateMockWorkers(28)); // Mock 28 workers to match image
       setSelectedSubcontractor(contact);
     }
-  }
+  };
   const handleLeadsChange = (updatedLeads: any[]) => {
     // Update local state
-    setContacts(prev => {
+    setContacts((prev) => {
       const newContacts = [...prev];
-      updatedLeads.forEach(lead => {
-        const index = newContacts.findIndex(c => c.id === lead.id);
+      updatedLeads.forEach((lead) => {
+        const index = newContacts.findIndex((c) => c.id === lead.id);
         if (index !== -1) {
           newContacts[index] = { ...newContacts[index], ...lead };
 
           // Persist to LocalStorage
           const contact = newContacts[index];
           let storageKey = "";
-          if (contact.role === "subcontractor") storageKey = "prostruktion_subcontractors";
-          else if (contact.role === "contractor") storageKey = "prostruktion_contractors";
-          else if (contact.role === "partner") storageKey = "prostruktion_partners";
-          else if (contact.role === "broker") storageKey = "prostruktion_mediators";
+          if (contact.role === "subcontractor")
+            storageKey = "prostruktion_subcontractors";
+          else if (contact.role === "contractor")
+            storageKey = "prostruktion_contractors";
+          else if (contact.role === "partner")
+            storageKey = "prostruktion_partners";
+          else if (contact.role === "broker")
+            storageKey = "prostruktion_mediators";
 
           if (storageKey) {
-            const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            const existing = JSON.parse(
+              localStorage.getItem(storageKey) || "[]",
+            );
             const update = existing.map((item: any) => {
               if (item.name === contact.name || item.email === contact.email) {
                 return { ...item, stage: contact.stage };
@@ -1022,80 +991,81 @@ export default function ContactsPage() {
                 {(newContact.role === "subcontractor" ||
                   newContact.role === "partner" ||
                   newContact.role === "contractor") && (
-                    <div className="grid gap-2">
-                      <Label>Company Logo</Label>
-                      <div
-                        className={`relative border-2 border-dashed rounded-lg transition-all duration-200 ${isDragging
+                  <div className="grid gap-2">
+                    <Label>Company Logo</Label>
+                    <div
+                      className={`relative border-2 border-dashed rounded-lg transition-all duration-200 ${
+                        isDragging
                           ? "border-primary bg-primary/5"
                           : logoPreview
                             ? "border-green-400 bg-green-50 dark:bg-green-950/20"
                             : "border-gray-300 dark:border-gray-700 hover:border-primary/50 hover:bg-muted/30"
-                          }`}
-                        onDrop={handleLogoDrop}
-                        onDragOver={handleLogoDragOver}
-                        onDragLeave={handleLogoDragLeave}
-                      >
-                        {logoPreview ? (
-                          <div className="relative p-4">
-                            <div className="flex items-center gap-4">
-                              <div className="relative">
-                                <img
-                                  src={logoPreview}
-                                  alt="Logo preview"
-                                  className="h-20 w-20 object-contain rounded-lg border bg-white dark:bg-gray-900 shadow-sm"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={removeLogo}
-                                  className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                                  Logo uploaded
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {logoFile?.name || "Logo image"}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Click or drag to replace
-                                </p>
-                              </div>
+                      }`}
+                      onDrop={handleLogoDrop}
+                      onDragOver={handleLogoDragOver}
+                      onDragLeave={handleLogoDragLeave}
+                    >
+                      {logoPreview ? (
+                        <div className="relative p-4">
+                          <div className="flex items-center gap-4">
+                            <div className="relative">
+                              <img
+                                src={logoPreview}
+                                alt="Logo preview"
+                                className="h-20 w-20 object-contain rounded-lg border bg-white dark:bg-gray-900 shadow-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={removeLogo}
+                                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
                             </div>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleLogoChange}
-                              className="absolute inset-0 opacity-0 cursor-pointer"
-                            />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                                Logo uploaded
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {logoFile?.name || "Logo image"}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Click or drag to replace
+                              </p>
+                            </div>
                           </div>
-                        ) : (
-                          <label className="flex flex-col items-center justify-center p-6 cursor-pointer">
-                            <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
-                              <ImageIcon className="h-6 w-6 text-gray-400" />
-                            </div>
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Upload company logo
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Drag and drop or click to browse
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              PNG, JPG, SVG up to 2MB
-                            </p>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleLogoChange}
-                              className="hidden"
-                            />
-                          </label>
-                        )}
-                      </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoChange}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center p-6 cursor-pointer">
+                          <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
+                            <ImageIcon className="h-6 w-6 text-gray-400" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Upload company logo
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Drag and drop or click to browse
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            PNG, JPG, SVG up to 2MB
+                          </p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoChange}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
 
                 {newContact.role === "subcontractor" && (
                   <div className="grid gap-2">
@@ -1197,14 +1167,14 @@ export default function ContactsPage() {
       {viewMode === "pipeline" ? (
         <div className="h-[calc(100vh-250px)]">
           <KanbanBoard
-            leads={(filteredContacts as any[]).filter(c => c.stage !== 'active')}
+            leads={(filteredContacts as any[]).filter(
+              (c) => c.stage !== "active",
+            )}
             onLeadsChange={handleLeadsChange}
           />
         </div>
       ) : (
         <>
-
-
           <div className="text-sm text-muted-foreground">
             {filteredContacts.length} Contacts found
           </div>
@@ -1275,7 +1245,9 @@ export default function ContactsPage() {
                               src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${contact.companyName}`}
                             />
                             <AvatarFallback>
-                              {contact.companyName?.substring(0, 2).toUpperCase()}
+                              {contact.companyName
+                                ?.substring(0, 2)
+                                .toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
@@ -1318,15 +1290,15 @@ export default function ContactsPage() {
                         <div className="flex items-center justify-end gap-2">
                           {(contact.role === "subcontractor" ||
                             contact.role === "partner") && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-200"
-                                onClick={() => handleViewClick(contact)}
-                              >
-                                View <ChevronRight className="ml-1 h-3 w-3" />
-                              </Button>
-                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 hover:text-yellow-800 border border-yellow-200"
+                              onClick={() => handleViewClick(contact)}
+                            >
+                              View <ChevronRight className="ml-1 h-3 w-3" />
+                            </Button>
+                          )}
 
                           <Button
                             variant="ghost"
@@ -1351,7 +1323,8 @@ export default function ContactsPage() {
                 {filteredContacts.length > 0
                   ? (currentPage - 1) * itemsPerPage + 1
                   : 0}{" "}
-                to {Math.min(currentPage * itemsPerPage, filteredContacts.length)}{" "}
+                to{" "}
+                {Math.min(currentPage * itemsPerPage, filteredContacts.length)}{" "}
                 of {filteredContacts.length} entries
               </div>
               <div className="flex items-center gap-2">
@@ -1388,12 +1361,15 @@ export default function ContactsPage() {
                     return (
                       <Button
                         key={pageNum}
-                        variant={currentPage === pageNum ? "secondary" : "outline"}
+                        variant={
+                          currentPage === pageNum ? "secondary" : "outline"
+                        }
                         size="sm"
-                        className={`h-8 w-8 p-0 ${currentPage === pageNum
-                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                          : "text-muted-foreground"
-                          }`}
+                        className={`h-8 w-8 p-0 ${
+                          currentPage === pageNum
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                            : "text-muted-foreground"
+                        }`}
                         onClick={() => setCurrentPage(pageNum)}
                       >
                         {pageNum}
@@ -1415,7 +1391,8 @@ export default function ContactsPage() {
                     )
                   }
                   disabled={
-                    currentPage >= Math.ceil(filteredContacts.length / itemsPerPage)
+                    currentPage >=
+                    Math.ceil(filteredContacts.length / itemsPerPage)
                   }
                 >
                   Next Page <ChevronRight className="h-3 w-3" />
@@ -1470,7 +1447,6 @@ export default function ContactsPage() {
               </div>
             </div>
           </div>
-
 
           <div className="space-y-4 pt-6">
             <div className="flex justify-between items-center">
@@ -1616,9 +1592,15 @@ export default function ContactsPage() {
               Delete Contact
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <strong>{contactToDelete?.companyName || contactToDelete?.name}</strong>?
-              <br /><br />
-              This action cannot be undone. The contact will be removed from your list permanently.
+              Are you sure you want to delete{" "}
+              <strong>
+                {contactToDelete?.companyName || contactToDelete?.name}
+              </strong>
+              ?
+              <br />
+              <br />
+              This action cannot be undone. The contact will be removed from
+              your list permanently.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
@@ -1640,6 +1622,6 @@ export default function ContactsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+    </div>
   );
 }

@@ -301,140 +301,133 @@ export default function AdminProjects() {
       try {
         const supabase = createClient();
 
-        // Fetch Partners from Supabase
-        let partnersData: any[] | null = null;
-        let mediatorsData: any[] | null = null;
+        // 1. Fetch all relevant PROFILES
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, role");
 
-        try {
-          const { data: p } = await supabase
-            .from("profiles")
-            .select("id, full_name, email")
-            .eq("role", "partner");
-          partnersData = p;
-        } catch (e) {
-          console.warn("Could not fetch partners from Supabase:", e);
-        }
+        if (profilesError)
+          console.warn("Error fetching profiles:", profilesError);
 
-        // Mock Partners to ensure they are available for demo
-        // Mock Partners to ensure they are available for demo
+        // 2. Fetch all relevant CONTACTS
+        // Note: Assuming 'contacts' table is used for external entities
+        const { data: contacts, error: contactsError } = await supabase
+          .from("contacts")
+          .select("id, name, company_name, role, mediator_id");
 
-        // Combine DB partners with mock partners (deduplicating by name if needed)
-        // Combine DB partners with mock partners (deduplicating by name if needed)
-        // Cleanup: Removed hardcoded mock partners.
-        let combinedPartners: any[] = [];
-        if (partnersData) {
-          combinedPartners = partnersData.map((p) => ({
-            id: p.id,
-            name: p.full_name || p.email,
-          }));
-        }
+        if (contactsError)
+          console.warn("Error fetching contacts:", contactsError);
 
-        // Also load Partners from localStorage
-        try {
-          const storedPartners = localStorage.getItem("prostruktion_partners");
-          if (storedPartners) {
-            const parsed = JSON.parse(storedPartners);
-            parsed.forEach((item: any) => {
-              if (!combinedPartners.some((p) => p.name === item.name)) {
-                combinedPartners.push({
-                  id: `local-partner-${item.name}`,
-                  name: item.name,
-                });
-              }
-            });
+        // Helper to merge sources
+        const mergeSources = (
+          roleKeys: string[],
+          localKey: string,
+          isMediator = false,
+        ) => {
+          const merged = new Map();
+
+          // Add from Profiles
+          if (profiles) {
+            profiles
+              .filter((p) => roleKeys.includes(p.role))
+              .forEach((p) => {
+                const name = p.full_name || p.email;
+                if (name) {
+                  merged.set(name, { id: p.id, name });
+                }
+              });
           }
-        } catch (e) {
-          console.error("Error loading partners from localStorage:", e);
-        }
+
+          // Add from Contacts
+          if (contacts) {
+            contacts
+              .filter((c) => roleKeys.includes(c.role))
+              .forEach((c) => {
+                const name = c.company_name || c.name;
+                if (name) {
+                  // If subcontractor, try to attach mediator info if available (mapped later if needed)
+                  // We preserve existing entry if exists (profile takes precedence? or contacts? let contacts overwrite profile if duplicate names for external mostly)
+                  // But let's prioritize existing (Profiles) so we don't duplicate if ID matches.
+                  // Actually using Name as key to dedupe.
+                  merged.set(name, {
+                    id: c.id,
+                    name,
+                    // If it's a subcontractor, pass mediator_id or lookup name if we can (simplified later)
+                    mediatorId: c.mediator_id,
+                  });
+                }
+              });
+          }
+
+          // Add from LocalStorage
+          try {
+            const stored = localStorage.getItem(localKey);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              parsed.forEach((item: any) => {
+                if (!merged.has(item.name)) {
+                  merged.set(item.name, {
+                    id: `local-${item.name}`,
+                    name: item.name,
+                    mediator: item.mediator, // special for subs
+                  });
+                }
+              });
+            }
+          } catch (e) {
+            console.error(`Error loading ${localKey}:`, e);
+          }
+
+          return Array.from(merged.values());
+        };
+
+        // --- PARTNERS ---
+        // Profiles: 'partner'
+        // Contacts: 'partner'
+        const combinedPartners = mergeSources(
+          ["partner"],
+          "prostruktion_partners",
+        );
         setPartners(combinedPartners);
 
-        // Fetch Mediators (Brokers) from Supabase
-        try {
-          const { data: m } = await supabase
-            .from("profiles")
-            .select("id, full_name, email")
-            .eq("role", "broker");
-          mediatorsData = m;
-        } catch (e) {
-          console.warn("Could not fetch mediators from Supabase:", e);
-        }
-
-        let combinedMediators: any[] = [];
-        if (mediatorsData) {
-          combinedMediators = mediatorsData.map((m) => ({
-            id: m.id,
-            name: m.full_name || m.email,
-          }));
-        }
-
-        // Also load Mediators from localStorage
-        try {
-          const storedMediators = localStorage.getItem(
-            "prostruktion_mediators",
-          );
-          if (storedMediators) {
-            const parsed = JSON.parse(storedMediators);
-            parsed.forEach((item: any) => {
-              if (!combinedMediators.some((m) => m.name === item.name)) {
-                combinedMediators.push({
-                  id: `local-mediator-${item.name}`,
-                  name: item.name,
-                });
-              }
-            });
-          }
-        } catch (e) {
-          console.error("Error loading mediators from localStorage:", e);
-        }
+        // --- MEDIATORS ---
+        // Profiles: 'broker', 'mediator'
+        // Contacts: 'broker', 'mediator'
+        const combinedMediators = mergeSources(
+          ["broker", "mediator"],
+          "prostruktion_mediators",
+        );
         setMediators(combinedMediators);
 
-        // Load Subcontractors from localStorage (no mock data)
-        let combinedSubs: any[] = [];
-        try {
-          const storedSubs = localStorage.getItem(
-            "prostruktion_subcontractors",
-          );
-          if (storedSubs) {
-            const parsed = JSON.parse(storedSubs);
-            parsed.forEach((item: any) => {
-              combinedSubs.push({
-                id: `local-sub-${item.name}`,
-                name: item.name,
-                mediator: item.mediator || "", // Include associated mediator
-              });
-            });
-          }
-        } catch (e) {
-          console.error("Error loading subcontractors from localStorage:", e);
-        }
-        setSubcontractors(combinedSubs);
+        // --- SUBCONTRACTORS ---
+        // Profiles: 'subcontractor'
+        // Contacts: 'subcontractor' (commonly external)
+        const rawSubs = mergeSources(
+          ["subcontractor"],
+          "prostruktion_subcontractors",
+        );
 
-        // Load Contractors from localStorage
-        let combinedContractors: any[] = [];
-        try {
-          const storedContractors = localStorage.getItem(
-            "prostruktion_contractors",
-          );
-          if (storedContractors) {
-            const parsed = JSON.parse(storedContractors);
-            parsed.forEach((item: any) => {
-              combinedContractors.push({
-                id: `local-contractor-${item.name}`,
-                name: item.name,
-              });
-            });
+        // Enhance Subs with Mediator Name if mediatorId exists (cross-reference loaded mediators)
+        const enhancedSubs = rawSubs.map((sub) => {
+          if (sub.mediator) return sub; // already has name from local
+          if (sub.mediatorId) {
+            const med = combinedMediators.find((m) => m.id === sub.mediatorId);
+            if (med) return { ...sub, mediator: med.name };
           }
-        } catch (e) {
-          console.error("Error loading contractors from localStorage:", e);
-        }
+          return sub;
+        });
+        setSubcontractors(enhancedSubs);
+
+        // --- CONTRACTORS ---
+        // Profiles: 'contractor'
+        // Contacts: 'contractor'
+        const combinedContractors = mergeSources(
+          ["contractor"],
+          "prostruktion_contractors",
+        );
         setContractors(combinedContractors);
       } catch (e) {
         console.error("Error in fetchDropdownUsers:", e);
-        // Still set mock data so the UI works
-        setPartners([
-          { id: "mp1", name: "Partner A" },
-          { id: "mp2", name: "Partner B" },
-        ]);
       }
     };
 

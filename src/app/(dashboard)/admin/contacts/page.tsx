@@ -116,14 +116,7 @@ type Worker = {
 
 // Mock Workers Data Generator
 const generateMockWorkers = (count: number): Worker[] => {
-  const roles = [
-    "Electrician",
-    "HVAC Installer",
-    "Welder",
-    "Plumber",
-    "Fisslene Fischer",
-    "Patake Wagmer",
-  ];
+  const roles = ["Electrician", "HVAC Installer", "Welder", "Plumber"];
   return Array.from({ length: count }).map((_, i) => ({
     id: `worker-${i}`,
     firstName: [
@@ -145,7 +138,6 @@ const generateMockWorkers = (count: number): Worker[] => {
       "Roth",
       "Schmidt",
       "Müller",
-      "Wagner",
     ][i % 8],
     role: roles[Math.floor(Math.random() * roles.length)],
     status: Math.random() > 0.1 ? "Active" : "On Leave",
@@ -269,32 +261,9 @@ export default function ContactsPage() {
     setIsDeleting(true);
     const { id, role, name, companyName, email } = contactToDelete;
 
-    // 1. Remove from LocalStorage
-    let storageKey = "";
-    if (role === "subcontractor") storageKey = "prostruktion_subcontractors";
-    else if (role === "contractor") storageKey = "prostruktion_contractors";
-    else if (role === "partner") storageKey = "prostruktion_partners";
-    else if (role === "broker") storageKey = "prostruktion_mediators";
+    // 1. Remove from LocalStorage - REMOVED
 
-    if (storageKey) {
-      try {
-        const existing = JSON.parse(localStorage.getItem(storageKey) || "[]");
-        // Filter by name/email/company since generated IDs might not match LS logic perfectly
-        // (LS logic in this file uses simple push, IDs are generated on load.
-        // We match by name/company/email to be safe).
-        const update = existing.filter((item: any) => {
-          // Try to match somewhat loosely to ensure deletion
-          return (
-            item.name !== name &&
-            item.name !== companyName &&
-            item.name !== contactToDelete.name
-          );
-        });
-        localStorage.setItem(storageKey, JSON.stringify(update));
-      } catch (e) {
-        console.error("Error removing from LocalStorage", e);
-      }
-    }
+    // 2. Remove from Supabase
 
     // 2. Remove from Supabase
     try {
@@ -513,122 +482,81 @@ export default function ContactsPage() {
         });
       }
 
-      // 2. Fetch Subcontractors from LocalStorage
-      let storedSubs = localStorage.getItem("prostruktion_subcontractors");
+      // 2. Fetch All Contacts (combined contacts and profiles)
+      // Note: We are prioritizing 'contacts' table but also checking 'profiles' if needed for legacy or auth users.
+      // But user requested to use 'contacts' table mostly.
 
-      // Seed Subcontractors if empty
-      // Seed Subcontractors if empty - REMOVED for clean slate
-      if (!storedSubs) {
-        localStorage.setItem("prostruktion_subcontractors", JSON.stringify([]));
-        storedSubs = "[]";
-      }
+      // Fetch from 'contacts' table
+      const { data: contactsData, error: contactsError } = await supabase
+        .from("contacts")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      if (storedSubs) {
-        const subs = JSON.parse(storedSubs);
-        subs.forEach((s: any) => {
+      if (contactsData) {
+        contactsData.forEach((c) => {
+          // Normalize role
+          let role: Contact["role"] = "subcontractor"; // default fallback
+          if (
+            c.role === "partner" ||
+            c.role === "broker" ||
+            c.role === "contractor" ||
+            c.role === "subcontractor" ||
+            c.role === "staff"
+          ) {
+            role = c.role;
+          }
+
           allContacts.push({
-            id: `sub-${Math.random().toString(36).substr(2, 9)}`,
-            name: s.name,
-            companyName: s.name,
-            role: "subcontractor",
-            jobTitle: "Viewer",
-            email: s.email || "contact@sub.com",
-            phone: s.phone || "+49 000 0000",
-            status: s.status,
-            regWorkers: 0,
-            activeProjects: 0,
-            complaints: 0,
-            activeComplaints: 0,
-            completedProjects: 0,
-            successRate: 0,
-            mediator: s.mediator,
-            contractor: s.contractor,
-            documents: s.documents || [],
-            stage: s.stage || "new",
-          });
-        });
-      }
-
-      // 3. Fetch Contractors from LocalStorage
-      const storedContractors = localStorage.getItem(
-        "prostruktion_contractors",
-      );
-      if (storedContractors) {
-        const conts = JSON.parse(storedContractors);
-        conts.forEach((c: any) => {
-          allContacts.push({
-            id: `cont-${Math.random().toString(36).substr(2, 9)}`,
+            id: c.id,
             name: c.name,
-            companyName: c.name,
-            role: "contractor",
-            jobTitle: "Admin",
-            email: c.email || "contact@contractor.com",
-            phone: c.phone || "+49 111 1111",
-            status: c.status || "Active",
+            companyName: c.company_name || c.name,
+            role: role,
+            jobTitle: role.charAt(0).toUpperCase() + role.slice(1),
+            email: c.email || "",
+            phone: c.phone || "",
+            status: (c.status as any) || "Active",
             regWorkers: 0,
             activeProjects: 0,
             complaints: 0,
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
-            documents: c.documents || [],
+            mediator: c.mediator_id, // This is ID now, might need lookup if we want name
+            documents: [], // Handle documents if stored in Supabase later
+            stage: "active", // Default stage
           });
         });
-      } else {
-        localStorage.setItem("prostruktion_contractors", JSON.stringify([]));
       }
 
-      // 4. Inject Mock Partners - Removed
+      // Fetch from 'profiles' table (registered users) - Keeping this as read-only source for now ensuring no duplicates if possible
+      // If a profile exists with same email as contact, we might duplicate or prefer one.
+      // For now, let's include them as they are likely system users/partners.
+      if (profiles) {
+        profiles.forEach((p) => {
+          // Check if already exists from contacts table
+          if (allContacts.some((existing) => existing.email === p.email))
+            return;
 
-      // 4. Inject Mock Partners - Removed
-      // Mock partners array removed.
+          let derivedRole: Contact["role"] = "partner";
+          if (p.role === "broker") derivedRole = "broker";
+          if (p.role === "super_admin") derivedRole = "staff";
 
-      // 5. Fetch Partners from LocalStorage (New)
-      const storedPartners = localStorage.getItem("prostruktion_partners");
-      if (storedPartners) {
-        const parts = JSON.parse(storedPartners);
-        parts.forEach((p: any) => {
           allContacts.push({
-            id: `part-${Math.random().toString(36).substr(2, 9)}`,
-            name: p.name,
-            companyName: p.name,
-            role: "partner",
-            jobTitle: "Partner",
+            id: p.id,
+            name: p.full_name || p.email || "Unknown",
+            companyName: p.company_name || p.full_name || "Prostruktion",
+            role: derivedRole,
+            jobTitle: p.role === "super_admin" ? "Admin" : "Manager",
             email: p.email,
-            phone: p.phone,
-            status: p.status || "Active",
+            phone: p.phone || "",
+            status: "Active",
             regWorkers: 0,
             activeProjects: 0,
             complaints: 0,
             activeComplaints: 0,
             completedProjects: 0,
             successRate: 0,
-            documents: p.documents || [],
-          });
-        });
-      }
-
-      // 6. Fetch Mediators from LocalStorage (New)
-      const storedMediators = localStorage.getItem("prostruktion_mediators");
-      if (storedMediators) {
-        const meds = JSON.parse(storedMediators);
-        meds.forEach((m: any) => {
-          allContacts.push({
-            id: `med-${Math.random().toString(36).substr(2, 9)}`,
-            name: m.name, // Mediators often use personal names as company in this context or added separately
-            companyName: m.companyName || m.name,
-            role: "broker",
-            jobTitle: "Mediator",
-            email: m.email,
-            phone: m.phone,
-            status: m.status || "Active",
-            regWorkers: 0,
-            activeProjects: 0,
-            complaints: 0,
-            activeComplaints: 0,
-            completedProjects: 0,
-            successRate: 0,
-            documents: m.documents || [],
+            stage: "active",
           });
         });
       }
@@ -730,30 +658,20 @@ export default function ContactsPage() {
         if (index !== -1) {
           newContacts[index] = { ...newContacts[index], ...lead };
 
-          // Persist to LocalStorage
-          const contact = newContacts[index];
-          let storageKey = "";
-          if (contact.role === "subcontractor")
-            storageKey = "prostruktion_subcontractors";
-          else if (contact.role === "contractor")
-            storageKey = "prostruktion_contractors";
-          else if (contact.role === "partner")
-            storageKey = "prostruktion_partners";
-          else if (contact.role === "broker")
-            storageKey = "prostruktion_mediators";
-
-          if (storageKey) {
-            const existing = JSON.parse(
-              localStorage.getItem(storageKey) || "[]",
-            );
-            const update = existing.map((item: any) => {
-              if (item.name === contact.name || item.email === contact.email) {
-                return { ...item, stage: contact.stage };
-              }
-              return item;
-            });
-            localStorage.setItem(storageKey, JSON.stringify(update));
-          }
+          // Persist to Supabase (update stage)
+          const updateStage = async () => {
+            const supabase = createClient();
+            try {
+              // Try updating contacts table
+              await supabase
+                .from("contacts")
+                .update({ stage: lead.stage })
+                .eq("id", lead.id);
+            } catch (e) {
+              console.error("Failed to update stage in Supabase", e);
+            }
+          };
+          updateStage();
         }
       });
       return newContacts;

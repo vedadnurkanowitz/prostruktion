@@ -1461,19 +1461,31 @@ export default function ContactsPage() {
                             </span>
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className="bg-purple-100 text-purple-700"
+                          >
+                            Mediator
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-sm">
-                          {mediator.jobTitle || "Mediator"}
+                          {mediator.email || "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {mediator.email}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {mediator.phone}
+                        <TableCell className="text-sm">
+                          {mediator.phone || "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-0">
-                            {mediator.status}
-                          </Badge>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                              onClick={() => handleDeleteClick(mediator)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))

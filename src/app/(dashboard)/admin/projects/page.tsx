@@ -285,6 +285,52 @@ export default function AdminProjects() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // Edit State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const resetProjectForm = () => {
+    setNewProject({
+      project: "",
+      address: "",
+      contractor: "",
+      contractorId: "",
+      partner: "",
+      partnerId: "",
+      mediator: "",
+      mediatorId: "",
+      sub: "",
+      subId: "",
+      start: new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }),
+      scheduledStart: "",
+      workers: [],
+      indoorUnits: 0,
+      selectedWorkTypes: [
+        "montage",
+        "hydraulik",
+        "kaelteInbetriebnahme",
+        "elektroAnschluss",
+        "elektroInbetriebnahme",
+        "bohrungen",
+        "kleinteile",
+        "kaeltemittel",
+      ],
+      selectedAdditionalServices: [],
+      amount: "2660",
+      description: "",
+      customerNumber: "",
+      customerPhone: "",
+      customerEmail: "",
+      estimatedHours: "",
+    });
+    setIsEditing(false);
+    setEditingId(null);
+  };
+
   // Apply pagination
   const filteredProjects = projects; // Placeholder for future filtering
   const totalProjects = filteredProjects.length;
@@ -699,9 +745,8 @@ export default function AdminProjects() {
     if (!newProject.project) return;
 
     const supabase = createClient();
-    let supabaseProjectId: string | null = null;
+    let supabaseProjectId: string | null = editingId;
 
-    // Save to Supabase using new schema
     try {
       // 1. Create or find customer (Now we have a customer_id column)
       let customerId: string | null = null;
@@ -735,34 +780,62 @@ export default function AdminProjects() {
         }
       }
 
-      // 2. Insert project - Now using ALL specific columns
-      const { data: insertedProject, error: projectError } = await supabase
-        .from("projects")
-        .insert({
-          title: newProject.project,
-          address: newProject.address || null,
-          description: newProject.description || null,
-          contract_value: parseGermanFloat(newProject.amount) || 0,
-          status: "Scheduled",
-          scheduled_start: newProject.scheduledStart || null,
-          estimated_hours: newProject.estimatedHours
-            ? parseFloat(newProject.estimatedHours)
-            : null,
-          indoor_units: newProject.indoorUnits || 0,
-          customer_id: customerId,
-          partner_id: newProject.partnerId || null,
-          broker_id: newProject.mediatorId || null,
-          contractor_id: newProject.contractorId || null,
-          subcontractor_id: newProject.subId || null,
-        })
-        .select("id")
-        .single();
+      // 2. Insert or Update project
+      const projectDataToSave = {
+        title: newProject.project,
+        address: newProject.address || null,
+        description: newProject.description || null,
+        contract_value: parseGermanFloat(newProject.amount) || 0,
+        scheduled_start: newProject.scheduledStart || null,
+        estimated_hours: newProject.estimatedHours
+          ? parseFloat(newProject.estimatedHours)
+          : null,
+        indoor_units: newProject.indoorUnits || 0,
+        customer_id: customerId,
+        partner_id: newProject.partnerId || null,
+        broker_id: newProject.mediatorId || null,
+        contractor_id: newProject.contractorId || null,
+        subcontractor_id: newProject.subId || null,
+        // Status managed separately usually, but if new:
+        ...(isEditing ? {} : { status: "Scheduled" }),
+      };
 
-      if (projectError) {
-        console.error("Failed to insert project:", projectError);
-      } else if (insertedProject) {
-        supabaseProjectId = insertedProject.id;
+      if (isEditing && editingId) {
+        // UPDATE
+        const { error: updateError } = await supabase
+          .from("projects")
+          .update(projectDataToSave)
+          .eq("id", editingId);
 
+        if (updateError) throw updateError;
+        supabaseProjectId = editingId;
+
+        // Clear existing related data to overwrite
+        await supabase
+          .from("project_work_types")
+          .delete()
+          .eq("project_id", editingId);
+        await supabase
+          .from("project_additional_services")
+          .delete()
+          .eq("project_id", editingId);
+        await supabase
+          .from("project_workers")
+          .delete()
+          .eq("project_id", editingId);
+      } else {
+        // INSERT
+        const { data: insertedProject, error: projectError } = await supabase
+          .from("projects")
+          .insert({ ...projectDataToSave, status: "Scheduled" })
+          .select("id")
+          .single();
+
+        if (projectError) throw projectError;
+        if (insertedProject) supabaseProjectId = insertedProject.id;
+      }
+
+      if (supabaseProjectId) {
         // 3. Insert work types (Assuming tables exist, kept as is)
         if (newProject.selectedWorkTypes.length > 0) {
           const workTypeInserts = newProject.selectedWorkTypes.map((type) => {
@@ -772,7 +845,7 @@ export default function AdminProjects() {
                 type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
               ] || 0;
             return {
-              project_id: insertedProject.id,
+              project_id: supabaseProjectId,
               work_type_key: type,
               price: price,
             };
@@ -794,7 +867,7 @@ export default function AdminProjects() {
                 (s) => s.id === serviceId,
               );
               return {
-                project_id: insertedProject.id,
+                project_id: supabaseProjectId,
                 service_id: serviceId,
                 price: service?.price || 0,
               };
@@ -812,7 +885,7 @@ export default function AdminProjects() {
         // 5. Insert workers
         if (newProject.workers.length > 0) {
           const workerInserts = newProject.workers.map((workerId) => ({
-            project_id: insertedProject.id,
+            project_id: supabaseProjectId,
             worker_id: workerId,
           }));
           try {
@@ -830,9 +903,9 @@ export default function AdminProjects() {
     const projectData = {
       ...newProject,
       id: supabaseProjectId, // Store Supabase ID
-      status: "Scheduled",
-      statusColor: "bg-purple-600 text-white",
-      abnahme: "No",
+      status: isEditing ? undefined : "Scheduled", // Don't override status if editing
+      statusColor: isEditing ? undefined : "bg-purple-600 text-white",
+      abnahme: "No", // simplified
       invoiceHeader: "Create Invoice",
       invoiceStatus: "Ready",
       amount: isNaN(parseGermanFloat(newProject.amount))
@@ -842,52 +915,79 @@ export default function AdminProjects() {
       calculationDetails: null,
     };
 
-    const updatedProjects = [projectData, ...projects];
-    setProjects(updatedProjects);
-    localStorage.setItem(
-      "prostruktion_projects_v1",
-      JSON.stringify(updatedProjects),
-    );
+    if (isEditing) {
+      const updatedProjects = projects.map((p) =>
+        p.id === editingId
+          ? {
+              ...p,
+              ...projectData,
+              status: p.status,
+              statusColor: p.statusColor,
+            }
+          : p,
+      );
+      setProjects(updatedProjects);
+      localStorage.setItem(
+        "prostruktion_projects_v1",
+        JSON.stringify(updatedProjects),
+      );
+    } else {
+      const updatedProjects = [projectData, ...projects];
+      setProjects(updatedProjects);
+      localStorage.setItem(
+        "prostruktion_projects_v1",
+        JSON.stringify(updatedProjects),
+      );
+    }
 
-    // Removed duplicated "Best Effort" block here
     setAddProjectOpen(false);
+    resetProjectForm();
+  };
+
+  const handleEditClick = (project: any) => {
+    setIsEditing(true);
+    setEditingId(project.id);
+
+    // Parse amount to be editable string
+    const rawAmount = parseGermanFloat(project.amount).toString();
+
     setNewProject({
-      project: "",
-      address: "",
-      contractor: "",
-      contractorId: "",
-      partner: "",
-      partnerId: "",
-      mediator: "",
-      mediatorId: "",
-      sub: "",
-      subId: "",
-      start: new Date().toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }),
-      scheduledStart: "", // Reset scheduled start
-      workers: [],
-      indoorUnits: 0,
-      selectedWorkTypes: [
-        "montage",
-        "hydraulik",
-        "kaelteInbetriebnahme",
-        "elektroAnschluss",
-        "elektroInbetriebnahme",
-        "bohrungen",
-        "kleinteile",
-        "kaeltemittel",
-      ],
-      selectedAdditionalServices: [],
-      amount: "2660",
-      description: "",
-      customerNumber: "",
-      customerPhone: "",
-      customerEmail: "",
-      estimatedHours: "",
+      project: project.project,
+      address: project.address,
+      contractor: project.contractor,
+      contractorId:
+        project.contractorId ||
+        contractors.find((c) => c.name === project.contractor)?.id ||
+        "",
+      partner: project.partner,
+      partnerId:
+        project.partnerId ||
+        partners.find((p) => p.name === project.partner)?.id ||
+        "",
+      mediator: project.mediator,
+      mediatorId:
+        project.mediatorId ||
+        mediators.find((m) => m.name === project.mediator)?.id ||
+        "",
+      sub: project.sub,
+      subId:
+        project.subId ||
+        subcontractors.find((s) => s.name === project.sub)?.id ||
+        "",
+      start: project.start,
+      scheduledStart: project.scheduledStart || "",
+      amount: rawAmount,
+      description: project.description,
+      customerNumber: project.customerNumber,
+      customerPhone: project.customerPhone,
+      customerEmail: project.customerEmail,
+      estimatedHours: project.estimatedHours,
+      indoorUnits: project.indoorUnits,
+      selectedWorkTypes: project.selectedWorkTypes || [],
+      selectedAdditionalServices: project.selectedAdditionalServices || [],
+      workers: project.workers || [],
     });
+    setAddProjectOpen(true);
   };
 
   const handleStartProject = (projectIndex: number) => {
@@ -1421,13 +1521,23 @@ export default function AdminProjects() {
                             })}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
-                              onClick={() => handleStartProject(i)}
-                            >
-                              <Rocket className="mr-1 h-3 w-3" /> Start
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => handleEditClick(project)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
+                                onClick={() => handleStartProject(i)}
+                              >
+                                <Rocket className="mr-1 h-3 w-3" /> Start
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                         {isExpanded && (
@@ -3332,13 +3442,22 @@ export default function AdminProjects() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={addProjectOpen} onOpenChange={setAddProjectOpen}>
+      <Dialog
+        open={addProjectOpen}
+        onOpenChange={(open) => {
+          setAddProjectOpen(open);
+          if (!open) resetProjectForm();
+        }}
+      >
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add New Project</DialogTitle>
+            <DialogTitle>
+              {isEditing ? "Edit Project" : "Add New Project"}
+            </DialogTitle>
             <DialogDescription>
-              Enter the project details and calculate pricing based on the
-              German standards.
+              {isEditing
+                ? "Edit details for the selected project."
+                : "Enter the project details and calculate pricing based on the German standards."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 py-4">
@@ -4008,14 +4127,21 @@ export default function AdminProjects() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddProjectOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddProjectOpen(false);
+                resetProjectForm();
+              }}
+            >
               Cancel
             </Button>
             <Button
               onClick={handleAddProject}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              Create Project
+              <Plus className="mr-2 h-4 w-4" />{" "}
+              {isEditing ? "Save Changes" : "Create Project"}
             </Button>
           </DialogFooter>
         </DialogContent>

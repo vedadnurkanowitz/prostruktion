@@ -1419,7 +1419,7 @@ export default function AdminProjects() {
                           </TableCell>
                           <TableCell className="font-bold text-blue-600">
                             €{" "}
-                            {netAmount.toLocaleString(undefined, {
+                            {netAmount.toLocaleString("de-DE", {
                               minimumFractionDigits: 2,
                             })}
                           </TableCell>
@@ -1845,7 +1845,7 @@ export default function AdminProjects() {
                         </TableCell>
                         <TableCell className="font-medium">
                           €{" "}
-                          {netAmount.toLocaleString(undefined, {
+                          {netAmount.toLocaleString("de-DE", {
                             minimumFractionDigits: 2,
                           })}
                         </TableCell>
@@ -2165,7 +2165,7 @@ export default function AdminProjects() {
                                         </span>
                                         <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
                                           €{" "}
-                                          {netAmount.toLocaleString(undefined, {
+                                          {netAmount.toLocaleString("de-DE", {
                                             minimumFractionDigits: 2,
                                           })}
                                         </span>
@@ -2717,7 +2717,7 @@ export default function AdminProjects() {
                             (invoiceEditState.qualityBonus.enabled
                               ? invoiceEditState.qualityBonus.amount
                               : 0)
-                          ).toLocaleString(undefined, {
+                          ).toLocaleString("de-DE", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -2758,7 +2758,7 @@ export default function AdminProjects() {
                                     ? invoiceEditState.qualityBonus.amount
                                     : 0)) *
                                 0.1
-                              ).toLocaleString(undefined, {
+                              ).toLocaleString("de-DE", {
                                 minimumFractionDigits: 2,
                               })}`
                             : "-"}
@@ -2782,7 +2782,7 @@ export default function AdminProjects() {
                                 ? invoiceEditState.qualityBonus.amount
                                 : 0)) *
                             (currentInvoice.hasMediator ? 0.1 : 0.15)
-                          ).toLocaleString(undefined, {
+                          ).toLocaleString("de-DE", {
                             minimumFractionDigits: 2,
                           })}
                         </span>
@@ -2810,7 +2810,7 @@ export default function AdminProjects() {
                                 ? invoiceEditState.qualityBonus.amount
                                 : 0)) *
                             (currentInvoice.hasMediator ? 0.1 : 0.15)
-                          ).toLocaleString(undefined, {
+                          ).toLocaleString("de-DE", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -2995,7 +2995,7 @@ export default function AdminProjects() {
                           },
                           0,
                         ) || 0)
-                      ).toLocaleString(undefined, {
+                      ).toLocaleString("de-DE", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -3126,7 +3126,7 @@ export default function AdminProjects() {
                             (invoiceEditState.quantityBonus.enabled
                               ? invoiceEditState.quantityBonus.amount
                               : 0)
-                          ).toLocaleString(undefined, {
+                          ).toLocaleString("de-DE", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -3148,7 +3148,7 @@ export default function AdminProjects() {
                           {(
                             invoiceEditState.projectValue *
                             (invoiceEditState.mediatorSharePercent / 100)
-                          ).toLocaleString(undefined, {
+                          ).toLocaleString("de-DE", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}

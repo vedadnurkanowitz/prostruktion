@@ -1439,7 +1439,8 @@ export default function AdminProjects() {
                           <TableCell className="font-bold text-blue-600">
                             €{" "}
                             {netAmount.toLocaleString("de-DE", {
-                              minimumFractionDigits: 2,
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
                             })}
                           </TableCell>
                           <TableCell className="text-right">
@@ -1865,7 +1866,8 @@ export default function AdminProjects() {
                         <TableCell className="font-medium">
                           €{" "}
                           {netAmount.toLocaleString("de-DE", {
-                            minimumFractionDigits: 2,
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2,
                           })}
                         </TableCell>
                         <TableCell className="text-right">
@@ -2185,7 +2187,8 @@ export default function AdminProjects() {
                                         <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
                                           €{" "}
                                           {netAmount.toLocaleString("de-DE", {
-                                            minimumFractionDigits: 2,
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 2,
                                           })}
                                         </span>
                                       </div>
@@ -2739,7 +2742,7 @@ export default function AdminProjects() {
                               ? invoiceEditState.qualityBonus.amount
                               : 0)
                           ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 2,
+                            minimumFractionDigits: 0,
                             maximumFractionDigits: 2,
                           })}
                         </span>
@@ -2754,9 +2757,10 @@ export default function AdminProjects() {
                         <span className="font-mono font-medium">
                           €{" "}
                           {(invoiceEditState.projectValue * 0.7).toLocaleString(
-                            undefined,
+                            "de-DE",
                             {
-                              minimumFractionDigits: 2,
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
                             },
                           )}
                         </span>
@@ -2780,7 +2784,8 @@ export default function AdminProjects() {
                                     : 0)) *
                                 0.1
                               ).toLocaleString("de-DE", {
-                                minimumFractionDigits: 2,
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
                               })}`
                             : "-"}
                         </span>
@@ -2804,7 +2809,8 @@ export default function AdminProjects() {
                                 : 0)) *
                             (currentInvoice.hasMediator ? 0.1 : 0.15)
                           ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 2,
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2,
                           })}
                         </span>
                       </div>
@@ -2832,7 +2838,7 @@ export default function AdminProjects() {
                                 : 0)) *
                             (currentInvoice.hasMediator ? 0.1 : 0.15)
                           ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 2,
+                            minimumFractionDigits: 0,
                             maximumFractionDigits: 2,
                           })}
                         </span>
@@ -3017,7 +3023,7 @@ export default function AdminProjects() {
                           0,
                         ) || 0)
                       ).toLocaleString("de-DE", {
-                        minimumFractionDigits: 2,
+                        minimumFractionDigits: 0,
                         maximumFractionDigits: 2,
                       })}
                     </span>
@@ -3118,9 +3124,9 @@ export default function AdminProjects() {
                         <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
                           €{" "}
                           {invoiceEditState.projectValue.toLocaleString(
-                            undefined,
+                            "de-DE",
                             {
-                              minimumFractionDigits: 2,
+                              minimumFractionDigits: 0,
                               maximumFractionDigits: 2,
                             },
                           )}
@@ -3148,7 +3154,7 @@ export default function AdminProjects() {
                               ? invoiceEditState.quantityBonus.amount
                               : 0)
                           ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 2,
+                            minimumFractionDigits: 0,
                             maximumFractionDigits: 2,
                           })}
                         </span>
@@ -3170,7 +3176,7 @@ export default function AdminProjects() {
                             invoiceEditState.projectValue *
                             (invoiceEditState.mediatorSharePercent / 100)
                           ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 2,
+                            minimumFractionDigits: 0,
                             maximumFractionDigits: 2,
                           })}
                         </span>

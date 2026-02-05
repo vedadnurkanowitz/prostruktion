@@ -553,17 +553,15 @@ export default function AdminProjects() {
     const fetchProjects = async () => {
       const supabase = createClient();
       try {
-        // Fetch projects with related data using validated schema
-        // Fetch projects (removed customer/contractor joins due to missing FKs)
+        // Fetch projects with related data (using simple select, no FK joins)
         const { data: projectsData, error: projectsError } = await supabase
           .from("projects")
           .select(
             `
             *,
-            partner_profile:profiles!partner_id(id, full_name, email, company_name),
-            broker_profile:profiles!broker_id(id, full_name, email),
             project_work_types(work_type_key, price),
-            project_additional_services(service_id, price)
+            project_additional_services(service_id, price),
+            project_workers(worker_id)
           `,
           )
           .order("created_at", { ascending: false });
@@ -617,6 +615,32 @@ export default function AdminProjects() {
             }
           }
 
+          // Fetch Partners and Brokers from profiles
+          const partnerIds = Array.from(
+            new Set(projectsData.map((p) => p.partner_id).filter(Boolean)),
+          );
+          const brokerIds = Array.from(
+            new Set(projectsData.map((p) => p.broker_id).filter(Boolean)),
+          );
+          const profileIds = Array.from(new Set([...partnerIds, ...brokerIds]));
+
+          let profilesMap: Record<string, any> = {};
+          if (profileIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, full_name, email, company_name")
+              .in("id", profileIds);
+            if (profiles) {
+              profilesMap = profiles.reduce(
+                (acc, p) => {
+                  acc[p.id] = p;
+                  return acc;
+                },
+                {} as Record<string, any>,
+              );
+            }
+          }
+
           // Map DB projects to UI shape
           const mappedProjects = projectsData.map((p: any) => {
             // Join manually
@@ -647,11 +671,11 @@ export default function AdminProjects() {
               description: p.description || "",
               contractor: contractor?.company_name || contractor?.name || "",
               partner:
-                p.partner_profile?.company_name ||
-                p.partner_profile?.full_name ||
+                profilesMap[p.partner_id]?.company_name ||
+                profilesMap[p.partner_id]?.full_name ||
                 "",
               partnerId: p.partner_id,
-              mediator: p.broker_profile?.full_name || "",
+              mediator: profilesMap[p.broker_id]?.full_name || "",
               mediatorId: p.broker_id,
               sub: subcontractor?.company_name || subcontractor?.name || "",
               subId: p.subcontractor_id,

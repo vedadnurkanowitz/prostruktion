@@ -422,17 +422,30 @@ export function SubcontractorDetail({
             ? manager.email
             : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
 
-        const { error } = await supabase.from("personnel").upsert(
-          {
-            name: manager.name,
-            role: manager.role || "Manager",
-            email: email,
-            // phone: manager.phone, // Commented out to prevent schema error if column missing
-            company_name: subcontractor.name,
-            status: "Active",
-          },
-          { onConflict: "email,company_name", ignoreDuplicates: false },
-        );
+        const payload = {
+          name: manager.name,
+          role: manager.role || "Manager",
+          email: email,
+          phone: manager.phone,
+          company_name: subcontractor.name,
+          status: "Active",
+        };
+
+        // Determine if this is an update (UUID) or insert (new random ID)
+        // UUIDs are 36 chars. Random IDs (Math.random) are ~9-11 chars.
+        const isExisting = manager.id && manager.id.length > 20;
+
+        let error;
+        if (isExisting) {
+          const result = await supabase
+            .from("personnel")
+            .update(payload)
+            .eq("id", manager.id);
+          error = result.error;
+        } else {
+          const result = await supabase.from("personnel").insert(payload);
+          error = result.error;
+        }
 
         if (error) {
           console.error(

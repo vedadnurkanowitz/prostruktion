@@ -574,10 +574,16 @@ export default function AdminProjects() {
           const customerIds = Array.from(
             new Set(projectsData.map((p) => p.customer_id).filter(Boolean)),
           );
+          // Include Partner and Broker IDs in contacts fetch as well, as they might be in contacts table
           const contactIds = Array.from(
             new Set(
               projectsData
-                .flatMap((p) => [p.contractor_id, p.subcontractor_id])
+                .flatMap((p) => [
+                  p.contractor_id,
+                  p.subcontractor_id,
+                  p.partner_id,
+                  p.broker_id,
+                ])
                 .filter(Boolean),
             ),
           );
@@ -600,7 +606,7 @@ export default function AdminProjects() {
             }
           }
 
-          // Fetch Contacts (Contractors/Subcontractors)
+          // Fetch Contacts (Contractors/Subcontractors/Partners/Brokers)
           let contactsMap: Record<string, any> = {};
           if (contactIds.length > 0) {
             const { data: contacts } = await supabase
@@ -618,7 +624,7 @@ export default function AdminProjects() {
             }
           }
 
-          // Fetch Partners and Brokers from profiles
+          // Fetch Partners and Brokers from profiles (if they are authenticable users)
           const partnerIds = Array.from(
             new Set(projectsData.map((p) => p.partner_id).filter(Boolean)),
           );
@@ -667,18 +673,33 @@ export default function AdminProjects() {
             if (p.status === "Finished")
               statusColor = "bg-green-600 text-white";
 
+            // Resolve Partner and Mediator (Profile first, then Contact)
+            const partnerProfile = profilesMap[p.partner_id];
+            const partnerContact = contactsMap[p.partner_id];
+            const partnerName =
+              partnerProfile?.company_name ||
+              partnerProfile?.full_name ||
+              partnerContact?.company_name ||
+              partnerContact?.name ||
+              "";
+
+            const mediatorProfile = profilesMap[p.broker_id];
+            const mediatorContact = contactsMap[p.broker_id];
+            const mediatorName =
+              mediatorProfile?.full_name ||
+              mediatorContact?.name ||
+              mediatorContact?.company_name ||
+              "";
+
             return {
               id: p.id,
               project: p.title,
               address: p.address || "",
               description: p.description || "",
               contractor: contractor?.company_name || contractor?.name || "",
-              partner:
-                profilesMap[p.partner_id]?.company_name ||
-                profilesMap[p.partner_id]?.full_name ||
-                "",
+              partner: partnerName,
               partnerId: p.partner_id,
-              mediator: profilesMap[p.broker_id]?.full_name || "",
+              mediator: mediatorName,
               mediatorId: p.broker_id,
               sub: subcontractor?.company_name || subcontractor?.name || "",
               subId: p.subcontractor_id,

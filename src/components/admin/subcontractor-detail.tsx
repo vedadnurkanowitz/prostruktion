@@ -427,7 +427,7 @@ export function SubcontractorDetail({
             name: manager.name,
             role: manager.role || "Manager",
             email: email,
-            phone: manager.phone,
+            // phone: manager.phone, // Commented out to prevent schema error if column missing
             company_name: subcontractor.name,
             status: "Active",
           },
@@ -506,6 +506,10 @@ export function SubcontractorDetail({
         .from("personnel")
         .select("*")
         .eq("company_name", subcontractor.name);
+
+      if (managersError) {
+        console.error("Error loading managers from personnel:", managersError);
+      }
 
       if (!managersError && managersData && managersData.length > 0) {
         const loadedManagers: Manager[] = managersData.map((m: any) => ({
@@ -1762,9 +1766,8 @@ export function SubcontractorDetail({
                     );
 
                     const { data, error, status, statusText } = await supabase
-                      .from("contacts")
+                      .from("personnel")
                       .insert({
-                        id: testId,
                         name: "Test Sync Probe",
                         email: `probe.${testId}@test.local`,
                         role: "manager",
@@ -1798,7 +1801,10 @@ export function SubcontractorDetail({
                         "Probe Success! Supabase connection is working for inserts.",
                       );
                       // Cleanup
-                      await supabase.from("contacts").delete().eq("id", testId);
+                      await supabase
+                        .from("personnel")
+                        .delete()
+                        .eq("email", `probe.${testId}@test.local`);
                     }
                   } catch (e: any) {
                     console.error("Probe Exception:", e);

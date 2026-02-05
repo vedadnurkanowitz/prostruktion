@@ -697,7 +697,7 @@ export default function AdminProjects() {
                     { year: "numeric", month: "short", day: "numeric" },
                   ),
               scheduledStart: p.scheduled_start || "",
-              amount: `€ ${p.contract_value?.toLocaleString() || "0"}`,
+              amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
               status: p.status || "Scheduled",
               statusColor,
               abnahme: p.status === "In Abnahme" ? "Yes" : "No",
@@ -1015,45 +1015,55 @@ export default function AdminProjects() {
     setAddProjectOpen(true);
   };
 
-  const handleStartProject = (projectIndex: number) => {
+  const handleStartProject = async (projectIndex: number) => {
+    const supabase = createClient();
     const updatedProjects = [...projects];
-    // Find the actual index in the master array based on the scheduled one we clicked
-    // But since we are rendering mapped versions, we need to find the correct project ID or reference.
-    // However, to keep it simple with index-based approach (risky if sorted/filtered differently)
-    // we should really filter and map.
-    // Let's use the object reference finding logic.
-    // For simplicity in this demo, since we are iterating the MAIN projects array in the render with filter,
-    // we need to know the index in the specific filtered view OR find by unique ID.
-    // The current render uses `map((project, i) =>` on the FILTERED array.
-    // We cannot use `i` directly to update `projects` state.
 
-    // Better approach: Find the project by properties (assuming unique combination) or add IDs.
-    // Our dummy data doesn't have IDs. Let's assume unique project name for now.
-
-    const projectToUpdate = projects.find(
-      (p) =>
-        p.project ===
-        projects.filter((p: any) => p.status === "Scheduled")[projectIndex]
-          .project,
+    // Find the project in the filtered scheduled list
+    const scheduledProjects = projects.filter(
+      (p: any) => p.status === "Scheduled",
     );
+    const projectToUpdate = scheduledProjects[projectIndex];
 
     if (projectToUpdate) {
-      // Update status
-      projectToUpdate.status = "In Progress";
-      projectToUpdate.statusColor = "bg-orange-500 text-white";
-
-      // Update start date to now (Launch date)
-      projectToUpdate.start = new Date().toLocaleDateString("en-US", {
+      const newStartDate = new Date().toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
       });
 
-      setProjects(updatedProjects);
-      localStorage.setItem(
-        "prostruktion_projects_v1",
-        JSON.stringify(updatedProjects),
+      // Update in Supabase first
+      const { error } = await supabase
+        .from("projects")
+        .update({
+          status: "In Progress",
+          actual_start: new Date().toISOString(),
+        })
+        .eq("id", projectToUpdate.id);
+
+      if (error) {
+        console.error("Error updating project status in Supabase:", error);
+        alert("Failed to start project. Please try again.");
+        return;
+      }
+
+      // Update local state
+      const indexInMainArray = projects.findIndex(
+        (p) => p.id === projectToUpdate.id,
       );
+      if (indexInMainArray !== -1) {
+        updatedProjects[indexInMainArray] = {
+          ...updatedProjects[indexInMainArray],
+          status: "In Progress",
+          statusColor: "bg-orange-500 text-white",
+          start: newStartDate,
+        };
+        setProjects(updatedProjects);
+        localStorage.setItem(
+          "prostruktion_projects_v1",
+          JSON.stringify(updatedProjects),
+        );
+      }
     }
   };
 

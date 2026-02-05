@@ -444,10 +444,18 @@ export function SubcontractorDetail({
 
     for (const manager of managersToSave) {
       try {
+        const sanitizeEmailId = (str: string) =>
+          str
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, ".")
+            .replace(/\.+/g, ".")
+            .replace(/^\./, "")
+            .replace(/\.$/, "");
+
         const email =
           manager.email && manager.email.trim() !== ""
             ? manager.email
-            : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
+            : `manager.${sanitizeEmailId(manager.name)}@${sanitizeEmailId(subcontractor.name)}.local`;
 
         const payload = {
           name: manager.name,
@@ -486,6 +494,9 @@ export function SubcontractorDetail({
             error.details,
             "Full:",
             JSON.stringify(error),
+          );
+          alert(
+            `Failed to save manager ${manager.name}: ${error.message} (Code: ${error.code})`,
           );
         } else {
           console.log("Supabase sync success for manager:", manager.name);

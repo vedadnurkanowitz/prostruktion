@@ -461,7 +461,7 @@ export function SubcontractorDetail({
           name: manager.name,
           role: manager.role || "Manager",
           email: email,
-          // phone: manager.phone, // Removing phone as it likely causes schema violation
+          phone: manager.phone,
           company_name: subcontractor.name,
           status: "Active",
         };

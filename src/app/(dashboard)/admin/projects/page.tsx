@@ -1100,7 +1100,8 @@ export default function AdminProjects() {
     }
   };
 
-  const handleStatusChange = (index: number, newStatus: string) => {
+  const handleStatusChange = async (index: number, newStatus: string) => {
+    const supabase = createClient();
     const updatedProjects = [...projects];
     // Find project based on filtering logic
 
@@ -1110,7 +1111,19 @@ export default function AdminProjects() {
     // Find actual index in main array
     const realIndex = projects.findIndex((p) => p === targetProject);
 
-    if (realIndex !== -1) {
+    if (realIndex !== -1 && targetProject.id) {
+      // Update in Supabase first
+      const { error } = await supabase
+        .from("projects")
+        .update({ status: newStatus })
+        .eq("id", targetProject.id);
+
+      if (error) {
+        console.error("Error updating project status in Supabase:", error);
+        alert("Failed to update status. Please try again.");
+        return;
+      }
+
       let color = "bg-primary text-primary-foreground";
       if (newStatus === "In Progress") color = "bg-orange-500 text-white";
       if (newStatus === "In Abnahme") color = "bg-yellow-500 text-black";

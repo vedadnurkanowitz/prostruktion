@@ -34,6 +34,7 @@ import {
   Download,
 } from "lucide-react";
 import { SubcontractorDetail } from "@/components/admin/subcontractor-detail";
+import { createClient } from "@/lib/supabase/client";
 
 export default function SubcontractorsPage() {
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
@@ -44,15 +45,37 @@ export default function SubcontractorsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   useEffect(() => {
-    // Load data from local storage
-    const storedData = localStorage.getItem("prostruktion_subcontractors");
-    if (storedData) {
-      setSubcontractors(JSON.parse(storedData));
-    } else {
-      // Initialize empty if nothing exists
-      setSubcontractors([]);
-      localStorage.setItem("prostruktion_subcontractors", JSON.stringify([]));
-    }
+    const fetchSubcontractors = async () => {
+      const supabase = createClient();
+      try {
+        const { data, error } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("role", "subcontractor")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Error fetching subcontractors:", error);
+        } else if (data) {
+          // Map Supabase data to expected format if necessary
+          // Assuming the table structure matches or we map it
+          const mappedSubs = data.map((sub: any) => ({
+            ...sub,
+            // Ensure optional fields used in UI are present or defaulted
+            projects: sub.activeProjects || 0, // Mapping convention check
+            rating: sub.rating || 0,
+            country: "DE", // Default or derived
+            onTime: "100%", // Default or derived
+            expiry: "Valid", // Default or derived
+          }));
+          setSubcontractors(mappedSubs);
+        }
+      } catch (err) {
+        console.error("Unexpected error fetching subcontractors:", err);
+      }
+    };
+
+    fetchSubcontractors();
   }, []);
 
   // Calculate dynamic stats

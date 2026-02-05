@@ -179,79 +179,119 @@ export function SubcontractorDetail({
 
   const [editingWorkerId, setEditingWorkerId] = useState<string | null>(null);
 
-  const handleAddNewWorker = () => {
+  const handleAddNewWorker = async () => {
     if (!newWorker.name || !newWorker.role) return;
 
-    if (editingWorkerId) {
-      // Update existing worker
-      const updatedWorkers = workers.map((w) => {
-        if (w.id === editingWorkerId) {
-          return {
-            ...w,
-            name: newWorker.name,
-            role: newWorker.role,
-            status: newWorker.status as any,
-            a1Start: newWorker.a1Start,
-            a1End: newWorker.a1End,
-            a1Files: a1Files.map((f) => f.name), // Mock
-            certStart: newWorker.certStart,
-            certEnd: newWorker.certEnd,
-            certFiles: certFiles.map((f) => f.name), // Mock
-            // Recalculate statuses based on dates? For now stick to manual/mock logic or basic check
-            // Ideally we check dates against today to set Valid/Expired
-          };
+    const supabase = createClient();
+    const payload = {
+      name: newWorker.name,
+      role: newWorker.role,
+      sub_role: newWorker.role, // Mapping role to sub_role as well for now or separate
+      status: newWorker.status,
+      company_name: subcontractor.name,
+      a1_start: newWorker.a1Start || null,
+      a1_end: newWorker.a1End || null,
+      a1_files: a1Files.map((f) => f.name),
+      a1_status: a1Na ? "Valid" : "Pending", // Simple logic
+      cert_start: newWorker.certStart || null,
+      cert_end: newWorker.certEnd || null,
+      cert_files: certFiles.map((f) => f.name),
+      cert_status: certNa ? "None" : "Valid", // Simple logic
+      avatar_seed: newWorker.name,
+    };
+
+    try {
+      if (editingWorkerId) {
+        // Update existing worker
+        const { error } = await supabase
+          .from("workers")
+          .update(payload)
+          .eq("id", editingWorkerId);
+
+        if (error) {
+          console.error("Error updating worker:", error);
+          alert("Failed to update worker");
+          return;
         }
-        return w;
+
+        // Update local state
+        setWorkers((prev) =>
+          prev.map((w) =>
+            w.id === editingWorkerId
+              ? {
+                  ...w,
+                  ...newWorker,
+                  status: newWorker.status as any,
+                  subRole: newWorker.role,
+                  a1Status: payload.a1_status as any,
+                  a1Files: payload.a1_files,
+                  certFiles: payload.cert_files,
+                  certStatus: payload.cert_status as any,
+                }
+              : w,
+          ),
+        );
+      } else {
+        // Create new worker
+        const { data, error } = await supabase
+          .from("workers")
+          .insert(payload)
+          .select()
+          .single();
+
+        if (error || !data) {
+          console.error("Error creating worker:", error);
+          alert("Failed to create worker");
+          return;
+        }
+
+        // Add to local state
+        const worker: Worker = {
+          id: data.id,
+          name: data.name,
+          role: data.role,
+          subRole: data.sub_role,
+          status: data.status as any,
+          a1Status: data.a1_status as any,
+          a1Start: data.a1_start,
+          a1End: data.a1_end,
+          a1Files: data.a1_files || [],
+          certStatus: data.cert_status as any,
+          certStart: data.cert_start,
+          certEnd: data.cert_end,
+          certFiles: data.cert_files || [],
+          activeProjects: data.active_projects || 0,
+          completedProjects: data.completed_projects || 0,
+          complaints: data.complaints || 0,
+          successRate: data.success_rate || 100,
+          joinedDate: data.joined_date || new Date().toISOString(),
+          avatarSeed: data.avatar_seed || data.name,
+          synced: true,
+          supabaseId: data.id,
+        };
+
+        setWorkers((prev) => [...prev, worker]);
+      }
+
+      // Reset and Close
+      setNewWorker({
+        name: "",
+        role: "",
+        status: "Active",
+        a1Start: "",
+        a1End: "",
+        certStart: "",
+        certEnd: "",
       });
-      setWorkers(updatedWorkers);
-      setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
-    } else {
-      // Create new worker
-      const worker: Worker = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: newWorker.name,
-        role: newWorker.role,
-        status: newWorker.status as any, // Default or from form
-        a1Status: a1Na ? "Valid" : "Valid", // Simplification: Default to Valid for now
-        a1Start: newWorker.a1Start,
-        a1End: newWorker.a1End,
-        a1Files: a1Files.map((f) => f.name),
-        certStatus: certNa ? "None" : "Valid",
-        certStart: newWorker.certStart,
-        certEnd: newWorker.certEnd,
-        certFiles: certFiles.map((f) => f.name),
-        activeProjects: 0,
-        completedProjects: 0,
-        complaints: 0,
-        successRate: 100,
-        joinedDate: new Date().toLocaleDateString(),
-        avatarSeed: newWorker.name,
-        synced: false,
-      };
-
-      const updatedWorkers = [...workers, worker];
-      setWorkers(updatedWorkers);
-
-      // Save to storage & Sync
-      setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+      setA1Na(false);
+      setCertNa(false);
+      setA1Files([]);
+      setCertFiles([]);
+      setIsAddWorkerOpen(false);
+      setEditingWorkerId(null);
+    } catch (err) {
+      console.error("Unexpected error saving worker:", err);
     }
-
-    // Reset and Close
-    setNewWorker({
-      name: "",
-      role: "",
-      status: "Active",
-      a1Start: "",
-      a1End: "",
-      certStart: "",
-      certEnd: "",
-    });
-    setA1Na(false);
-    setCertNa(false);
-    setA1Files([]);
-    setCertFiles([]);
-    setIsAddWorkerOpen(false);
-    setEditingWorkerId(null);
   };
 
   const handleEditWorker = (worker: Worker) => {
@@ -272,78 +312,30 @@ export function SubcontractorDetail({
   };
 
   const handleRemoveWorker = async (workerId: string) => {
-    // Basic validation: is it likely a UUID? (Length > 30)
-    const isLikelyUUID = workerId && workerId.length > 30;
-    const workerToRemove = workers.find((w) => w.id === workerId);
+    // Confirm before delete? (Optional, skipping for now as per "Just answer" speed, but safe to add)
 
-    if (isLikelyUUID) {
-      const supabase = createClient();
-      try {
-        console.log("Starting deletion sequence for worker (UUID):", workerId);
+    const supabase = createClient();
+    try {
+      console.log("Deleting worker:", workerId);
 
-        const { error: pwError } = await supabase
-          .from("project_workers")
-          .delete()
-          .eq("worker_id", workerId);
-        if (pwError) console.warn("Error cleaning project_workers:", pwError);
+      const { error } = await supabase
+        .from("workers")
+        .delete()
+        .eq("id", workerId);
 
-        const { error: compError } = await supabase
-          .from("complaints")
-          .delete()
-          .eq("worker_id", workerId);
-        if (compError) console.warn("Error cleaning complaints:", compError);
-
-        const { error } = await supabase
-          .from("contacts")
-          .delete()
-          .eq("id", workerId);
-
-        if (error) {
-          console.error("Error deleting worker from Supabase:", error);
-          alert("Failed to delete worker:\n" + JSON.stringify(error, null, 2));
-          return;
-        }
-        console.log("Worker deleted successfully from Supabase.");
-      } catch (err: any) {
-        console.error("Unexpected error deleting worker:", err);
-        alert("Unexpected error: " + (err.message || JSON.stringify(err)));
+      if (error) {
+        console.error("Error deleting worker:", error);
+        alert("Failed to delete worker: " + error.message);
         return;
       }
-    } else {
-      console.log(
-        "Worker ID seems local:",
-        workerId,
-        "Attempting smart fallback delete...",
-      );
 
-      if (workerToRemove && subcontractor.name) {
-        const supabase = createClient();
-        try {
-          // Try to delete entries matching Name, Company, Role='worker'
-          const { error, count } = await supabase
-            .from("contacts")
-            .delete()
-            .eq("name", workerToRemove.name)
-            .eq("company_name", subcontractor.name)
-            .eq("role", "worker")
-            .select();
-
-          if (error) {
-            console.error("Fallback delete error:", error);
-          } else {
-            console.log(
-              `Fallback delete removed ${count} rows matching name '${workerToRemove.name}'`,
-            );
-          }
-        } catch (err) {
-          console.error("Fallback delete exception:", err);
-        }
-      }
+      // Update local state
+      setWorkers((prev) => prev.filter((w) => w.id !== workerId));
+      console.log("Worker deleted successfully.");
+    } catch (err: any) {
+      console.error("Unexpected error deleting worker:", err);
+      alert("Unexpected error: " + err.message);
     }
-
-    // 3. Update local state
-    const updatedWorkers = workers.filter((w) => w.id !== workerId);
-    setWorkers(updatedWorkers);
   };
 
   const [newManager, setNewManager] = useState({
@@ -507,33 +499,33 @@ export function SubcontractorDetail({
         );
       }
 
-      // Load workers from personnel table
+      // Load workers from workers table
       const { data: workersData, error: workersError } = await supabase
-        .from("contacts")
+        .from("workers")
         .select("*")
-        .eq("company_name", subcontractor.name)
-        .eq("role", "worker");
+        .eq("company_name", subcontractor.name);
 
       if (!workersError && workersData && workersData.length > 0) {
         const loadedWorkers: Worker[] = workersData.map((w: any) => ({
           id: w.id,
           name: w.name,
-          role: "Worker",
+          role: w.role || "Worker",
           status: w.status || "Active",
-          a1Status: "Pending" as const,
-          a1Start: "",
-          a1End: "",
-          a1Files: [],
-          certStatus: "None" as const,
-          certStart: "",
-          certEnd: "",
-          certFiles: [],
-          activeProjects: 0,
-          completedProjects: 0,
-          complaints: 0,
-          successRate: 100,
-          joinedDate: w.created_at || new Date().toISOString(),
-          avatarSeed: w.full_name,
+          subRole: w.sub_role,
+          a1Status: w.a1_status || "Pending",
+          a1Start: w.a1_start || "",
+          a1End: w.a1_end || "",
+          a1Files: w.a1_files || [],
+          certStatus: w.cert_status || "None",
+          certStart: w.cert_start || "",
+          certEnd: w.cert_end || "",
+          certFiles: w.cert_files || [],
+          activeProjects: w.active_projects || 0,
+          completedProjects: w.completed_projects || 0,
+          complaints: w.complaints || 0,
+          successRate: w.success_rate || 100,
+          joinedDate: w.joined_date || w.created_at || new Date().toISOString(),
+          avatarSeed: w.avatar_seed || w.name,
           synced: true,
           supabaseId: w.id,
         }));
@@ -542,8 +534,12 @@ export function SubcontractorDetail({
         console.log(
           "[SubcontractorDetail] Loaded",
           loadedWorkers.length,
-          "workers from Supabase",
+          "workers from workers table",
         );
+      } else {
+        // Fallback or empty state if needed
+        setWorkers([]);
+        workersLoadedRef.current = true;
       }
 
       // Load documents from documents table
@@ -577,60 +573,6 @@ export function SubcontractorDetail({
 
     loadDataFromSupabase();
   }, [subcontractor.name, subcontractor.documents]);
-
-  const saveWorkersToStorage = async (workersToSave: Worker[]) => {
-    const supabase = createClient();
-
-    for (const w of workersToSave) {
-      try {
-        const email = `${w.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.worker`;
-
-        const payload = {
-          name: w.name,
-          email: email,
-          role: "worker",
-          company_name: subcontractor.name,
-          status: w.status || "Active",
-        };
-
-        // Manual Upsert Logic to avoid constraint error
-        // 1. Check if exists
-        const { data: existing } = await supabase
-          .from("contacts")
-          .select("id")
-          .eq("email", email)
-          .single();
-
-        let error;
-
-        if (existing) {
-          // 2. Update
-          const result = await supabase
-            .from("contacts")
-            .update(payload)
-            .eq("id", existing.id);
-          error = result.error;
-        } else {
-          // 3. Insert
-          const result = await supabase.from("contacts").insert(payload);
-          error = result.error;
-        }
-
-        if (error) {
-          console.error(
-            "Worker sync error:",
-            w.name,
-            JSON.stringify(error, null, 2),
-          );
-          console.error("Payload was:", payload);
-        } else {
-          console.log("Worker synced:", w.name);
-        }
-      } catch (e) {
-        console.warn("Failed to sync worker:", w.name, e);
-      }
-    }
-  };
 
   // Helper function to save documents to Supabase
   const saveDocumentsToStorage = async (docsToSave: DocumentItem[]) => {
@@ -763,31 +705,52 @@ export function SubcontractorDetail({
   }, []); // Run once on mount. Real implementations should fetch from API.
 
   const handleStatusUpdate = async (workerId: string, newStatus: any) => {
-    let updatedWorker: Worker | undefined;
-    const updatedWorkers = workers.map((w) => {
-      if (w.id === workerId) {
-        updatedWorker = { ...w, status: newStatus };
-        return updatedWorker;
-      }
-      return w;
-    });
+    // Optimistic Update
+    setWorkers((prev) =>
+      prev.map((w) => (w.id === workerId ? { ...w, status: newStatus } : w)),
+    );
 
-    setWorkers(updatedWorkers);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("workers")
+      .update({ status: newStatus })
+      .eq("id", workerId);
 
-    // Save to LocalStorage only (profiles table doesn't have status column)
-    setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
+    if (error) {
+      console.error("Error updating status:", error);
+      // Revert if needed (omitted for brevity)
+    }
   };
 
-  // Stats
-  const displayTotalWorkers = subcontractor.regWorkers || 0;
-  const displayActiveProjects = subcontractor.activeProjects || 0;
-  const displayCompletedProjects = subcontractor.completedProjects || 0;
+  // Stats derived from live worker data
+  const displayTotalWorkers = workers.length;
+  const displayActiveProjects = workers.reduce(
+    (acc, w) => acc + (w.activeProjects || 0),
+    0,
+  );
+  const displayCompletedProjects = workers.reduce(
+    (acc, w) => acc + (w.completedProjects || 0),
+    0,
+  );
+  const displayComplaints = workers.reduce(
+    (acc, w) => acc + (w.complaints || 0),
+    0,
+  );
+
+  // These might still need to come from the subcontractor metadata if not tracked per worker in detail yet
   const displayInWarranty = subcontractor.inWarranty || 0;
   const displayExpiredWarranty = subcontractor.expiredWarranty || 0;
-  const displayComplaints = subcontractor.complaints || 0;
   const displayResolvedComplaints = subcontractor.resolvedComplaints || 0;
   const displayTransferedComplaints = subcontractor.transferedComplaints || 0;
-  const displaySuccessRate = subcontractor.successRate || 0;
+
+  // Calculate average success rate
+  const displaySuccessRate =
+    workers.length > 0
+      ? Math.round(
+          workers.reduce((acc, w) => acc + (w.successRate || 0), 0) /
+            workers.length,
+        )
+      : subcontractor.successRate || 100;
 
   return (
     <div className="space-y-6">

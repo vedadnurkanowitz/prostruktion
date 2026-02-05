@@ -484,10 +484,10 @@ export default function AdminProjects() {
 
       try {
         const { data: workers, error } = await supabase
-          .from("contacts")
+          .from("workers")
           .select("*")
-          .eq("role", "worker")
-          .in("company_name", targetCompanies);
+          .in("company_name", targetCompanies)
+          .eq("status", "Active");
 
         if (error) {
           console.error("Error fetching workers:", error);

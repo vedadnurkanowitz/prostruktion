@@ -96,6 +96,8 @@ export default function AdminProjects() {
     projectValue: 0,
     qualityBonus: { enabled: true, amount: 0, label: "" },
     quantityBonus: { enabled: true, amount: 0, label: "" },
+    subQualityBonus: { enabled: false, amount: 0, label: "" },
+    subQuantityBonus: { enabled: false, amount: 0, label: "" },
     partnerSharePercent: 15,
     mediatorSharePercent: 10,
     subcontractorFee: 0,
@@ -1190,6 +1192,8 @@ export default function AdminProjects() {
         amount: quantityBonusAmount,
         label: `Tier: ${monthlyCount} Projects (Month)`,
       },
+      subQualityBonus: { enabled: false, amount: 0, label: "" },
+      subQuantityBonus: { enabled: false, amount: 0, label: "" },
       partnerSharePercent: hasMediator ? 10 : 15,
       mediatorSharePercent: 10,
       subcontractorFee: 0,
@@ -3144,6 +3148,156 @@ export default function AdminProjects() {
 
                   <div className="border-t border-dashed my-2"></div>
 
+                  {/* Subcontractor Bonuses */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Quality Bonus */}
+                    <div
+                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                        invoiceEditState.subQualityBonus.enabled
+                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            id="sub-quality-bonus-chk"
+                            checked={invoiceEditState.subQualityBonus.enabled}
+                            onCheckedChange={(checked) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQualityBonus: {
+                                  ...invoiceEditState.subQualityBonus,
+                                  enabled: !!checked,
+                                },
+                              })
+                            }
+                            className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                          />
+                          <div>
+                            <label
+                              htmlFor="sub-quality-bonus-chk"
+                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                            >
+                              Quality Bonus
+                            </label>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-sm font-medium ${
+                              invoiceEditState.subQualityBonus.enabled
+                                ? "text-green-600 dark:text-green-400"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            + €
+                          </span>
+                          <Input
+                            type="number"
+                            disabled={!invoiceEditState.subQualityBonus.enabled}
+                            value={invoiceEditState.subQualityBonus.amount || 0}
+                            onChange={(e) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQualityBonus: {
+                                  ...invoiceEditState.subQualityBonus,
+                                  amount: parseGermanFloat(e.target.value) || 0,
+                                },
+                              })
+                            }
+                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                              invoiceEditState.subQualityBonus.enabled
+                                ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                : "bg-transparent border-transparent"
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quantity Bonus */}
+                    <div
+                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                        invoiceEditState.subQuantityBonus.enabled
+                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            id="sub-quantity-bonus-chk"
+                            checked={invoiceEditState.subQuantityBonus.enabled}
+                            onCheckedChange={(checked) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQuantityBonus: {
+                                  ...invoiceEditState.subQuantityBonus,
+                                  enabled: !!checked,
+                                },
+                              })
+                            }
+                            className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                          />
+                          <div>
+                            <label
+                              htmlFor="sub-quantity-bonus-chk"
+                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                            >
+                              Quantity Bonus
+                            </label>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            disabled={
+                              !invoiceEditState.subQuantityBonus.enabled
+                            }
+                            value={String(
+                              invoiceEditState.subQuantityBonus.amount || 0,
+                            )}
+                            onValueChange={(val) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQuantityBonus: {
+                                  ...invoiceEditState.subQuantityBonus,
+                                  amount: parseFloat(val) || 0,
+                                  label:
+                                    val === "150"
+                                      ? "0-12 Projects"
+                                      : val === "330"
+                                        ? "12-36 Projects"
+                                        : val === "600"
+                                          ? "36+ Projects"
+                                          : "No Tier",
+                                },
+                              })
+                            }
+                          >
+                            <SelectTrigger
+                              className={`h-7 w-28 text-right font-mono font-bold text-sm ${
+                                invoiceEditState.subQuantityBonus.enabled
+                                  ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
+                            >
+                              <SelectValue placeholder="Tier" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None</SelectItem>
+                              <SelectItem value="150">€ 150</SelectItem>
+                              <SelectItem value="330">€ 330</SelectItem>
+                              <SelectItem value="600">€ 600</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed my-2"></div>
+
                   {/* Total Calculation */}
                   <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
                     <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
@@ -3173,7 +3327,13 @@ export default function AdminProjects() {
                             return acc + base * 0.7;
                           },
                           0,
-                        ) || 0)
+                        ) || 0) +
+                        (invoiceEditState.subQualityBonus.enabled
+                          ? invoiceEditState.subQualityBonus.amount
+                          : 0) +
+                        (invoiceEditState.subQuantityBonus.enabled
+                          ? invoiceEditState.subQuantityBonus.amount
+                          : 0)
                       ).toLocaleString("de-DE", {
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 2,
@@ -3386,6 +3546,41 @@ export default function AdminProjects() {
                   !invoiceEditState.reviewed.mediator)
               }
               onClick={async () => {
+                // Calculate Subcontractor Total Fee dynamically
+                const subBaseFee =
+                  (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                    (acc: number, type: string) => {
+                      const units =
+                        currentInvoice.projectData?.indoorUnits || 0;
+                      const base =
+                        PRICING_MATRIX.baseCosts[units]?.[
+                          type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                        ] || 0;
+                      return acc + base * 0.7;
+                    },
+                    0,
+                  ) || 0) +
+                  (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                    (acc: number, s: string) => {
+                      const service = ADDITIONAL_SERVICES.find(
+                        (as) => as.id === s,
+                      );
+                      const base = service?.price || 0;
+                      return acc + base * 0.7;
+                    },
+                    0,
+                  ) || 0);
+
+                const subBonusFee =
+                  (invoiceEditState.subQualityBonus.enabled
+                    ? invoiceEditState.subQualityBonus.amount
+                    : 0) +
+                  (invoiceEditState.subQuantityBonus.enabled
+                    ? invoiceEditState.subQuantityBonus.amount
+                    : 0);
+
+                const totalSubFee = subBaseFee + subBonusFee;
+
                 // Send email invoice
                 try {
                   const emailResult = await sendInvoiceEmail({
@@ -3411,7 +3606,7 @@ export default function AdminProjects() {
                       ? invoiceEditState.projectValue *
                         (invoiceEditState.mediatorSharePercent / 100)
                       : 0,
-                    subcontractorFee: invoiceEditState.subcontractorFee,
+                    subcontractorFee: totalSubFee,
                     prostruktionFee:
                       invoiceEditState.projectValue *
                         (invoiceEditState.partnerSharePercent / 100) +
@@ -3534,10 +3729,7 @@ export default function AdminProjects() {
                 }
 
                 // SUBCONTRACTOR Invoice
-                if (
-                  invoiceEditState.subcontractorFee > 0 ||
-                  currentInvoice.projectData.sub
-                ) {
+                if (totalSubFee > 0 || currentInvoice.projectData.sub) {
                   newInvoices.push({
                     id: Date.now() + 2,
                     project: currentInvoice.project,
@@ -3546,7 +3738,7 @@ export default function AdminProjects() {
                     // Using 'emp' or 'partner' field to store Subcontractor Name for display
                     emp: currentInvoice.projectData.sub || "Subcontractor",
                     date: nowStr,
-                    amount: invoiceEditState.subcontractorFee,
+                    amount: totalSubFee,
                     action: "Subcontractor Invoice",
                     status: "Sent",
                     days: "Now",

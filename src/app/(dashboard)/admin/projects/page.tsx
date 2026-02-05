@@ -59,6 +59,7 @@ import {
 import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
+import { sendInvoiceEmail } from "@/app/actions-email";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -2813,35 +2814,51 @@ export default function AdminProjects() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span
-                              className={`text-sm font-medium ${
-                                invoiceEditState.quantityBonus.enabled
-                                  ? "text-green-600 dark:text-green-400"
-                                  : "text-gray-400"
-                              }`}
-                            >
-                              + €
-                            </span>
-                            <Input
-                              type="number"
+                            <Select
                               disabled={!invoiceEditState.quantityBonus.enabled}
-                              value={invoiceEditState.quantityBonus.amount || 0}
-                              onChange={(e) =>
+                              value={String(
+                                invoiceEditState.quantityBonus.amount || 0,
+                              )}
+                              onValueChange={(val) =>
                                 setInvoiceEditState({
                                   ...invoiceEditState,
                                   quantityBonus: {
                                     ...invoiceEditState.quantityBonus,
-                                    amount:
-                                      parseGermanFloat(e.target.value) || 0,
+                                    amount: parseFloat(val) || 0,
+                                    label:
+                                      val === "150"
+                                        ? "0-12 Projects"
+                                        : val === "330"
+                                          ? "12-36 Projects"
+                                          : val === "600"
+                                            ? "36+ Projects"
+                                            : "No Tier",
                                   },
                                 })
                               }
-                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${
-                                invoiceEditState.quantityBonus.enabled
-                                  ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                              }`}
-                            />
+                            >
+                              <SelectTrigger
+                                className={`h-7 w-40 text-right font-mono font-bold text-sm ${
+                                  invoiceEditState.quantityBonus.enabled
+                                    ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                    : "bg-transparent border-transparent"
+                                }`}
+                              >
+                                <SelectValue placeholder="Select Tier" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">No Bonus</SelectItem>
+                                <SelectItem value="150">
+                                  0-12 Projects: € 150
+                                </SelectItem>
+                                <SelectItem value="330">
+                                  12-36 Projects: € 330
+                                </SelectItem>
+                                <SelectItem value="600">
+                                  36+ Projects: € 600
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       </div>
@@ -3368,7 +3385,67 @@ export default function AdminProjects() {
                 (currentInvoice?.hasMediator &&
                   !invoiceEditState.reviewed.mediator)
               }
-              onClick={() => {
+              onClick={async () => {
+                // Send email invoice
+                try {
+                  const emailResult = await sendInvoiceEmail({
+                    projectName: currentInvoice.project || "Unknown Project",
+                    projectAddress: currentInvoice.projectData?.address,
+                    partnerName: currentInvoice.projectData?.partner,
+                    mediatorName: currentInvoice.hasMediator
+                      ? currentInvoice.mediator
+                      : undefined,
+                    contractorName: currentInvoice.projectData?.contractor,
+                    subcontractorName: currentInvoice.projectData?.sub,
+                    projectValue: invoiceEditState.projectValue,
+                    qualityBonus: invoiceEditState.qualityBonus.enabled
+                      ? invoiceEditState.qualityBonus.amount
+                      : 0,
+                    quantityBonus: invoiceEditState.quantityBonus.enabled
+                      ? invoiceEditState.quantityBonus.amount
+                      : 0,
+                    partnerShare:
+                      invoiceEditState.projectValue *
+                      (invoiceEditState.partnerSharePercent / 100),
+                    mediatorShare: currentInvoice.hasMediator
+                      ? invoiceEditState.projectValue *
+                        (invoiceEditState.mediatorSharePercent / 100)
+                      : 0,
+                    subcontractorFee: invoiceEditState.subcontractorFee,
+                    prostruktionFee:
+                      invoiceEditState.projectValue *
+                        (invoiceEditState.partnerSharePercent / 100) +
+                      (invoiceEditState.qualityBonus.enabled
+                        ? invoiceEditState.qualityBonus.amount
+                        : 0) +
+                      (invoiceEditState.quantityBonus.enabled
+                        ? invoiceEditState.quantityBonus.amount
+                        : 0),
+                    invoiceDate: new Date().toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    }),
+                  });
+
+                  if (emailResult.success) {
+                    console.log(
+                      "Invoice email sent successfully:",
+                      emailResult.id,
+                    );
+                  } else {
+                    console.error(
+                      "Failed to send invoice email:",
+                      emailResult.error,
+                    );
+                    alert(
+                      "Email sending failed. Invoice will still be recorded locally.",
+                    );
+                  }
+                } catch (emailError) {
+                  console.error("Email send error:", emailError);
+                }
+
                 // 1. Update Project Status locally
                 const updatedProjects = [...projects];
                 // Try to find by ID (currentInvoice.projectData.id) or fallback to reference/index if ID missing

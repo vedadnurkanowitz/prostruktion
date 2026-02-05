@@ -679,7 +679,7 @@ export default function AdminProjects() {
               abnahme: p.status === "In Abnahme" ? "Yes" : "No",
               invoiceHeader: "Create Invoice",
               invoiceStatus: "Ready",
-              workers: [],
+              workers: p.project_workers?.map((pw: any) => pw.worker_id) || [],
             };
           });
 
@@ -3764,12 +3764,12 @@ export default function AdminProjects() {
                         <Checkbox
                           id={`worker-${worker.id}`}
                           className="mr-3"
-                          checked={newProject.workers.includes(worker.name)}
+                          checked={newProject.workers.includes(worker.id)}
                           onCheckedChange={(checked) => {
                             setNewProject((prev) => {
                               const newWorkers = checked
-                                ? [...prev.workers, worker.name]
-                                : prev.workers.filter((w) => w !== worker.name);
+                                ? [...prev.workers, worker.id]
+                                : prev.workers.filter((w) => w !== worker.id);
                               return { ...prev, workers: newWorkers };
                             });
                           }}

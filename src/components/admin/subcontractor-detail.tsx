@@ -271,10 +271,79 @@ export function SubcontractorDetail({
     setIsAddWorkerOpen(true);
   };
 
-  const handleRemoveWorker = (workerId: string) => {
+  const handleRemoveWorker = async (workerId: string) => {
+    // Basic validation: is it likely a UUID? (Length > 30)
+    const isLikelyUUID = workerId && workerId.length > 30;
+    const workerToRemove = workers.find((w) => w.id === workerId);
+
+    if (isLikelyUUID) {
+      const supabase = createClient();
+      try {
+        console.log("Starting deletion sequence for worker (UUID):", workerId);
+
+        const { error: pwError } = await supabase
+          .from("project_workers")
+          .delete()
+          .eq("worker_id", workerId);
+        if (pwError) console.warn("Error cleaning project_workers:", pwError);
+
+        const { error: compError } = await supabase
+          .from("complaints")
+          .delete()
+          .eq("worker_id", workerId);
+        if (compError) console.warn("Error cleaning complaints:", compError);
+
+        const { error } = await supabase
+          .from("contacts")
+          .delete()
+          .eq("id", workerId);
+
+        if (error) {
+          console.error("Error deleting worker from Supabase:", error);
+          alert("Failed to delete worker:\n" + JSON.stringify(error, null, 2));
+          return;
+        }
+        console.log("Worker deleted successfully from Supabase.");
+      } catch (err: any) {
+        console.error("Unexpected error deleting worker:", err);
+        alert("Unexpected error: " + (err.message || JSON.stringify(err)));
+        return;
+      }
+    } else {
+      console.log(
+        "Worker ID seems local:",
+        workerId,
+        "Attempting smart fallback delete...",
+      );
+
+      if (workerToRemove && subcontractor.name) {
+        const supabase = createClient();
+        try {
+          // Try to delete entries matching Name, Company, Role='worker'
+          const { error, count } = await supabase
+            .from("contacts")
+            .delete()
+            .eq("name", workerToRemove.name)
+            .eq("company_name", subcontractor.name)
+            .eq("role", "worker")
+            .select();
+
+          if (error) {
+            console.error("Fallback delete error:", error);
+          } else {
+            console.log(
+              `Fallback delete removed ${count} rows matching name '${workerToRemove.name}'`,
+            );
+          }
+        } catch (err) {
+          console.error("Fallback delete exception:", err);
+        }
+      }
+    }
+
+    // 3. Update local state
     const updatedWorkers = workers.filter((w) => w.id !== workerId);
     setWorkers(updatedWorkers);
-    setTimeout(() => saveWorkersToStorage(updatedWorkers), 0);
   };
 
   const [newManager, setNewManager] = useState({
@@ -543,14 +612,16 @@ export function SubcontractorDetail({
           error = result.error;
         } else {
           // 3. Insert
-          const result = await supabase
-            .from("contacts")
-            .insert(payload);
+          const result = await supabase.from("contacts").insert(payload);
           error = result.error;
         }
 
         if (error) {
-          console.error("Worker sync error:", w.name, JSON.stringify(error, null, 2));
+          console.error(
+            "Worker sync error:",
+            w.name,
+            JSON.stringify(error, null, 2),
+          );
           console.error("Payload was:", payload);
         } else {
           console.log("Worker synced:", w.name);
@@ -668,9 +739,9 @@ export function SubcontractorDetail({
           w.completedProjects === 0
             ? 100
             : Math.round(
-              ((w.completedProjects - w.complaints) / w.completedProjects) *
-              100,
-            );
+                ((w.completedProjects - w.complaints) / w.completedProjects) *
+                  100,
+              );
         // Ensure within bounds 0-100 just in case complaints > completed (which shouldn't happen logically but mathematically can)
         const clamped = Math.max(0, Math.min(100, calculated));
         return w.successRate !== clamped;
@@ -683,9 +754,9 @@ export function SubcontractorDetail({
           w.completedProjects === 0
             ? 100
             : Math.round(
-              ((w.completedProjects - w.complaints) / w.completedProjects) *
-              100,
-            );
+                ((w.completedProjects - w.complaints) / w.completedProjects) *
+                  100,
+              );
         return { ...w, successRate: Math.max(0, Math.min(100, calculated)) };
       });
     });
@@ -1428,10 +1499,11 @@ export function SubcontractorDetail({
                       <TableCell className="w-[100px] text-center">
                         <div className="flex justify-center">
                           <span
-                            className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md text-xs font-medium w-fit ${worker.a1Files && worker.a1Files.length > 0
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-500"
-                              }`}
+                            className={`flex items-center justify-center gap-1 px-2 py-1 rounded-md text-xs font-medium w-fit ${
+                              worker.a1Files && worker.a1Files.length > 0
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-500"
+                            }`}
                           >
                             {worker.a1Files && worker.a1Files.length > 0
                               ? "Uploaded"
@@ -1447,18 +1519,18 @@ export function SubcontractorDetail({
                             className={`
                                   cursor-pointer hover:opacity-80 transition-opacity text-xs font-normal gap-1 pl-1
                                   ${
-                              // First check if there are files - if not, always show gray
-                              !worker.certFiles ||
-                                worker.certFiles.length === 0
-                                ? "bg-gray-100 text-gray-500 border-gray-200"
-                                : worker.certStatus === "Valid"
-                                  ? "bg-green-50 text-green-700 border-green-200"
-                                  : worker.certStatus === "Expiring Soon"
-                                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                                    : worker.certStatus === "Expired"
-                                      ? "bg-red-50 text-red-700 border-red-200"
-                                      : "bg-gray-100 text-gray-500 border-gray-200"
-                              }
+                                    // First check if there are files - if not, always show gray
+                                    !worker.certFiles ||
+                                    worker.certFiles.length === 0
+                                      ? "bg-gray-100 text-gray-500 border-gray-200"
+                                      : worker.certStatus === "Valid"
+                                        ? "bg-green-50 text-green-700 border-green-200"
+                                        : worker.certStatus === "Expiring Soon"
+                                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                                          : worker.certStatus === "Expired"
+                                            ? "bg-red-50 text-red-700 border-red-200"
+                                            : "bg-gray-100 text-gray-500 border-gray-200"
+                                  }
                                 `}
                             title={
                               worker.certFiles && worker.certFiles.length > 0
@@ -1521,11 +1593,12 @@ export function SubcontractorDetail({
                                 variant="outline"
                                 className={`
                                   cursor-pointer hover:opacity-80 transition-opacity
-                                  ${worker.status === "Active"
-                                    ? "bg-green-50 text-green-700 border-green-200"
-                                    : worker.status === "On Leave"
-                                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                                      : "bg-red-50 text-red-700 border-red-200"
+                                  ${
+                                    worker.status === "Active"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : worker.status === "On Leave"
+                                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                                        : "bg-red-50 text-red-700 border-red-200"
                                   }
                                 `}
                               >
@@ -1637,10 +1710,11 @@ export function SubcontractorDetail({
                             currentPage === pageNum ? "secondary" : "outline"
                           }
                           size="sm"
-                          className={`h-8 w-8 p-0 ${currentPage === pageNum
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "text-muted-foreground"
-                            }`}
+                          className={`h-8 w-8 p-0 ${
+                            currentPage === pageNum
+                              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                              : "text-muted-foreground"
+                          }`}
                           onClick={() => setCurrentPage(pageNum)}
                         >
                           {pageNum}

@@ -425,8 +425,9 @@ export function SubcontractorDetail({
         const { error } = await supabase.from("personnel").upsert(
           {
             name: manager.name,
-            role: "manager",
+            role: manager.role || "Manager",
             email: email,
+            phone: manager.phone,
             company_name: subcontractor.name,
             status: "Active",
           },
@@ -502,16 +503,15 @@ export function SubcontractorDetail({
 
       // Load managers from personnel table
       const { data: managersData, error: managersError } = await supabase
-        .from("contacts")
+        .from("personnel")
         .select("*")
-        .eq("company_name", subcontractor.name)
-        .eq("role", "manager");
+        .eq("company_name", subcontractor.name);
 
       if (!managersError && managersData && managersData.length > 0) {
         const loadedManagers: Manager[] = managersData.map((m: any) => ({
           id: m.id,
           name: m.name,
-          role: "Manager",
+          role: m.role || "Manager",
           email: m.email || "",
           phone: m.phone || "",
         }));

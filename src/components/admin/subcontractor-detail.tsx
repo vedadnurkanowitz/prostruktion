@@ -387,12 +387,29 @@ export function SubcontractorDetail({
     setIsAddManagerOpen(true);
   };
 
-  const handleDeleteManager = (id: string) => {
-    setManagers((prev) => {
-      const updated = prev.filter((m) => m.id !== id);
-      setTimeout(() => saveManagersToStorage(updated), 0);
-      return updated;
-    });
+  const handleDeleteManager = async (id: string) => {
+    const supabase = createClient();
+
+    // Find the manager to get email and company_name for deletion
+    const managerToDelete = managers.find((m) => m.id === id);
+
+    if (managerToDelete) {
+      // Delete from Supabase personnel table
+      const { error } = await supabase
+        .from("personnel")
+        .delete()
+        .eq("email", managerToDelete.email)
+        .eq("company_name", subcontractor.name);
+
+      if (error) {
+        console.error("Error deleting manager from Supabase:", error);
+      } else {
+        console.log("Manager deleted from Supabase:", managerToDelete.name);
+      }
+    }
+
+    // Update local state
+    setManagers((prev) => prev.filter((m) => m.id !== id));
   };
 
   const saveManagersToStorage = async (managersToSave: Manager[]) => {
@@ -405,7 +422,7 @@ export function SubcontractorDetail({
             ? manager.email
             : `manager.${manager.name.replace(/\s+/g, ".").toLowerCase()}@${subcontractor.name.replace(/\s+/g, ".").toLowerCase()}.local`;
 
-        const { error } = await supabase.from("contacts").upsert(
+        const { error } = await supabase.from("personnel").upsert(
           {
             name: manager.name,
             role: "manager",
@@ -413,14 +430,21 @@ export function SubcontractorDetail({
             company_name: subcontractor.name,
             status: "Active",
           },
-          { onConflict: "email", ignoreDuplicates: false },
+          { onConflict: "email,company_name", ignoreDuplicates: false },
         );
 
         if (error) {
           console.error(
             "Supabase sync error for manager:",
             manager.name,
-            error,
+            "Code:",
+            error.code,
+            "Message:",
+            error.message,
+            "Details:",
+            error.details,
+            "Full:",
+            JSON.stringify(error),
           );
         } else {
           console.log("Supabase sync success for manager:", manager.name);

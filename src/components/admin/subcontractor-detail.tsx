@@ -345,6 +345,30 @@ export function SubcontractorDetail({
     phone: "",
   });
 
+  const fetchManagers = async () => {
+    const supabase = createClient();
+    const { data: managersData, error: managersError } = await supabase
+      .from("personnel")
+      .select("*")
+      .eq("company_name", subcontractor.name);
+
+    if (managersError) {
+      console.error("Error reloading managers:", managersError);
+    }
+
+    if (managersData) {
+      setManagers(
+        managersData.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          role: m.role || "Manager",
+          email: m.email || "",
+          phone: m.phone || "",
+        })),
+      );
+    }
+  };
+
   const handleSaveManager = async () => {
     if (!newManager.name) return;
 
@@ -370,6 +394,9 @@ export function SubcontractorDetail({
 
     // Save to storage immediately with the built list
     await saveManagersToStorage(newManagersList);
+
+    // Refresh from Supabase to get the new IDs (critical for subsequent edits)
+    await fetchManagers();
 
     setNewManager({ name: "", role: "", email: "", phone: "" });
     setEditingManagerId(null);

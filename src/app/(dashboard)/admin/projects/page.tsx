@@ -2531,12 +2531,12 @@ export default function AdminProjects() {
                                   <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
                                     <div className="space-y-4">
                                       {/* Row 1: Description */}
-                                      <div className="space-y-1.5">
+                                      <div className="space-y-1.5 max-w-md">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                           Description
                                         </label>
                                         <Input
-                                          placeholder="e.g. Additional cabling for living room unit..."
+                                          placeholder="e.g. Additional cabling..."
                                           className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 focus:ring-blue-500/20 w-full"
                                           value={
                                             additionalWorkInputs[i]

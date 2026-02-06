@@ -2532,7 +2532,7 @@ export default function AdminProjects() {
                                     <div className="space-y-4">
                                       {/* Row 1: Description */}
                                       <div className="space-y-1.5 max-w-md">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                        <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
                                           Description
                                         </label>
                                         <Input
@@ -2555,7 +2555,7 @@ export default function AdminProjects() {
                                       {/* Row 2: Price and Receipt stacked */}
                                       <div className="space-y-3 max-w-xs">
                                         <div className="space-y-1.5">
-                                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                          <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
                                             Price
                                           </label>
                                           <div className="relative">
@@ -2582,7 +2582,7 @@ export default function AdminProjects() {
                                         </div>
 
                                         <div className="space-y-1.5 overflow-hidden">
-                                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
+                                          <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
                                             Receipt
                                           </label>
                                           <Input

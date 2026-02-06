@@ -2526,7 +2526,7 @@ export default function AdminProjects() {
 
                                   {/* Add New Item Form - Polished Layout */}
                                   <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                                    <div className="grid gap-4">
+                                    <div className="space-y-4">
                                       {/* Row 1: Description */}
                                       <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
@@ -2549,9 +2549,9 @@ export default function AdminProjects() {
                                         />
                                       </div>
 
-                                      {/* Row 2: Details & Action */}
-                                      <div className="flex flex-wrap gap-4 items-end">
-                                        <div className="w-36 space-y-1.5">
+                                      {/* Row 2: Price and Receipt in grid */}
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Price
                                           </label>
@@ -2578,7 +2578,7 @@ export default function AdminProjects() {
                                           </div>
                                         </div>
 
-                                        <div className="flex-1 space-y-1.5 min-w-[200px] max-w-[300px]">
+                                        <div className="space-y-1.5">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Receipt
                                           </label>
@@ -2588,10 +2588,13 @@ export default function AdminProjects() {
                                             className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-xs py-1.5 h-10 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-600 hover:file:bg-gray-200"
                                           />
                                         </div>
+                                      </div>
 
+                                      {/* Row 3: Add Button */}
+                                      <div className="flex justify-end">
                                         <Button
                                           size="default"
-                                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[100px] shrink-0"
+                                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[120px]"
                                           onClick={() =>
                                             handleAddAdditionalWorkItem(i, item)
                                           }

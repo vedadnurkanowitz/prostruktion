@@ -2731,6 +2731,41 @@ export default function AdminProjects() {
                       )}
                     </div>
 
+                    {/* Additional Services */}
+                    {currentInvoice.projectData?.selectedAdditionalServices
+                      ?.length > 0 && (
+                      <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+                        <span className="text-muted-foreground block font-semibold mb-1">
+                          Additional Services:
+                        </span>
+                        <ul className="space-y-1">
+                          {currentInvoice.projectData.selectedAdditionalServices.map(
+                            (serviceId: string) => {
+                              const service = ADDITIONAL_SERVICES.find(
+                                (s) => s.id === serviceId,
+                              );
+                              return (
+                                <li
+                                  key={serviceId}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
+                                    <span className="leading-tight text-xs">
+                                      {service?.label || serviceId}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {service?.price || 0}
+                                  </span>
+                                </li>
+                              );
+                            },
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Bonuses Checkboxes Integrated Here */}
                     <div className="pt-4 mt-4 border-t border-dashed space-y-3">
                       <h5 className="font-semibold text-[10px] uppercase text-muted-foreground flex items-center gap-2">
@@ -3347,45 +3382,38 @@ export default function AdminProjects() {
                     {/* Additional Services */}
                     {currentInvoice.projectData?.selectedAdditionalServices
                       ?.length > 0 && (
-                      <div>
-                        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                      <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
                         <span className="text-muted-foreground block font-semibold mb-1">
                           Additional Services:
                         </span>
-                        <div className="space-y-1">
+                        <ul className="space-y-1">
                           {currentInvoice.projectData.selectedAdditionalServices.map(
-                            (s: string) => {
+                            (serviceId: string) => {
                               const service = ADDITIONAL_SERVICES.find(
-                                (as) => as.id === s,
+                                (s) => s.id === serviceId,
                               );
-                              // 70% calculation for additional services as well
-                              const basePrice = service?.price || 0;
-                              const subPrice = basePrice * 0.7;
+                              const baseCost = service?.price || 0;
+                              const subCost = baseCost * 0.7;
 
                               return (
-                                <div
-                                  key={s}
+                                <li
+                                  key={serviceId}
                                   className="flex items-start gap-2 justify-between"
                                 >
                                   <div className="flex items-start gap-2">
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[10px] px-1.5 py-0 h-auto font-normal"
-                                    >
-                                      Extra
-                                    </Badge>
+                                    <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
                                     <span className="leading-tight text-xs">
-                                      {service?.label || s}
+                                      {service?.label || serviceId}
                                     </span>
                                   </div>
                                   <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {subPrice.toFixed(2)}
+                                    € {subCost.toFixed(2)}
                                   </span>
-                                </div>
+                                </li>
                               );
                             },
                           )}
-                        </div>
+                        </ul>
                       </div>
                     )}
                   </div>
@@ -3907,6 +3935,27 @@ export default function AdminProjects() {
                       recipientName = inv.emp; // reused field
                     }
 
+                    // Construct Scope of Work Description
+                    const workTypesStr = (
+                      currentInvoice.projectData?.selectedWorkTypes || []
+                    )
+                      .map((t: string) => WORK_TYPE_LABELS[t] || t)
+                      .join(", ");
+                    const addServicesStr = (
+                      currentInvoice.projectData?.selectedAdditionalServices ||
+                      []
+                    )
+                      .map((s: string) => {
+                        const service = ADDITIONAL_SERVICES.find(
+                          (as) => as.id === s,
+                        );
+                        return service?.label || s;
+                      })
+                      .join(", ");
+                    const scopeDesc = `Indoor Units: ${
+                      currentInvoice.projectData?.indoorUnits || 0
+                    }. Work: ${workTypesStr}. Additional: ${addServicesStr}.`;
+
                     const payload = {
                       project_id: currentInvoice.projectData?.id || null,
                       project_name: inv.project,
@@ -3916,6 +3965,7 @@ export default function AdminProjects() {
                       status: "For Invoice",
                       date: new Date().toISOString().split("T")[0],
                       invoice_type: inv.action,
+                      description: scopeDesc,
                     };
 
                     const { error } = await supabase

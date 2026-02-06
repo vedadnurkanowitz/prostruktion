@@ -55,6 +55,7 @@ import {
   Trophy,
   PlusCircle,
   Gift,
+  X,
 } from "lucide-react";
 import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -171,6 +172,7 @@ export default function AdminProjects() {
       "kaeltemittel",
     ],
     selectedAdditionalServices: [] as string[],
+    customWorkTypes: [] as { label: string; price: number }[],
   });
 
   const WORK_TYPE_LABELS: Record<string, string> = {
@@ -186,6 +188,12 @@ export default function AdminProjects() {
   };
 
   // Calculator State REMOVED
+
+  // Custom Work Input State
+  const [customWorkInput, setCustomWorkInput] = useState({
+    label: "",
+    price: "",
+  });
 
   // User Lists for Dropdowns
   const [partners, setPartners] = useState<any[]>([]);
@@ -317,6 +325,7 @@ export default function AdminProjects() {
       scheduledStart: "",
       workers: [],
       indoorUnits: 0,
+      customWorkTypes: [],
       selectedWorkTypes: [
         "montage",
         "hydraulik",
@@ -660,8 +669,16 @@ export default function AdminProjects() {
             const mediator = profilesMap[p.broker_id];
 
             // Extract work types and services
-            const selectedWorkTypes =
-              p.project_work_types?.map((wt: any) => wt.work_type_key) || [];
+            const rawWorkTypes = p.project_work_types || [];
+            const selectedWorkTypes = rawWorkTypes
+              .filter((wt: any) => WORK_TYPE_LABELS[wt.work_type_key])
+              .map((wt: any) => wt.work_type_key);
+            const customWorkTypes = rawWorkTypes
+              .filter((wt: any) => !WORK_TYPE_LABELS[wt.work_type_key])
+              .map((wt: any) => ({
+                label: wt.work_type_key,
+                price: wt.price || 0,
+              }));
             const selectedAdditionalServices =
               p.project_additional_services?.map((s: any) => s.service_id) ||
               [];
@@ -711,6 +728,7 @@ export default function AdminProjects() {
               estimatedHours: p.estimated_hours || "",
               indoorUnits: p.indoor_units || 0,
               selectedWorkTypes,
+              customWorkTypes,
               selectedAdditionalServices,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
@@ -886,9 +904,12 @@ export default function AdminProjects() {
       }
 
       if (supabaseProjectId) {
-        // 3. Insert work types (Assuming tables exist, kept as is)
-        if (newProject.selectedWorkTypes.length > 0) {
-          const workTypeInserts = newProject.selectedWorkTypes.map((type) => {
+        // 3. Insert work types (Standard + Custom)
+        if (
+          newProject.selectedWorkTypes.length > 0 ||
+          newProject.customWorkTypes.length > 0
+        ) {
+          const standardInserts = newProject.selectedWorkTypes.map((type) => {
             const units = newProject.indoorUnits || 0;
             const price =
               PRICING_MATRIX.baseCosts[units]?.[
@@ -901,9 +922,17 @@ export default function AdminProjects() {
             };
           });
 
+          const customInserts = newProject.customWorkTypes.map((cw) => ({
+            project_id: supabaseProjectId,
+            work_type_key: cw.label,
+            price: cw.price,
+          }));
+
+          const allInserts = [...standardInserts, ...customInserts];
+
           // Check if table exists is hard, just try/catch the insert
           try {
-            await supabase.from("project_work_types").insert(workTypeInserts);
+            await supabase.from("project_work_types").insert(allInserts);
           } catch (err) {
             console.warn("Could not save work types", err);
           }
@@ -1036,6 +1065,7 @@ export default function AdminProjects() {
       indoorUnits: project.indoorUnits,
       selectedWorkTypes: project.selectedWorkTypes || [],
       selectedAdditionalServices: project.selectedAdditionalServices || [],
+      customWorkTypes: project.customWorkTypes || [],
       workers: project.workers || [],
     });
     setAddProjectOpen(true);
@@ -4449,10 +4479,19 @@ export default function AdminProjects() {
                       },
                     );
 
+                    let customPrice = 0;
+                    newProject.customWorkTypes.forEach(
+                      (c) => (customPrice += c.price),
+                    );
+
                     setNewProject({
                       ...newProject,
                       indoorUnits: units,
-                      amount: (basePrice + servicesPrice).toString(),
+                      amount: (
+                        basePrice +
+                        servicesPrice +
+                        customPrice
+                      ).toString(),
                     });
                   }}
                   className="cursor-pointer"
@@ -4512,10 +4551,19 @@ export default function AdminProjects() {
                                 },
                               );
 
+                              let customPrice = 0;
+                              newProject.customWorkTypes.forEach(
+                                (c) => (customPrice += c.price),
+                              );
+
                               setNewProject({
                                 ...newProject,
                                 selectedWorkTypes: newTypes,
-                                amount: (basePrice + servicesPrice).toString(),
+                                amount: (
+                                  basePrice +
+                                  servicesPrice +
+                                  customPrice
+                                ).toString(),
                               });
                             }}
                           />
@@ -4533,6 +4581,160 @@ export default function AdminProjects() {
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Custom Work Types */}
+                  <div className="pt-2 border-t mt-2">
+                    <label className="text-xs font-semibold mb-2 block text-gray-700 dark:text-gray-300">
+                      Custom Work Items
+                    </label>
+                    {/* List */}
+                    <div className="space-y-1 mb-2">
+                      {newProject.customWorkTypes.map((cw, idx) => (
+                        <div
+                          key={idx}
+                          className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-900 border rounded"
+                        >
+                          <span className="font-medium">{cw.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono">€ {cw.price}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => {
+                                const newCustom = [
+                                  ...newProject.customWorkTypes,
+                                ];
+                                newCustom.splice(idx, 1);
+
+                                // Recalculate Total
+                                // 1. Base
+                                const currentCosts =
+                                  PRICING_MATRIX.baseCosts[
+                                    newProject.indoorUnits
+                                  ] || {};
+                                let basePrice = 0;
+                                newProject.selectedWorkTypes.forEach((type) => {
+                                  basePrice += (currentCosts as any)[type] || 0;
+                                });
+
+                                // 2. Services
+                                let servicesPrice = 0;
+                                newProject.selectedAdditionalServices.forEach(
+                                  (serviceId) => {
+                                    const service = ADDITIONAL_SERVICES.find(
+                                      (s) => s.id === serviceId,
+                                    );
+                                    if (service) servicesPrice += service.price;
+                                  },
+                                );
+
+                                // 3. Custom
+                                let customPrice = 0;
+                                newCustom.forEach(
+                                  (c) => (customPrice += c.price),
+                                );
+
+                                setNewProject({
+                                  ...newProject,
+                                  customWorkTypes: newCustom,
+                                  amount: (
+                                    basePrice +
+                                    servicesPrice +
+                                    customPrice
+                                  ).toString(),
+                                });
+                              }}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Add Form */}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="Custom Work Name"
+                        className="h-8 text-xs flex-1"
+                        value={customWorkInput.label}
+                        onChange={(e) =>
+                          setCustomWorkInput({
+                            ...customWorkInput,
+                            label: e.target.value,
+                          })
+                        }
+                      />
+                      <Input
+                        placeholder="Price"
+                        type="number"
+                        className="h-8 w-20 text-xs"
+                        value={customWorkInput.price}
+                        onChange={(e) =>
+                          setCustomWorkInput({
+                            ...customWorkInput,
+                            price: e.target.value,
+                          })
+                        }
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => {
+                          if (!customWorkInput.label || !customWorkInput.price)
+                            return;
+                          const price = parseFloat(customWorkInput.price) || 0;
+                          const newItem = {
+                            label: customWorkInput.label,
+                            price,
+                          };
+                          const newCustom = [
+                            ...newProject.customWorkTypes,
+                            newItem,
+                          ];
+
+                          // Recalculate Total
+                          // 1. Base
+                          const currentCosts =
+                            PRICING_MATRIX.baseCosts[newProject.indoorUnits] ||
+                            {};
+                          let basePrice = 0;
+                          newProject.selectedWorkTypes.forEach((type) => {
+                            basePrice += (currentCosts as any)[type] || 0;
+                          });
+
+                          // 2. Services
+                          let servicesPrice = 0;
+                          newProject.selectedAdditionalServices.forEach(
+                            (serviceId) => {
+                              const service = ADDITIONAL_SERVICES.find(
+                                (s) => s.id === serviceId,
+                              );
+                              if (service) servicesPrice += service.price;
+                            },
+                          );
+
+                          // 3. Custom
+                          let customPrice = 0;
+                          newCustom.forEach((c) => (customPrice += c.price));
+
+                          setNewProject({
+                            ...newProject,
+                            customWorkTypes: newCustom,
+                            amount: (
+                              basePrice +
+                              servicesPrice +
+                              customPrice
+                            ).toString(),
+                          });
+                          setCustomWorkInput({ label: "", price: "" });
+                        }}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -4582,10 +4784,19 @@ export default function AdminProjects() {
                               if (s) servicesPrice += s.price;
                             });
 
+                            let customPrice = 0;
+                            newProject.customWorkTypes.forEach(
+                              (c) => (customPrice += c.price),
+                            );
+
                             setNewProject({
                               ...newProject,
                               selectedAdditionalServices: newServices,
-                              amount: (basePrice + servicesPrice).toString(),
+                              amount: (
+                                basePrice +
+                                servicesPrice +
+                                customPrice
+                              ).toString(),
                             });
                           }}
                         />

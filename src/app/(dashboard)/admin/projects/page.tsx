@@ -3706,10 +3706,10 @@ export default function AdminProjects() {
                           0,
                         ) || 0) +
                         (invoiceEditState.subQualityBonus.enabled
-                          ? invoiceEditState.subQualityBonus.amount
+                          ? invoiceEditState.subQualityBonus.amount * 0.7
                           : 0) +
                         (invoiceEditState.subQuantityBonus.enabled
-                          ? invoiceEditState.subQuantityBonus.amount
+                          ? invoiceEditState.subQuantityBonus.amount * 0.7
                           : 0)
                       ).toLocaleString("de-DE", {
                         minimumFractionDigits: 0,

@@ -3025,27 +3025,7 @@ export default function AdminProjects() {
                 </div>
 
                 {/* Review Checkbox */}
-                <div className="flex items-center space-x-2 bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded border border-yellow-200 dark:border-yellow-800">
-                  <Checkbox
-                    id="review-partner"
-                    checked={invoiceEditState.reviewed.partner}
-                    onCheckedChange={(checked) =>
-                      setInvoiceEditState({
-                        ...invoiceEditState,
-                        reviewed: {
-                          ...invoiceEditState.reviewed,
-                          partner: !!checked,
-                        },
-                      })
-                    }
-                  />
-                  <label
-                    htmlFor="review-partner"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                  >
-                    I have verified the Partner invoice details.
-                  </label>
-                </div>
+                {/* Review Checkbox removed */}
               </TabsContent>
 
               {/* SUBCONTRACTOR TAB */}
@@ -3561,7 +3541,6 @@ export default function AdminProjects() {
             <Button
               className="bg-blue-600 text-white"
               disabled={
-                !invoiceEditState.reviewed.partner ||
                 !invoiceEditState.reviewed.subcontractor ||
                 (currentInvoice?.hasMediator &&
                   !invoiceEditState.reviewed.mediator)

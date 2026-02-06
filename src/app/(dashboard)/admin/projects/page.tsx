@@ -1225,7 +1225,11 @@ export default function AdminProjects() {
         amount: quantityBonusAmount,
         label: `Tier: ${monthlyCount} Projects (Month)`,
       },
-      subQualityBonus: { enabled: false, amount: 0, label: "" },
+      subQualityBonus: {
+        enabled: false,
+        amount: qualityBonusAmount,
+        label: `${units} Indoor Units`,
+      },
       subQuantityBonus: {
         enabled: subMonthlyCount >= 8,
         amount: subQuantityBonusAmount,
@@ -3043,6 +3047,88 @@ export default function AdminProjects() {
                             },
                           )}
                         </span>
+                      </div>
+
+                      {/* Sub Quality Bonus Toggle */}
+                      <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20 bg-white/50 dark:bg-gray-900/20">
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            id="sub-qual-bonus-chk"
+                            checked={invoiceEditState.subQualityBonus?.enabled}
+                            onCheckedChange={(checked) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQualityBonus: {
+                                  ...invoiceEditState.subQualityBonus,
+                                  enabled: !!checked,
+                                },
+                              })
+                            }
+                            className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600 branch-checkbox"
+                          />
+                          <div>
+                            <label
+                              htmlFor="sub-qual-bonus-chk"
+                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                            >
+                              Quality Bonus (70%)
+                            </label>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] h-4 px-1.5 font-normal ${
+                                  invoiceEditState.subQualityBonus?.enabled
+                                    ? "bg-orange-100 text-orange-700 border-orange-300"
+                                    : "text-gray-500 border-gray-300"
+                                }`}
+                              >
+                                {invoiceEditState.subQualityBonus?.label ||
+                                  "Indoor Units"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-sm font-medium ${
+                              invoiceEditState.subQualityBonus?.enabled
+                                ? "text-orange-600"
+                                : "text-gray-400"
+                            }`}
+                          >
+                            + €
+                          </span>
+                          <Input
+                            type="number"
+                            disabled={
+                              !invoiceEditState.subQualityBonus?.enabled
+                            }
+                            value={
+                              invoiceEditState.subQualityBonus?.amount
+                                ? (
+                                    invoiceEditState.subQualityBonus.amount *
+                                    0.7
+                                  ).toFixed(2)
+                                : 0
+                            }
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQualityBonus: {
+                                  ...invoiceEditState.subQualityBonus,
+                                  amount: val / 0.7,
+                                },
+                              });
+                            }}
+                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                              invoiceEditState.subQualityBonus?.enabled
+                                ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                : "bg-transparent border-transparent"
+                            }`}
+                          />
+                        </div>
                       </div>
 
                       {/* Sub Quantity Bonus Toggle */}

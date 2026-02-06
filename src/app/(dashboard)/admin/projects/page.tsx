@@ -3620,7 +3620,7 @@ export default function AdminProjects() {
                                         ? "12-36 Projects"
                                         : val === "600"
                                           ? "36+ Projects"
-                                          : "No Tier",
+                                          : "No Bonus",
                                 },
                               })
                             }
@@ -3635,10 +3635,16 @@ export default function AdminProjects() {
                               <SelectValue placeholder="Tier" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="0">None</SelectItem>
-                              <SelectItem value="150">€ 150</SelectItem>
-                              <SelectItem value="330">€ 330</SelectItem>
-                              <SelectItem value="600">€ 600</SelectItem>
+                              <SelectItem value="0">No Bonus</SelectItem>
+                              <SelectItem value="150">
+                                0-12 Projects: € 105
+                              </SelectItem>
+                              <SelectItem value="330">
+                                12-36 Projects: € 231
+                              </SelectItem>
+                              <SelectItem value="600">
+                                36+ Projects: € 420
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

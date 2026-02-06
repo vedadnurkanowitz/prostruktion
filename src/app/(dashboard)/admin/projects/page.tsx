@@ -1181,9 +1181,19 @@ export default function AdminProjects() {
 
     // 2. Calculate Quality Bonus
     // Based on indoor units. default to 0 units if undefined.
-    const units = project.indoorUnits || 0;
+    // Cap at 16 since matrix only goes to 16.
+    let units = parseInt(project.indoorUnits) || 0;
+    if (units < 0) units = 0;
+    if (units > 16) units = 16;
+
     const qualityBonusAmount =
       (PRICING_MATRIX.bonus1 && PRICING_MATRIX.bonus1[units]) || 0;
+
+    console.log("DEBUG Quality Bonus:", {
+      originalUnits: project.indoorUnits,
+      cappedUnits: units,
+      qualityBonusAmount,
+    });
 
     // 3. Calculate Quantity Bonus
     // Count projects for this partner in current month

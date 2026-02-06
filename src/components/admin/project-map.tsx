@@ -227,12 +227,12 @@ export default function ProjectMap() {
       if (storedProjects) {
         try {
           rawProjects = [...rawProjects, ...JSON.parse(storedProjects)];
-        } catch (e) {}
+        } catch (e) { }
       }
       if (storedArchive) {
         try {
           rawProjects = [...rawProjects, ...JSON.parse(storedArchive)];
-        } catch (e) {}
+        } catch (e) { }
       }
 
       if (rawProjects.length > 0) {
@@ -322,9 +322,7 @@ export default function ProjectMap() {
 
           // Filter projects
           projects = geocodedProjects.filter((p: any) => {
-            const isFinished = p.status === "Finished" || p.isArchived;
-            if (isFinished && (!p.complaints || p.complaints <= 0))
-              return false;
+            // Apply dropdown filters
             if (filterSub !== "all" && p.sub !== filterSub) return false;
             if (
               filterPartner !== "all" &&
@@ -334,7 +332,15 @@ export default function ProjectMap() {
               return false;
             if (filterContractor !== "all" && p.contractor !== filterContractor)
               return false;
-            return true;
+
+            // Include if has complaints
+            if (p.complaints && p.complaints > 0) return true;
+
+            // Include if Scheduled or Active (In Progress)
+            if (p.status === "Scheduled") return true;
+            if (p.status === "In Progress" || p.status === "active") return true;
+
+            return false;
           });
         } catch (e) {
           console.error("Error parsing projects for map", e);
@@ -505,18 +511,18 @@ export default function ProjectMap() {
         {(filterSub !== "all" ||
           filterPartner !== "all" ||
           filterContractor !== "all") && (
-          <button
-            onClick={() => {
-              setFilterSub("all");
-              setFilterPartner("all");
-              setFilterContractor("all");
-            }}
-            className="h-8 px-2 text-xs bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 rounded transition-colors"
-            title="Reset Filters"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+            <button
+              onClick={() => {
+                setFilterSub("all");
+                setFilterPartner("all");
+                setFilterContractor("all");
+              }}
+              className="h-8 px-2 text-xs bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 rounded transition-colors"
+              title="Reset Filters"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
       </div>
 
       <div ref={mapRef} className="w-full h-full" />
@@ -653,63 +659,63 @@ export default function ProjectMap() {
                     selectedProject.partner
                       .toLowerCase()
                       .includes(companySearch.toLowerCase()))) && (
-                  <div className="relative">
-                    <CompanyCard
-                      label="Partner"
-                      name={selectedProject.partner}
-                      company={getCompanyByName(
-                        selectedProject.partner,
-                        partners,
-                      )}
-                      icon={<Users className="h-4 w-4 text-purple-500" />}
-                      color="purple"
-                    />
+                    <div className="relative">
+                      <CompanyCard
+                        label="Partner"
+                        name={selectedProject.partner}
+                        company={getCompanyByName(
+                          selectedProject.partner,
+                          partners,
+                        )}
+                        icon={<Users className="h-4 w-4 text-purple-500" />}
+                        color="purple"
+                      />
 
-                    {/* Mediator (Child) - Connected Visually */}
-                    {selectedProject.mediator &&
-                      selectedProject.mediator !== "-" &&
-                      (!companySearch ||
-                        selectedProject.mediator
-                          .toLowerCase()
-                          .includes(companySearch.toLowerCase())) && (
-                        <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
-                          <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                          <CompanyCard
-                            label="Mediator"
-                            name={selectedProject.mediator}
-                            company={null}
-                            icon={
-                              <Briefcase className="h-4 w-4 text-green-500" />
-                            }
-                            color="green"
-                          />
-                        </div>
-                      )}
+                      {/* Mediator (Child) - Connected Visually */}
+                      {selectedProject.mediator &&
+                        selectedProject.mediator !== "-" &&
+                        (!companySearch ||
+                          selectedProject.mediator
+                            .toLowerCase()
+                            .includes(companySearch.toLowerCase())) && (
+                          <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
+                            <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                            <CompanyCard
+                              label="Mediator"
+                              name={selectedProject.mediator}
+                              company={null}
+                              icon={
+                                <Briefcase className="h-4 w-4 text-green-500" />
+                              }
+                              color="green"
+                            />
+                          </div>
+                        )}
 
-                    {/* Subcontractor (Child) - Connected Visually */}
-                    {selectedProject.sub &&
-                      (!companySearch ||
-                        selectedProject.sub
-                          .toLowerCase()
-                          .includes(companySearch.toLowerCase())) && (
-                        <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
-                          <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                          <CompanyCard
-                            label="Subcontractor"
-                            name={selectedProject.sub}
-                            company={getCompanyByName(
-                              selectedProject.sub,
-                              subcontractors,
-                            )}
-                            icon={
-                              <HardHat className="h-4 w-4 text-orange-500" />
-                            }
-                            color="orange"
-                          />
-                        </div>
-                      )}
-                  </div>
-                )}
+                      {/* Subcontractor (Child) - Connected Visually */}
+                      {selectedProject.sub &&
+                        (!companySearch ||
+                          selectedProject.sub
+                            .toLowerCase()
+                            .includes(companySearch.toLowerCase())) && (
+                          <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
+                            <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                            <CompanyCard
+                              label="Subcontractor"
+                              name={selectedProject.sub}
+                              company={getCompanyByName(
+                                selectedProject.sub,
+                                subcontractors,
+                              )}
+                              icon={
+                                <HardHat className="h-4 w-4 text-orange-500" />
+                              }
+                              color="orange"
+                            />
+                          </div>
+                        )}
+                    </div>
+                  )}
 
                 {/* Fallback if searching for sub only and not showing partner logic above restricts it? 
                     Actually the above logic nests Sub. If I search for "Sub", I might want to see it even if Partner doesn't match?
@@ -820,13 +826,12 @@ export default function ProjectMap() {
                                 </p>
                                 {worker.status && (
                                   <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      worker.status === "Active"
-                                        ? "bg-green-500"
-                                        : worker.status === "Blocked"
-                                          ? "bg-red-500"
-                                          : "bg-gray-400"
-                                    }`}
+                                    className={`w-2 h-2 rounded-full ${worker.status === "Active"
+                                      ? "bg-green-500"
+                                      : worker.status === "Blocked"
+                                        ? "bg-red-500"
+                                        : "bg-gray-400"
+                                      }`}
                                     title={worker.status}
                                   />
                                 )}
@@ -844,11 +849,10 @@ export default function ProjectMap() {
                           <div className="text-right">
                             <Badge
                               variant="outline"
-                              className={`text-[10px] h-5 px-1.5 ${
-                                worker.successRate && worker.successRate >= 95
-                                  ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-900/20"
-                                  : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20"
-                              }`}
+                              className={`text-[10px] h-5 px-1.5 ${worker.successRate && worker.successRate >= 95
+                                ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-900/20"
+                                : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20"
+                                }`}
                             >
                               {worker.successRate}% Success
                             </Badge>
@@ -878,21 +882,19 @@ export default function ProjectMap() {
                             </p>
                             <div className="flex flex-wrap gap-1 mt-1">
                               <span
-                                className={`text-[10px] px-1 rounded border ${
-                                  worker.a1Status === "Valid"
-                                    ? "border-green-200 text-green-700 bg-green-50"
-                                    : "border-red-200 text-red-700 bg-red-50"
-                                }`}
+                                className={`text-[10px] px-1 rounded border ${worker.a1Status === "Valid"
+                                  ? "border-green-200 text-green-700 bg-green-50"
+                                  : "border-red-200 text-red-700 bg-red-50"
+                                  }`}
                               >
                                 A1: {worker.a1Status || "N/A"}
                               </span>
                               {worker.certStatus && (
                                 <span
-                                  className={`text-[10px] px-1 rounded border ${
-                                    worker.certStatus === "Valid"
-                                      ? "border-green-200 text-green-700 bg-green-50"
-                                      : "border-yellow-200 text-yellow-700 bg-yellow-50"
-                                  }`}
+                                  className={`text-[10px] px-1 rounded border ${worker.certStatus === "Valid"
+                                    ? "border-green-200 text-green-700 bg-green-50"
+                                    : "border-yellow-200 text-yellow-700 bg-yellow-50"
+                                    }`}
                                 >
                                   Cert: {worker.certStatus}
                                 </span>
@@ -952,17 +954,28 @@ export default function ProjectMap() {
           Status Legend
         </h4>
         <div className="space-y-1.5">
-          {Object.entries(PROJECT_STATUS_COLORS).map(([status, color]) => (
-            <div key={status} className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: color }}
-              />
-              <span className="text-xs text-gray-700 dark:text-gray-300">
-                {status}
-              </span>
+          {Object.entries(PROJECT_STATUS_COLORS).map(([status, color]) => {
+            if (status === "Finished") return null;
+            return (
+              <div key={status} className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-xs text-gray-700 dark:text-gray-300">
+                  {status}
+                </span>
+              </div>
+            );
+          })}
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 flex items-center justify-center">
+              <span className="text-red-500 font-black text-sm">!</span>
             </div>
-          ))}
+            <span className="text-xs text-gray-700 dark:text-gray-300">
+              Complaints
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -996,13 +1009,12 @@ function CompanyCard({
         </div>
         {company && (
           <Badge
-            className={`text-[10px] px-1.5 h-5 ${
-              company.status === "Active"
-                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200"
-                : company.status === "Blocked"
-                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200"
-                  : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200"
-            }`}
+            className={`text-[10px] px-1.5 h-5 ${company.status === "Active"
+              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200"
+              : company.status === "Blocked"
+                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200"
+                : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200"
+              }`}
           >
             {company.status || "Active"}
           </Badge>
@@ -1019,11 +1031,10 @@ function CompanyCard({
             {[1, 2, 3, 4, 5].map((star) => (
               <svg
                 key={star}
-                className={`w-3 h-3 ${
-                  star <= Math.round(company.rating || 0)
-                    ? "text-yellow-400 fill-current"
-                    : "text-gray-300 fill-current"
-                }`}
+                className={`w-3 h-3 ${star <= Math.round(company.rating || 0)
+                  ? "text-yellow-400 fill-current"
+                  : "text-gray-300 fill-current"
+                  }`}
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
               >

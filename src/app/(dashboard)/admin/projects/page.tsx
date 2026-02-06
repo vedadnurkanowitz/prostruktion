@@ -3100,53 +3100,53 @@ export default function AdminProjects() {
                           >
                             + €
                           </span>
-                          <Input
-                            type="number"
+                          <Select
                             disabled={
                               !invoiceEditState.subQuantityBonus?.enabled
                             }
-                            value={
-                              invoiceEditState.subQuantityBonus?.amount
-                                ? (
-                                    invoiceEditState.subQuantityBonus.amount *
-                                    0.7
-                                  ).toFixed(2)
-                                : 0
-                            }
-                            onChange={(e) => {
-                              // We store the BASE bonus amount in state, but display/edit the 70% value?
-                              // Actually, simpler to just store the displayed value if editable.
-                              // But the logic above calculates it based on tiers (150/330/600).
-                              // If user edits "70% amount", we should probably update the amount directly.
-                              // Let's assume the input edits the *Actual Payable Bonus*.
-                              const val = parseFloat(e.target.value) || 0;
-                              // Store it back as the 'amount' (we'll treat the stored amount as the base, so we revert 70%? No, let's explicitely set it)
-                              // To keep it simple: The 'amount' in state allows override.
-                              // But the auto-calc set it to 150/330.
-                              // The display shows 70% of that.
-                              // If user types '100', they mean they want to pay 100.
-                              // So we should store 100 / 0.7 ?
-                              // Or just change how we store it.
-                              // Let's just update the amount directly to what they typed, and remove the 0.7 multiplier from display if they edit.
-                              // Actually, the request says "70% realne cijene".
-                              // My existing auto-calc logic in `handleCreateInvoice` sets `amount` to standard (150, etc).
-                              // So here I must display `amount * 0.7`.
-                              // If they edit it, I should update `amount` such that `amount * 0.7` equals what they typed.
-                              // val = newAmount * 0.7 => newAmount = val / 0.7
+                            value={String(
+                              invoiceEditState.subQuantityBonus?.amount || 0,
+                            )}
+                            onValueChange={(val) =>
                               setInvoiceEditState({
                                 ...invoiceEditState,
                                 subQuantityBonus: {
                                   ...invoiceEditState.subQuantityBonus,
-                                  amount: val / 0.7,
+                                  amount: parseFloat(val) || 0,
+                                  label:
+                                    val === "150"
+                                      ? "Sub Tier: 1 (8-12)"
+                                      : val === "330"
+                                        ? "Sub Tier: 2 (12-36)"
+                                        : val === "600"
+                                          ? "Sub Tier: 3 (36+)"
+                                          : "No Tier",
                                 },
-                              });
-                            }}
-                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
-                              invoiceEditState.subQuantityBonus?.enabled
-                                ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
-                                : "bg-transparent border-transparent"
-                            }`}
-                          />
+                              })
+                            }
+                          >
+                            <SelectTrigger
+                              className={`h-7 w-[200px] text-right font-mono font-bold text-sm ${
+                                invoiceEditState.subQuantityBonus?.enabled
+                                  ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
+                            >
+                              <SelectValue placeholder="Select Tier" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">No Tier (€0)</SelectItem>
+                              <SelectItem value="150">
+                                Tier 1 (€150 &rarr; €105)
+                              </SelectItem>
+                              <SelectItem value="330">
+                                Tier 2 (€330 &rarr; €231)
+                              </SelectItem>
+                              <SelectItem value="600">
+                                Tier 3 (€600 &rarr; €420)
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
 

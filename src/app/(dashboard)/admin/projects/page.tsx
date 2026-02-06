@@ -2525,7 +2525,7 @@ export default function AdminProjects() {
                                     )}
 
                                   {/* Add New Item Form - Polished Layout */}
-                                  <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                                  <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
                                     <div className="space-y-4">
                                       {/* Row 1: Description */}
                                       <div className="space-y-1.5">
@@ -2534,7 +2534,7 @@ export default function AdminProjects() {
                                         </label>
                                         <Input
                                           placeholder="e.g. Additional cabling for living room unit..."
-                                          className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 focus:ring-blue-500/20"
+                                          className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 focus:ring-blue-500/20 w-full"
                                           value={
                                             additionalWorkInputs[i]
                                               ?.description || ""
@@ -2550,7 +2550,7 @@ export default function AdminProjects() {
                                       </div>
 
                                       {/* Row 2: Price and Receipt in grid */}
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Price
@@ -2562,7 +2562,7 @@ export default function AdminProjects() {
                                             <Input
                                               type="number"
                                               placeholder="0.00"
-                                              className="pl-6 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 font-mono text-sm"
+                                              className="pl-6 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 font-mono text-sm w-full"
                                               value={
                                                 additionalWorkInputs[i]
                                                   ?.price || ""
@@ -2578,14 +2578,14 @@ export default function AdminProjects() {
                                           </div>
                                         </div>
 
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-1.5 overflow-hidden">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Receipt
                                           </label>
                                           <Input
                                             id={`receipt-upload-${i}`}
                                             type="file"
-                                            className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-xs py-1.5 h-10 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-600 hover:file:bg-gray-200"
+                                            className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-xs py-1.5 h-10 w-full file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-600 hover:file:bg-gray-200 truncate"
                                           />
                                         </div>
                                       </div>

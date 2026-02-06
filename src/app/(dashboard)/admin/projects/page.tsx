@@ -85,6 +85,20 @@ const parseGermanFloat = (str: string | number | undefined | null) => {
   return parseFloat(withDecimal) || 0;
 };
 
+// Helper to format dates from YYYY-MM-DD to readable format
+const formatDate = (dateStr: string | undefined | null) => {
+  if (!dateStr) return "";
+  try {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
 export default function AdminProjects() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
@@ -597,7 +611,12 @@ export default function AdminProjects() {
           const contactIds = Array.from(
             new Set(
               projectsData
-                .flatMap((p) => [p.contractor_id, p.subcontractor_id])
+                .flatMap((p) => [
+                  p.contractor_id,
+                  p.subcontractor_id,
+                  p.partner_id,
+                  p.broker_id,
+                ])
                 .filter(Boolean),
             ),
           );
@@ -760,7 +779,9 @@ export default function AdminProjects() {
                     "en-US",
                     { year: "numeric", month: "short", day: "numeric" },
                   ),
-              scheduledStart: p.scheduled_start || "",
+              scheduledStart: p.scheduled_start
+                ? p.scheduled_start.split("T")[0]
+                : "",
               amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
               status: p.status || "Scheduled",
               statusColor,
@@ -1185,6 +1206,46 @@ export default function AdminProjects() {
         JSON.stringify(updatedProjects),
       );
     }
+  };
+
+  // Handle updating partner/mediator with Supabase persistence
+  const handleContactFieldUpdate = async (
+    project: any,
+    field: "partner" | "mediator",
+    selectedId: string,
+  ) => {
+    const supabase = createClient();
+    const updatedProjects = [...projects];
+    const mainIndex = updatedProjects.findIndex((p) => p === project);
+
+    if (mainIndex === -1 || !project.id) return;
+
+    // Map UI field to DB column
+    const dbField = field === "partner" ? "partner_id" : "broker_id";
+    const contactList = field === "partner" ? partners : mediators;
+    const selectedContact = contactList.find((c) => c.id === selectedId);
+    const displayName = selectedContact?.name || "";
+
+    // Update in Supabase
+    const { error } = await supabase
+      .from("projects")
+      .update({ [dbField]: selectedId || null })
+      .eq("id", project.id);
+
+    if (error) {
+      console.error(`Error updating ${field} in Supabase:`, error);
+      alert(`Failed to update ${field}. Please try again.`);
+      return;
+    }
+
+    // Update local state
+    updatedProjects[mainIndex][field] = displayName;
+    updatedProjects[mainIndex][`${field}Id`] = selectedId;
+    setProjects(updatedProjects);
+    localStorage.setItem(
+      "prostruktion_projects_v1",
+      JSON.stringify(updatedProjects),
+    );
   };
 
   const handleStatusChange = async (index: number, newStatus: string) => {
@@ -1614,7 +1675,10 @@ export default function AdminProjects() {
                       isOverdue,
                       netAmount,
                       penaltyPercentage,
-                    } = calculatePenalty(project.amount, project.start);
+                    } = calculatePenalty(
+                      project.amount,
+                      project.scheduledStart || project.start,
+                    );
 
                     const isExpanded = expandedScheduledRows.has(i);
 
@@ -1654,7 +1718,8 @@ export default function AdminProjects() {
                           </TableCell>
                           <TableCell>{project.sub}</TableCell>
                           <TableCell className="text-sm">
-                            {project.start}
+                            {formatDate(project.scheduledStart) ||
+                              project.start}
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1 items-start">
@@ -1773,7 +1838,7 @@ export default function AdminProjects() {
                                   </h4>
 
                                   <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
-                                    <div className="grid grid-cols-[100px_1fr] gap-2">
+                                    <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
                                       <span className="text-muted-foreground text-xs">
                                         Contractor:
                                       </span>
@@ -1784,16 +1849,62 @@ export default function AdminProjects() {
                                       <span className="text-muted-foreground text-xs">
                                         Partner:
                                       </span>
-                                      <span className="font-medium">
-                                        {project.partner || "N/A"}
-                                      </span>
+                                      <Select
+                                        value={project.partnerId || "none"}
+                                        onValueChange={(value) =>
+                                          handleContactFieldUpdate(
+                                            project,
+                                            "partner",
+                                            value === "none" ? "" : value,
+                                          )
+                                        }
+                                      >
+                                        <SelectTrigger className="h-7 text-xs">
+                                          <SelectValue placeholder="Select Partner">
+                                            {project.partner || "N/A"}
+                                          </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="none">
+                                            None
+                                          </SelectItem>
+                                          {partners.map((p) => (
+                                            <SelectItem key={p.id} value={p.id}>
+                                              {p.name}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
 
                                       <span className="text-muted-foreground text-xs">
                                         Mediator:
                                       </span>
-                                      <span className="font-medium">
-                                        {project.mediator || "N/A"}
-                                      </span>
+                                      <Select
+                                        value={project.mediatorId || "none"}
+                                        onValueChange={(value) =>
+                                          handleContactFieldUpdate(
+                                            project,
+                                            "mediator",
+                                            value === "none" ? "" : value,
+                                          )
+                                        }
+                                      >
+                                        <SelectTrigger className="h-7 text-xs">
+                                          <SelectValue placeholder="Select Mediator">
+                                            {project.mediator || "N/A"}
+                                          </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="none">
+                                            None
+                                          </SelectItem>
+                                          {mediators.map((m) => (
+                                            <SelectItem key={m.id} value={m.id}>
+                                              {m.name}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </div>
                                   </div>
 
@@ -2217,7 +2328,7 @@ export default function AdminProjects() {
                                 </h4>
 
                                 <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
-                                  <div className="grid grid-cols-[100px_1fr] gap-2">
+                                  <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
                                     <span className="text-muted-foreground text-xs">
                                       Contractor:
                                     </span>
@@ -2228,16 +2339,62 @@ export default function AdminProjects() {
                                     <span className="text-muted-foreground text-xs">
                                       Partner:
                                     </span>
-                                    <span className="font-medium">
-                                      {item.partner || "N/A"}
-                                    </span>
+                                    <Select
+                                      value={item.partnerId || "none"}
+                                      onValueChange={(value) =>
+                                        handleContactFieldUpdate(
+                                          item,
+                                          "partner",
+                                          value === "none" ? "" : value,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 text-xs">
+                                        <SelectValue placeholder="Select Partner">
+                                          {item.partner || "N/A"}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">
+                                          None
+                                        </SelectItem>
+                                        {partners.map((p) => (
+                                          <SelectItem key={p.id} value={p.id}>
+                                            {p.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
 
                                     <span className="text-muted-foreground text-xs">
                                       Mediator:
                                     </span>
-                                    <span className="font-medium">
-                                      {item.mediator || "N/A"}
-                                    </span>
+                                    <Select
+                                      value={item.mediatorId || "none"}
+                                      onValueChange={(value) =>
+                                        handleContactFieldUpdate(
+                                          item,
+                                          "mediator",
+                                          value === "none" ? "" : value,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 text-xs">
+                                        <SelectValue placeholder="Select Mediator">
+                                          {item.mediator || "N/A"}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">
+                                          None
+                                        </SelectItem>
+                                        {mediators.map((m) => (
+                                          <SelectItem key={m.id} value={m.id}>
+                                            {m.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
                                   </div>
                                 </div>
 

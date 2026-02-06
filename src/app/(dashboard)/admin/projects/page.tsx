@@ -3645,6 +3645,7 @@ export default function AdminProjects() {
                   month: "short",
                   day: "numeric",
                 });
+                const supabase = createClient();
 
                 // PARTNER Invoice
                 const partnerAmount =
@@ -3657,8 +3658,9 @@ export default function AdminProjects() {
                     ? invoiceEditState.quantityBonus.amount
                     : 0);
 
+                const partnerInvoiceId = Date.now();
                 newInvoices.push({
-                  id: Date.now(),
+                  id: partnerInvoiceId,
                   project: currentInvoice.project,
                   partner: currentInvoice.projectData.partner,
                   mediator: currentInvoice.hasMediator
@@ -3669,7 +3671,7 @@ export default function AdminProjects() {
                   amount: partnerAmount,
                   type: "Partner Invoice", // Custom field not in original schema but useful, or put in action
                   action: "Partner Invoice",
-                  status: "Sent",
+                  status: "For Invoice", // Correct status for Financials Staging
                   days: "Now",
                 });
 
@@ -3679,7 +3681,7 @@ export default function AdminProjects() {
                     invoiceEditState.projectValue *
                     (invoiceEditState.mediatorSharePercent / 100);
                   newInvoices.push({
-                    id: Date.now() + 1,
+                    id: partnerInvoiceId + 1,
                     project: currentInvoice.project,
                     partner: currentInvoice.projectData.partner, // Context
                     mediator: currentInvoice.mediator, // Recipient
@@ -3687,7 +3689,7 @@ export default function AdminProjects() {
                     date: nowStr,
                     amount: mediatorAmount,
                     action: "Mediator Invoice",
-                    status: "Sent",
+                    status: "For Invoice",
                     days: "Now",
                   });
                 }
@@ -3695,7 +3697,7 @@ export default function AdminProjects() {
                 // SUBCONTRACTOR Invoice
                 if (totalSubFee > 0 || currentInvoice.projectData.sub) {
                   newInvoices.push({
-                    id: Date.now() + 2,
+                    id: partnerInvoiceId + 2,
                     project: currentInvoice.project,
                     partner: currentInvoice.projectData.partner,
                     mediator: "-",
@@ -3704,7 +3706,7 @@ export default function AdminProjects() {
                     date: nowStr,
                     amount: totalSubFee,
                     action: "Subcontractor Invoice",
-                    status: "Sent",
+                    status: "For Invoice",
                     days: "Now",
                   });
                 }
@@ -3713,6 +3715,49 @@ export default function AdminProjects() {
                   "prostruktion_invoices",
                   JSON.stringify([...existingInvoices, ...newInvoices]),
                 );
+
+                // SYNC TO SUPABASE
+                try {
+                  for (const inv of newInvoices) {
+                    let recipientRole = "Partner";
+                    let recipientName = inv.partner;
+                    if (inv.action === "Mediator Invoice") {
+                      recipientRole = "Mediator";
+                      recipientName = inv.mediator;
+                    } else if (inv.action === "Subcontractor Invoice") {
+                      recipientRole = "Subcontractor";
+                      recipientName = inv.emp; // reused field
+                    }
+
+                    const payload = {
+                      project_id: currentInvoice.projectData?.id || null,
+                      project_name: inv.project,
+                      recipient_name: recipientName,
+                      recipient_role: recipientRole,
+                      amount: inv.amount,
+                      status: "For Invoice",
+                      date: new Date().toISOString().split("T")[0],
+                      invoice_type: inv.action,
+                    };
+
+                    const { error } = await supabase
+                      .from("invoices")
+                      .insert(payload);
+                    if (error) {
+                      console.error(
+                        "Failed to sync invoice to Supabase:",
+                        error,
+                      );
+                      throw error;
+                    }
+                  }
+                  console.log("Invoices synced to Supabase successfully.");
+                } catch (err: any) {
+                  console.error("Supabase sync error:", err);
+                  alert(
+                    `Invoices saved locally but failed to sync to Supabase: ${err.message}. Please check if 'invoices' table exists.`,
+                  );
+                }
 
                 // Close
                 setSuccessModalOpen(false);

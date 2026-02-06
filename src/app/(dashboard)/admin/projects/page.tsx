@@ -3546,16 +3546,24 @@ export default function AdminProjects() {
                           <Input
                             type="number"
                             disabled={!invoiceEditState.subQualityBonus.enabled}
-                            value={invoiceEditState.subQualityBonus.amount || 0}
-                            onChange={(e) =>
+                            value={
+                              invoiceEditState.subQualityBonus.amount
+                                ? (
+                                    invoiceEditState.subQualityBonus.amount *
+                                    0.7
+                                  ).toFixed(2)
+                                : 0
+                            }
+                            onChange={(e) => {
+                              const val = parseGermanFloat(e.target.value) || 0;
                               setInvoiceEditState({
                                 ...invoiceEditState,
                                 subQualityBonus: {
                                   ...invoiceEditState.subQualityBonus,
-                                  amount: parseGermanFloat(e.target.value) || 0,
+                                  amount: val / 0.7,
                                 },
-                              })
-                            }
+                              });
+                            }}
                             className={`h-7 w-20 text-right font-mono font-bold text-sm ${
                               invoiceEditState.subQualityBonus.enabled
                                 ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"

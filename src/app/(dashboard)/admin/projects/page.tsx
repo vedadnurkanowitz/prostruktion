@@ -3315,12 +3315,12 @@ export default function AdminProjects() {
                                   amount: parseFloat(val) || 0,
                                   label:
                                     val === "150"
-                                      ? "Sub Tier: 1 (8-12)"
+                                      ? "0-12 Projects"
                                       : val === "330"
-                                        ? "Sub Tier: 2 (12-36)"
+                                        ? "12-36 Projects"
                                         : val === "600"
-                                          ? "Sub Tier: 3 (36+)"
-                                          : "No Tier",
+                                          ? "36+ Projects"
+                                          : "No Bonus",
                                 },
                               })
                             }
@@ -3335,10 +3335,16 @@ export default function AdminProjects() {
                               <SelectValue placeholder="Select Tier" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="0">No Tier (€0)</SelectItem>
-                              <SelectItem value="150">Tier 1 (€105)</SelectItem>
-                              <SelectItem value="330">Tier 2 (€231)</SelectItem>
-                              <SelectItem value="600">Tier 3 (€420)</SelectItem>
+                              <SelectItem value="0">No Bonus</SelectItem>
+                              <SelectItem value="150">
+                                0-12 Projects: € 105
+                              </SelectItem>
+                              <SelectItem value="330">
+                                12-36 Projects: € 231
+                              </SelectItem>
+                              <SelectItem value="600">
+                                36+ Projects: € 420
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

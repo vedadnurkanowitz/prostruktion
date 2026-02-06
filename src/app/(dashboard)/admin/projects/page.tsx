@@ -2150,8 +2150,11 @@ export default function AdminProjects() {
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
-                          <TableCell colSpan={10} className="p-0">
-                            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <TableCell
+                            colSpan={10}
+                            className="p-0 overflow-hidden"
+                          >
+                            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden">
                               {/* Column 1: Project & Customer Details */}
                               <div className="space-y-4 h-full flex flex-col">
                                 <div className="flex flex-col h-full">
@@ -2453,14 +2456,14 @@ export default function AdminProjects() {
                             </div>
 
                             {/* Additional Work Section (Full Width) */}
-                            <div className="px-4 pb-4">
+                            <div className="px-4 pb-4 overflow-hidden">
                               <div className="pt-6 mt-6 border-t border-dashed">
                                 <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                                   <PlusCircle className="h-3 w-3" /> In-Progress
                                   Additional Work
                                 </h4>
 
-                                <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 shadow-sm space-y-4">
+                                <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 shadow-sm space-y-4 overflow-hidden">
                                   {/* List of Additional Works */}
                                   {item.additionalWorks &&
                                     item.additionalWorks.length > 0 && (

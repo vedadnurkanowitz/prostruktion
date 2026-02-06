@@ -3660,10 +3660,18 @@ export default function AdminProjects() {
                           (acc: number, type: string) => {
                             const units =
                               currentInvoice.projectData?.indoorUnits || 0;
-                            const base =
+                            const matrixPrice =
                               PRICING_MATRIX.baseCosts[units]?.[
                                 type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                               ] || 0;
+                            const base =
+                              currentInvoice.projectData?.workTypePrices?.[
+                                type
+                              ] !== undefined
+                                ? currentInvoice.projectData.workTypePrices[
+                                    type
+                                  ]
+                                : matrixPrice;
                             return acc + base * 0.7;
                           },
                           0,
@@ -3673,7 +3681,12 @@ export default function AdminProjects() {
                             const service = ADDITIONAL_SERVICES.find(
                               (as) => as.id === s,
                             );
-                            const base = service?.price || 0;
+                            const base =
+                              currentInvoice.projectData
+                                ?.additionalServicePrices?.[s] !== undefined
+                                ? currentInvoice.projectData
+                                    .additionalServicePrices[s]
+                                : service?.price || 0;
                             return acc + base * 0.7;
                           },
                           0,
@@ -3857,10 +3870,15 @@ export default function AdminProjects() {
                     (acc: number, type: string) => {
                       const units =
                         currentInvoice.projectData?.indoorUnits || 0;
-                      const base =
+                      const matrixPrice =
                         PRICING_MATRIX.baseCosts[units]?.[
                           type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                         ] || 0;
+                      const base =
+                        currentInvoice.projectData?.workTypePrices?.[type] !==
+                        undefined
+                          ? currentInvoice.projectData.workTypePrices[type]
+                          : matrixPrice;
                       return acc + base * 0.7;
                     },
                     0,
@@ -3870,7 +3888,14 @@ export default function AdminProjects() {
                       const service = ADDITIONAL_SERVICES.find(
                         (as) => as.id === s,
                       );
-                      const base = service?.price || 0;
+                      const base =
+                        currentInvoice.projectData?.additionalServicePrices?.[
+                          s
+                        ] !== undefined
+                          ? currentInvoice.projectData.additionalServicePrices[
+                              s
+                            ]
+                          : service?.price || 0;
                       return acc + base * 0.7;
                     },
                     0,

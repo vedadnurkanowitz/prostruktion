@@ -3292,6 +3292,9 @@ export default function AdminProjects() {
                             invoiceEditState.projectValue * 0.7 +
                             (invoiceEditState.subQuantityBonus?.enabled
                               ? invoiceEditState.subQuantityBonus.amount * 0.7
+                              : 0) +
+                            (invoiceEditState.subQualityBonus?.enabled
+                              ? invoiceEditState.subQualityBonus.amount * 0.7
                               : 0)
                           ).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
@@ -3800,10 +3803,10 @@ export default function AdminProjects() {
 
                 const subBonusFee =
                   (invoiceEditState.subQualityBonus.enabled
-                    ? invoiceEditState.subQualityBonus.amount
+                    ? invoiceEditState.subQualityBonus.amount * 0.7
                     : 0) +
                   (invoiceEditState.subQuantityBonus.enabled
-                    ? invoiceEditState.subQuantityBonus.amount
+                    ? invoiceEditState.subQuantityBonus.amount * 0.7
                     : 0);
 
                 const totalSubFee = subBaseFee + subBonusFee;

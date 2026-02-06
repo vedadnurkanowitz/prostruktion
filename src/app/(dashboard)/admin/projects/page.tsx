@@ -2552,8 +2552,8 @@ export default function AdminProjects() {
                                         />
                                       </div>
 
-                                      {/* Row 2: Price and Receipt in grid */}
-                                      <div className="grid grid-cols-2 gap-4">
+                                      {/* Row 2: Price and Receipt stacked */}
+                                      <div className="space-y-3 max-w-xs">
                                         <div className="space-y-1.5">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Price

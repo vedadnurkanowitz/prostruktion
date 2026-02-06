@@ -2805,6 +2805,14 @@ export default function AdminProjects() {
                               const service = ADDITIONAL_SERVICES.find(
                                 (s) => s.id === serviceId,
                               );
+                              const price =
+                                currentInvoice.projectData
+                                  .additionalServicePrices?.[serviceId] !==
+                                undefined
+                                  ? currentInvoice.projectData
+                                      .additionalServicePrices[serviceId]
+                                  : service?.price || 0;
+
                               return (
                                 <li
                                   key={serviceId}
@@ -2817,7 +2825,7 @@ export default function AdminProjects() {
                                     </span>
                                   </div>
                                   <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {service?.price || 0}
+                                    € {price}
                                   </span>
                                 </li>
                               );
@@ -3456,7 +3464,13 @@ export default function AdminProjects() {
                               const service = ADDITIONAL_SERVICES.find(
                                 (s) => s.id === serviceId,
                               );
-                              const baseCost = service?.price || 0;
+                              const baseCost =
+                                currentInvoice.projectData
+                                  .additionalServicePrices?.[serviceId] !==
+                                undefined
+                                  ? currentInvoice.projectData
+                                      .additionalServicePrices[serviceId]
+                                  : service?.price || 0;
                               const subCost = baseCost * 0.7;
 
                               return (

@@ -2550,8 +2550,8 @@ export default function AdminProjects() {
                                       </div>
 
                                       {/* Row 2: Details & Action */}
-                                      <div className="flex flex-col md:flex-row gap-4 items-end">
-                                        <div className="w-full md:w-32 space-y-1.5">
+                                      <div className="flex flex-wrap gap-4 items-end">
+                                        <div className="w-36 space-y-1.5">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Price
                                           </label>
@@ -2578,7 +2578,7 @@ export default function AdminProjects() {
                                           </div>
                                         </div>
 
-                                        <div className="flex-1 space-y-1.5 min-w-0">
+                                        <div className="flex-1 space-y-1.5 min-w-[200px] max-w-[300px]">
                                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">
                                             Receipt
                                           </label>
@@ -2591,7 +2591,7 @@ export default function AdminProjects() {
 
                                         <Button
                                           size="default"
-                                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[100px]"
+                                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[100px] shrink-0"
                                           onClick={() =>
                                             handleAddAdditionalWorkItem(i, item)
                                           }

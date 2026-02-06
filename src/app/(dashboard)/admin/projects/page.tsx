@@ -576,27 +576,43 @@ export default function AdminProjects() {
 
         if (projectsData && !projectsError) {
           // Manual Joins: Fetch related data since FKs might be missing in DB
+
+          // 1. Gather IDs
           const customerIds = Array.from(
             new Set(projectsData.map((p) => p.customer_id).filter(Boolean)),
           );
-          // Include Partner and Broker IDs in contacts fetch as well, as they might be in contacts table
           const contactIds = Array.from(
             new Set(
               projectsData
-                .flatMap((p) => [
-                  p.contractor_id,
-                  p.subcontractor_id,
-                  p.partner_id,
-                  p.broker_id,
-                ])
+                .flatMap((p) => [p.contractor_id, p.subcontractor_id])
+                .filter(Boolean),
+            ),
+          );
+          const profileIds = Array.from(
+            new Set(
+              projectsData
+                .flatMap((p) => [p.partner_id, p.broker_id])
                 .filter(Boolean),
             ),
           );
 
-          // 1. Gather IDs
-          const customerIds = Array.from(new Set(projectsData.map((p) => p.customer_id).filter(Boolean)));
-          const contactIds = Array.from(new Set(projectsData.flatMap((p) => [p.contractor_id, p.subcontractor_id]).filter(Boolean)));
-          const profileIds = Array.from(new Set(projectsData.flatMap((p) => [p.partner_id, p.broker_id]).filter(Boolean)));
+          // Fetch Customers
+          let customersMap: Record<string, any> = {};
+          if (customerIds.length > 0) {
+            const { data: customers } = await supabase
+              .from("customers")
+              .select("id, customer_number, name, email, phone, address")
+              .in("id", customerIds);
+            if (customers) {
+              customersMap = customers.reduce(
+                (acc, c) => {
+                  acc[c.id] = c;
+                  return acc;
+                },
+                {} as Record<string, any>,
+              );
+            }
+          }
 
           // Fetch Contacts (Contractors/Subcontractors/Partners/Brokers)
           let contactsMap: Record<string, any> = {};
@@ -617,13 +633,6 @@ export default function AdminProjects() {
           }
 
           // Fetch Partners and Brokers from profiles (if they are authenticable users)
-          const partnerIds = Array.from(
-            new Set(projectsData.map((p) => p.partner_id).filter(Boolean)),
-          );
-          const brokerIds = Array.from(
-            new Set(projectsData.map((p) => p.broker_id).filter(Boolean)),
-          );
-          const profileIds = Array.from(new Set([...partnerIds, ...brokerIds]));
 
           let profilesMap: Record<string, any> = {};
           if (profileIds.length > 0) {
@@ -652,9 +661,10 @@ export default function AdminProjects() {
 
             // Extract work types and services
             const selectedWorkTypes =
-              (workTypesMap[p.id] || []).map((wt: any) => wt.work_type_key) || [];
+              p.project_work_types?.map((wt: any) => wt.work_type_key) || [];
             const selectedAdditionalServices =
-              (servicesMap[p.id] || []).map((s: any) => s.service_id) || [];
+              p.project_additional_services?.map((s: any) => s.service_id) ||
+              [];
 
             // Determine status color
             let statusColor = "bg-purple-600 text-white";
@@ -704,14 +714,14 @@ export default function AdminProjects() {
               selectedAdditionalServices,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })
                 : new Date(p.created_at || Date.now()).toLocaleDateString(
-                  "en-US",
-                  { year: "numeric", month: "short", day: "numeric" },
-                ),
+                    "en-US",
+                    { year: "numeric", month: "short", day: "numeric" },
+                  ),
               scheduledStart: p.scheduled_start || "",
               amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
               status: p.status || "Scheduled",
@@ -882,7 +892,7 @@ export default function AdminProjects() {
             const units = newProject.indoorUnits || 0;
             const price =
               PRICING_MATRIX.baseCosts[units]?.[
-              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
               ] || 0;
             return {
               project_id: supabaseProjectId,
@@ -956,11 +966,11 @@ export default function AdminProjects() {
         const updatedProjects = projects.map((p) =>
           p.id === editingId
             ? {
-              ...p,
-              ...projectData,
-              status: p.status,
-              statusColor: p.statusColor,
-            }
+                ...p,
+                ...projectData,
+                status: p.status,
+                statusColor: p.statusColor,
+              }
             : p,
         );
         setProjects(updatedProjects);
@@ -1190,7 +1200,8 @@ export default function AdminProjects() {
     const subName = project.sub;
     const subMonthlyCount = getMonthlyCount(subName, "sub") + 1;
     let subQuantityBonusAmount = 0;
-    if (subMonthlyCount >= 8 && subMonthlyCount <= 12) subQuantityBonusAmount = 150;
+    if (subMonthlyCount >= 8 && subMonthlyCount <= 12)
+      subQuantityBonusAmount = 150;
     else if (subMonthlyCount > 12 && subMonthlyCount <= 36)
       subQuantityBonusAmount = 330;
     else if (subMonthlyCount > 36) subQuantityBonusAmount = 600;
@@ -1712,7 +1723,7 @@ export default function AdminProjects() {
                                   </div>
 
                                   {project.workers &&
-                                    project.workers.length > 0 ? (
+                                  project.workers.length > 0 ? (
                                     <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
                                       <Table>
                                         <TableHeader className="bg-gray-50/50">
@@ -1822,7 +1833,7 @@ export default function AdminProjects() {
                                             Base Installation
                                           </div>
                                           {project.selectedWorkTypes &&
-                                            project.selectedWorkTypes.length >
+                                          project.selectedWorkTypes.length >
                                             0 ? (
                                             <div className="grid gap-2">
                                               {project.selectedWorkTypes.map(
@@ -1832,7 +1843,7 @@ export default function AdminProjects() {
                                                     project.indoorUnits || 0;
                                                   const unitCosts =
                                                     PRICING_MATRIX.baseCosts[
-                                                    units
+                                                      units
                                                     ] || {};
                                                   const cost =
                                                     (unitCosts as any)[type] ||
@@ -2273,7 +2284,7 @@ export default function AdminProjects() {
                                           Base Installation
                                         </div>
                                         {item.selectedWorkTypes &&
-                                          item.selectedWorkTypes.length > 0 ? (
+                                        item.selectedWorkTypes.length > 0 ? (
                                           <div className="grid gap-2">
                                             {item.selectedWorkTypes.map(
                                               (type: string) => {
@@ -2282,7 +2293,7 @@ export default function AdminProjects() {
                                                   item.indoorUnits || 0;
                                                 const unitCosts =
                                                   PRICING_MATRIX.baseCosts[
-                                                  units
+                                                    units
                                                   ] || {};
                                                 const cost =
                                                   (unitCosts as any)[type] || 0;
@@ -2314,7 +2325,7 @@ export default function AdminProjects() {
                                       {/* Additional Services */}
                                       {item.selectedAdditionalServices &&
                                         item.selectedAdditionalServices.length >
-                                        0 && (
+                                          0 && (
                                           <div className="space-y-2 mt-4">
                                             <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
                                               Extras
@@ -2669,7 +2680,7 @@ export default function AdminProjects() {
                         Units):
                       </span>
                       {currentInvoice.projectData?.selectedWorkTypes?.length >
-                        0 ? (
+                      0 ? (
                         <ul className="space-y-1">
                           {currentInvoice.projectData.selectedWorkTypes.map(
                             (type: string) => {
@@ -2677,7 +2688,7 @@ export default function AdminProjects() {
                                 currentInvoice.projectData?.indoorUnits || 0;
                               const cost =
                                 PRICING_MATRIX.baseCosts[units]?.[
-                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                                 ] || 0;
 
                               return (
@@ -2714,10 +2725,11 @@ export default function AdminProjects() {
 
                       {/* Quality Bonus Card */}
                       <div
-                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.qualityBonus.enabled
-                          ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
-                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                          }`}
+                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                          invoiceEditState.qualityBonus.enabled
+                            ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
+                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                        }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -2745,10 +2757,11 @@ export default function AdminProjects() {
                               <div className="mt-0.5">
                                 <Badge
                                   variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.qualityBonus.enabled
-                                    ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
-                                    : "text-gray-500 border-gray-300"
-                                    }`}
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${
+                                    invoiceEditState.qualityBonus.enabled
+                                      ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
+                                      : "text-gray-500 border-gray-300"
+                                  }`}
                                 >
                                   {invoiceEditState.qualityBonus.label ||
                                     "Indoor Units"}
@@ -2758,10 +2771,11 @@ export default function AdminProjects() {
                           </div>
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-sm font-medium ${invoiceEditState.qualityBonus.enabled
-                                ? "text-blue-600 dark:text-blue-400"
-                                : "text-gray-400"
-                                }`}
+                              className={`text-sm font-medium ${
+                                invoiceEditState.qualityBonus.enabled
+                                  ? "text-blue-600 dark:text-blue-400"
+                                  : "text-gray-400"
+                              }`}
                             >
                               + €
                             </span>
@@ -2779,10 +2793,11 @@ export default function AdminProjects() {
                                   },
                                 })
                               }
-                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.qualityBonus.enabled
-                                ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
-                                : "bg-transparent border-transparent"
-                                }`}
+                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                                invoiceEditState.qualityBonus.enabled
+                                  ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
                             />
                           </div>
                         </div>
@@ -2790,10 +2805,11 @@ export default function AdminProjects() {
 
                       {/* Quantity Bonus Card */}
                       <div
-                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.quantityBonus.enabled
-                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                          }`}
+                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                          invoiceEditState.quantityBonus.enabled
+                            ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                        }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -2821,10 +2837,11 @@ export default function AdminProjects() {
                               <div className="flex items-center gap-2 mt-0.5">
                                 <Badge
                                   variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.quantityBonus.enabled
-                                    ? "bg-white/50 text-green-700 border-green-300 dark:border-green-700 dark:text-green-400"
-                                    : "text-gray-500 border-gray-300"
-                                    }`}
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${
+                                    invoiceEditState.quantityBonus.enabled
+                                      ? "bg-white/50 text-green-700 border-green-300 dark:border-green-700 dark:text-green-400"
+                                      : "text-gray-500 border-gray-300"
+                                  }`}
                                 >
                                   {invoiceEditState.quantityBonus.label ||
                                     "Volume Tier"}
@@ -2864,10 +2881,11 @@ export default function AdminProjects() {
                               }
                             >
                               <SelectTrigger
-                                className={`h-7 w-40 text-right font-mono font-bold text-sm ${invoiceEditState.quantityBonus.enabled
-                                  ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                                  }`}
+                                className={`h-7 w-40 text-right font-mono font-bold text-sm ${
+                                  invoiceEditState.quantityBonus.enabled
+                                    ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                    : "bg-transparent border-transparent"
+                                }`}
                               >
                                 <SelectValue placeholder="Select Tier" />
                               </SelectTrigger>
@@ -2884,11 +2902,11 @@ export default function AdminProjects() {
                                 </SelectItem>
                               </SelectContent>
                             </Select>
-                          </div >
-                        </div >
-                      </div >
-                    </div >
-                  </div >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="border-t border-dashed my-2"></div>
 
@@ -2925,7 +2943,6 @@ export default function AdminProjects() {
                         </span>
                       </div>
 
-
                       {/* Mediator (10% or -) */}
                       <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
                         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -2935,18 +2952,18 @@ export default function AdminProjects() {
                         <span className="font-mono font-medium">
                           {currentInvoice.hasMediator
                             ? `€ ${(
-                              (invoiceEditState.projectValue +
-                                (invoiceEditState.quantityBonus.enabled
-                                  ? invoiceEditState.quantityBonus.amount
-                                  : 0) +
-                                (invoiceEditState.qualityBonus.enabled
-                                  ? invoiceEditState.qualityBonus.amount
-                                  : 0)) *
-                              0.1
-                            ).toLocaleString("de-DE", {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}`
+                                (invoiceEditState.projectValue +
+                                  (invoiceEditState.quantityBonus.enabled
+                                    ? invoiceEditState.quantityBonus.amount
+                                    : 0) +
+                                  (invoiceEditState.qualityBonus.enabled
+                                    ? invoiceEditState.qualityBonus.amount
+                                    : 0)) *
+                                0.1
+                              ).toLocaleString("de-DE", {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              })}`
                             : "-"}
                         </span>
                       </div>
@@ -3003,8 +3020,8 @@ export default function AdminProjects() {
                           })}
                         </span>
                       </div>
-                    </div >
-                  </div >
+                    </div>
+                  </div>
 
                   {/* 4. Subcontractor Settlement (Separate Comp) */}
                   <div className="space-y-3 pt-2">
@@ -3055,10 +3072,11 @@ export default function AdminProjects() {
                             <div className="flex items-center gap-2 mt-0.5">
                               <Badge
                                 variant="outline"
-                                className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.subQuantityBonus?.enabled
-                                  ? "bg-orange-100 text-orange-700 border-orange-300"
-                                  : "text-gray-500 border-gray-300"
-                                  }`}
+                                className={`text-[10px] h-4 px-1.5 font-normal ${
+                                  invoiceEditState.subQuantityBonus?.enabled
+                                    ? "bg-orange-100 text-orange-700 border-orange-300"
+                                    : "text-gray-500 border-gray-300"
+                                }`}
                               >
                                 {invoiceEditState.subQuantityBonus?.label ||
                                   "Sub Tier"}
@@ -3074,10 +3092,11 @@ export default function AdminProjects() {
 
                         <div className="flex items-center gap-2">
                           <span
-                            className={`text-sm font-medium ${invoiceEditState.subQuantityBonus?.enabled
-                              ? "text-orange-600"
-                              : "text-gray-400"
-                              }`}
+                            className={`text-sm font-medium ${
+                              invoiceEditState.subQuantityBonus?.enabled
+                                ? "text-orange-600"
+                                : "text-gray-400"
+                            }`}
                           >
                             + €
                           </span>
@@ -3089,9 +3108,9 @@ export default function AdminProjects() {
                             value={
                               invoiceEditState.subQuantityBonus?.amount
                                 ? (
-                                  invoiceEditState.subQuantityBonus.amount *
-                                  0.7
-                                ).toFixed(2)
+                                    invoiceEditState.subQuantityBonus.amount *
+                                    0.7
+                                  ).toFixed(2)
                                 : 0
                             }
                             onChange={(e) => {
@@ -3122,10 +3141,11 @@ export default function AdminProjects() {
                                 },
                               });
                             }}
-                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.subQuantityBonus?.enabled
-                              ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
-                              : "bg-transparent border-transparent"
-                              }`}
+                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                              invoiceEditState.subQuantityBonus?.enabled
+                                ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                : "bg-transparent border-transparent"
+                            }`}
                           />
                         </div>
                       </div>
@@ -3148,15 +3168,15 @@ export default function AdminProjects() {
                         </span>
                       </div>
                     </div>
-                  </div >
-                </div >
+                  </div>
+                </div>
 
                 {/* Review Checkbox */}
                 {/* Review Checkbox removed */}
-              </TabsContent >
+              </TabsContent>
 
               {/* SUBCONTRACTOR TAB */}
-              < TabsContent value="subcontractor" className="space-y-4" >
+              <TabsContent value="subcontractor" className="space-y-4">
                 <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
                   {/* Header Info */}
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -3190,7 +3210,7 @@ export default function AdminProjects() {
                         Work Types:
                       </span>
                       {currentInvoice.projectData?.selectedWorkTypes?.length >
-                        0 ? (
+                      0 ? (
                         <ul className="space-y-1">
                           {currentInvoice.projectData.selectedWorkTypes.map(
                             (type: string) => {
@@ -3198,7 +3218,7 @@ export default function AdminProjects() {
                                 currentInvoice.projectData?.indoorUnits || 0;
                               const baseCost =
                                 PRICING_MATRIX.baseCosts[units]?.[
-                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                                 ] || 0;
                               const subCost = baseCost * 0.7; // 70% share
 
@@ -3231,47 +3251,47 @@ export default function AdminProjects() {
                     {/* Additional Services */}
                     {currentInvoice.projectData?.selectedAdditionalServices
                       ?.length > 0 && (
-                        <div>
-                          <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
-                          <span className="text-muted-foreground block font-semibold mb-1">
-                            Additional Services:
-                          </span>
-                          <div className="space-y-1">
-                            {currentInvoice.projectData.selectedAdditionalServices.map(
-                              (s: string) => {
-                                const service = ADDITIONAL_SERVICES.find(
-                                  (as) => as.id === s,
-                                );
-                                // 70% calculation for additional services as well
-                                const basePrice = service?.price || 0;
-                                const subPrice = basePrice * 0.7;
+                      <div>
+                        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-2"></div>
+                        <span className="text-muted-foreground block font-semibold mb-1">
+                          Additional Services:
+                        </span>
+                        <div className="space-y-1">
+                          {currentInvoice.projectData.selectedAdditionalServices.map(
+                            (s: string) => {
+                              const service = ADDITIONAL_SERVICES.find(
+                                (as) => as.id === s,
+                              );
+                              // 70% calculation for additional services as well
+                              const basePrice = service?.price || 0;
+                              const subPrice = basePrice * 0.7;
 
-                                return (
-                                  <div
-                                    key={s}
-                                    className="flex items-start gap-2 justify-between"
-                                  >
-                                    <div className="flex items-start gap-2">
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[10px] px-1.5 py-0 h-auto font-normal"
-                                      >
-                                        Extra
-                                      </Badge>
-                                      <span className="leading-tight text-xs">
-                                        {service?.label || s}
-                                      </span>
-                                    </div>
-                                    <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                      € {subPrice.toFixed(2)}
+                              return (
+                                <div
+                                  key={s}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] px-1.5 py-0 h-auto font-normal"
+                                    >
+                                      Extra
+                                    </Badge>
+                                    <span className="leading-tight text-xs">
+                                      {service?.label || s}
                                     </span>
                                   </div>
-                                );
-                              },
-                            )}
-                          </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {subPrice.toFixed(2)}
+                                  </span>
+                                </div>
+                              );
+                            },
+                          )}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t border-dashed my-2"></div>
@@ -3280,10 +3300,11 @@ export default function AdminProjects() {
                   <div className="grid grid-cols-2 gap-4">
                     {/* Quality Bonus */}
                     <div
-                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.subQualityBonus.enabled
-                        ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                        : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                        }`}
+                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                        invoiceEditState.subQualityBonus.enabled
+                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                      }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -3312,10 +3333,11 @@ export default function AdminProjects() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span
-                            className={`text-sm font-medium ${invoiceEditState.subQualityBonus.enabled
-                              ? "text-green-600 dark:text-green-400"
-                              : "text-gray-400"
-                              }`}
+                            className={`text-sm font-medium ${
+                              invoiceEditState.subQualityBonus.enabled
+                                ? "text-green-600 dark:text-green-400"
+                                : "text-gray-400"
+                            }`}
                           >
                             + €
                           </span>
@@ -3332,10 +3354,11 @@ export default function AdminProjects() {
                                 },
                               })
                             }
-                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.subQualityBonus.enabled
-                              ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                              : "bg-transparent border-transparent"
-                              }`}
+                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                              invoiceEditState.subQualityBonus.enabled
+                                ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                : "bg-transparent border-transparent"
+                            }`}
                           />
                         </div>
                       </div>
@@ -3343,10 +3366,11 @@ export default function AdminProjects() {
 
                     {/* Quantity Bonus */}
                     <div
-                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.subQuantityBonus.enabled
-                        ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                        : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                        }`}
+                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                        invoiceEditState.subQuantityBonus.enabled
+                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                      }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -3400,10 +3424,11 @@ export default function AdminProjects() {
                             }
                           >
                             <SelectTrigger
-                              className={`h-7 w-28 text-right font-mono font-bold text-sm ${invoiceEditState.subQuantityBonus.enabled
-                                ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                : "bg-transparent border-transparent"
-                                }`}
+                              className={`h-7 w-28 text-right font-mono font-bold text-sm ${
+                                invoiceEditState.subQuantityBonus.enabled
+                                  ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
                             >
                               <SelectValue placeholder="Tier" />
                             </SelectTrigger>
@@ -3435,7 +3460,7 @@ export default function AdminProjects() {
                               currentInvoice.projectData?.indoorUnits || 0;
                             const base =
                               PRICING_MATRIX.baseCosts[units]?.[
-                              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                               ] || 0;
                             return acc + base * 0.7;
                           },
@@ -3469,152 +3494,149 @@ export default function AdminProjects() {
                   {/* Review Checkbox */}
                   {/* Review Checkbox removed */}
                 </div>
-              </TabsContent >
+              </TabsContent>
 
               {/* MEDIATOR TAB */}
-              < TabsContent value="company" className="space-y-4" >
-                {
-                  currentInvoice.hasMediator ? (
-                    <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
-                      {/* Header Info */}
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                            Project Name
-                          </span>
-                          <span className="font-medium">
-                            {currentInvoice.project}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                            Project ID
-                          </span>
-                          <span className="font-medium">{currentInvoice.id}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                            Project Address
-                          </span>
-                          <span
-                            className="font-medium truncate block"
-                            title={currentInvoice.address}
-                          >
-                            {currentInvoice.address || "N/A"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                            Subcontractor
-                          </span>
-                          <span className="font-medium">
-                            {currentInvoice.projectData?.sub || "N/A"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                            Partner
-                          </span>
-                          <span className="font-medium">
-                            {currentInvoice.projectData?.partner || "N/A"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                            Mediator
-                          </span>
-                          <span className="font-medium">
-                            {currentInvoice.projectData?.mediator}
-                          </span>
-                        </div>
+              <TabsContent value="company" className="space-y-4">
+                {currentInvoice.hasMediator ? (
+                  <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
+                    {/* Header Info */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Project Name
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.project}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Project ID
+                        </span>
+                        <span className="font-medium">{currentInvoice.id}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Project Address
+                        </span>
+                        <span
+                          className="font-medium truncate block"
+                          title={currentInvoice.address}
+                        >
+                          {currentInvoice.address || "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Subcontractor
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.sub || "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Partner
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.partner || "N/A"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Mediator
+                        </span>
+                        <span className="font-medium">
+                          {currentInvoice.projectData?.mediator}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-dashed my-2"></div>
+
+                    <div className="space-y-4">
+                      {/* Base Value */}
+                      <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          Base Project Value
+                        </span>
+                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                          €{" "}
+                          {invoiceEditState.projectValue.toLocaleString(
+                            "de-DE",
+                            {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            },
+                          )}
+                        </span>
                       </div>
 
-                      <div className="border-t border-dashed my-2"></div>
-
-                      <div className="space-y-4">
-                        {/* Base Value */}
-                        <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                      {/* Total with Bonuses */}
+                      <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                        <div className="flex flex-col">
                           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            Base Project Value
+                            Total Value (with Bonuses)
                           </span>
-                          <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
-                            €{" "}
-                            {invoiceEditState.projectValue.toLocaleString(
-                              "de-DE",
-                              {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              },
-                            )}
+                          <span className="text-xs text-muted-foreground">
+                            Base + Quality Bonus + Quantity Bonus
                           </span>
                         </div>
-
-                        {/* Total with Bonuses */}
-                        <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                              Total Value (with Bonuses)
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              Base + Quality Bonus + Quantity Bonus
-                            </span>
-                          </div>
-                          <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
-                            €{" "}
-                            {(
-                              invoiceEditState.projectValue +
-                              (invoiceEditState.qualityBonus.enabled
-                                ? invoiceEditState.qualityBonus.amount
-                                : 0) +
-                              (invoiceEditState.quantityBonus.enabled
-                                ? invoiceEditState.quantityBonus.amount
-                                : 0)
-                            ).toLocaleString("de-DE", {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
-
-                        {/* Mediator Share */}
-                        <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
-                              Total Payable to Mediator
-                            </span>
-                            <span className="text-xs text-blue-600 dark:text-blue-400">
-                              (10% of Base Value)
-                            </span>
-                          </div>
-                          <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
-                            €{" "}
-                            {(
-                              invoiceEditState.projectValue *
-                              (invoiceEditState.mediatorSharePercent / 100)
-                            ).toLocaleString("de-DE", {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
+                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue +
+                            (invoiceEditState.qualityBonus.enabled
+                              ? invoiceEditState.qualityBonus.amount
+                              : 0) +
+                            (invoiceEditState.quantityBonus.enabled
+                              ? invoiceEditState.quantityBonus.amount
+                              : 0)
+                          ).toLocaleString("de-DE", {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
                       </div>
 
-                      <div className="border-t border-dashed my-2"></div>
+                      {/* Mediator Share */}
+                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
+                            Total Payable to Mediator
+                          </span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400">
+                            (10% of Base Value)
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
+                          €{" "}
+                          {(
+                            invoiceEditState.projectValue *
+                            (invoiceEditState.mediatorSharePercent / 100)
+                          ).toLocaleString("de-DE", {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    </div>
 
-                      {/* Review Checkbox */}
-                      {/* Review Checkbox removed */}
-                    </div>
-                  ) : (
-                    <div className="p-10 text-center text-muted-foreground border rounded bg-gray-50 flex flex-col items-center justify-center gap-2">
-                      <AlertCircle className="h-8 w-8 text-gray-300" />
-                      <p>No Mediator assigned to this project.</p>
-                    </div>
-                  )
-                }
-              </TabsContent >
-            </Tabs >
-          )
-          }
+                    <div className="border-t border-dashed my-2"></div>
+
+                    {/* Review Checkbox */}
+                    {/* Review Checkbox removed */}
+                  </div>
+                ) : (
+                  <div className="p-10 text-center text-muted-foreground border rounded bg-gray-50 flex flex-col items-center justify-center gap-2">
+                    <AlertCircle className="h-8 w-8 text-gray-300" />
+                    <p>No Mediator assigned to this project.</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
 
           <DialogFooter className="gap-2">
             <Button
@@ -3635,7 +3657,7 @@ export default function AdminProjects() {
                         currentInvoice.projectData?.indoorUnits || 0;
                       const base =
                         PRICING_MATRIX.baseCosts[units]?.[
-                        type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                          type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                         ] || 0;
                       return acc + base * 0.7;
                     },
@@ -3710,7 +3732,7 @@ export default function AdminProjects() {
                 // PARTNER Invoice
                 const partnerAmount =
                   invoiceEditState.projectValue *
-                  (invoiceEditState.partnerSharePercent / 100) +
+                    (invoiceEditState.partnerSharePercent / 100) +
                   (invoiceEditState.qualityBonus.enabled
                     ? invoiceEditState.qualityBonus.amount
                     : 0) +
@@ -3826,8 +3848,8 @@ export default function AdminProjects() {
               <CheckCircle2 className="mr-2 h-4 w-4" /> Register Invoices
             </Button>
           </DialogFooter>
-        </DialogContent >
-      </Dialog >
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={addProjectOpen}
         onOpenChange={(open) => {
@@ -4324,7 +4346,7 @@ export default function AdminProjects() {
                               // Recalculate
                               const currentCosts =
                                 PRICING_MATRIX.baseCosts[
-                                newProject.indoorUnits
+                                  newProject.indoorUnits
                                 ] || {};
                               let basePrice = 0;
                               newTypes.forEach((type) => {
@@ -4396,7 +4418,7 @@ export default function AdminProjects() {
                             // Recalculate
                             const currentCosts =
                               PRICING_MATRIX.baseCosts[
-                              newProject.indoorUnits
+                                newProject.indoorUnits
                               ] || {};
                             let basePrice = 0;
                             newProject.selectedWorkTypes.forEach((type) => {
@@ -4532,6 +4554,6 @@ export default function AdminProjects() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+    </div>
   );
 }

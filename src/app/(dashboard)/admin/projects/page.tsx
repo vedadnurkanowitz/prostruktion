@@ -174,6 +174,7 @@ export default function AdminProjects() {
     selectedAdditionalServices: [] as string[],
     customWorkTypes: [] as { label: string; price: number }[],
     workTypePrices: {} as Record<string, number>,
+    additionalServicePrices: {} as Record<string, number>,
   });
 
   const WORK_TYPE_LABELS: Record<string, string> = {
@@ -328,6 +329,7 @@ export default function AdminProjects() {
       indoorUnits: 0,
       customWorkTypes: [],
       workTypePrices: {},
+      additionalServicePrices: {},
       selectedWorkTypes: [
         "montage",
         "hydraulik",
@@ -688,9 +690,16 @@ export default function AdminProjects() {
                 workTypePrices[wt.work_type_key] = wt.price || 0;
               }
             });
-            const selectedAdditionalServices =
-              p.project_additional_services?.map((s: any) => s.service_id) ||
-              [];
+            const rawAdditionalServices = p.project_additional_services || [];
+            const selectedAdditionalServices = rawAdditionalServices.map(
+              (s: any) => s.service_id,
+            );
+            const additionalServicePrices: Record<string, number> = {};
+            rawAdditionalServices.forEach((s: any) => {
+              if (s.price !== undefined && s.price !== null) {
+                additionalServicePrices[s.service_id] = s.price;
+              }
+            });
 
             // Determine status color
             let statusColor = "bg-purple-600 text-white";
@@ -739,6 +748,7 @@ export default function AdminProjects() {
               selectedWorkTypes,
               customWorkTypes,
               workTypePrices,
+              additionalServicePrices,
               selectedAdditionalServices,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
@@ -959,10 +969,15 @@ export default function AdminProjects() {
               const service = ADDITIONAL_SERVICES.find(
                 (s) => s.id === serviceId,
               );
+              const price =
+                newProject.additionalServicePrices[serviceId] !== undefined
+                  ? newProject.additionalServicePrices[serviceId]
+                  : service?.price || 0;
+
               return {
                 project_id: supabaseProjectId,
                 service_id: serviceId,
-                price: service?.price || 0,
+                price: price,
               };
             },
           );
@@ -1081,6 +1096,7 @@ export default function AdminProjects() {
       selectedAdditionalServices: project.selectedAdditionalServices || [],
       customWorkTypes: project.customWorkTypes || [],
       workTypePrices: project.workTypePrices || {},
+      additionalServicePrices: project.additionalServicePrices || {},
       workers: project.workers || [],
     });
     setAddProjectOpen(true);
@@ -4491,10 +4507,15 @@ export default function AdminProjects() {
                     let servicesPrice = 0;
                     newProject.selectedAdditionalServices.forEach(
                       (serviceId) => {
-                        const service = ADDITIONAL_SERVICES.find(
-                          (s) => s.id === serviceId,
+                        const s = ADDITIONAL_SERVICES.find(
+                          (item) => item.id === serviceId,
                         );
-                        if (service) servicesPrice += service.price;
+                        const p =
+                          newProject.additionalServicePrices[serviceId] !==
+                          undefined
+                            ? newProject.additionalServicePrices[serviceId]
+                            : s?.price || 0;
+                        servicesPrice += p;
                       },
                     );
 
@@ -4584,10 +4605,18 @@ export default function AdminProjects() {
                               let servicesPrice = 0;
                               newProject.selectedAdditionalServices.forEach(
                                 (serviceId) => {
-                                  const service = ADDITIONAL_SERVICES.find(
-                                    (s) => s.id === serviceId,
+                                  const s = ADDITIONAL_SERVICES.find(
+                                    (item) => item.id === serviceId,
                                   );
-                                  if (service) servicesPrice += service.price;
+                                  const p =
+                                    newProject.additionalServicePrices[
+                                      serviceId
+                                    ] !== undefined
+                                      ? newProject.additionalServicePrices[
+                                          serviceId
+                                        ]
+                                      : s?.price || 0;
+                                  servicesPrice += p;
                                 },
                               );
 
@@ -4652,12 +4681,19 @@ export default function AdminProjects() {
                                     let servicesPrice = 0;
                                     newProject.selectedAdditionalServices.forEach(
                                       (serviceId) => {
-                                        const service =
-                                          ADDITIONAL_SERVICES.find(
-                                            (s) => s.id === serviceId,
-                                          );
-                                        if (service)
-                                          servicesPrice += service.price;
+                                        const s = ADDITIONAL_SERVICES.find(
+                                          (item) => item.id === serviceId,
+                                        );
+                                        const p =
+                                          newProject.additionalServicePrices[
+                                            serviceId
+                                          ] !== undefined
+                                            ? newProject
+                                                .additionalServicePrices[
+                                                serviceId
+                                              ]
+                                            : s?.price || 0;
+                                        servicesPrice += p;
                                       },
                                     );
                                     let customPrice = 0;
@@ -4734,10 +4770,18 @@ export default function AdminProjects() {
                                 let servicesPrice = 0;
                                 newProject.selectedAdditionalServices.forEach(
                                   (serviceId) => {
-                                    const service = ADDITIONAL_SERVICES.find(
-                                      (s) => s.id === serviceId,
+                                    const s = ADDITIONAL_SERVICES.find(
+                                      (item) => item.id === serviceId,
                                     );
-                                    if (service) servicesPrice += service.price;
+                                    const p =
+                                      newProject.additionalServicePrices[
+                                        serviceId
+                                      ] !== undefined
+                                        ? newProject.additionalServicePrices[
+                                            serviceId
+                                          ]
+                                        : s?.price || 0;
+                                    servicesPrice += p;
                                   },
                                 );
 
@@ -4824,10 +4868,18 @@ export default function AdminProjects() {
                           let servicesPrice = 0;
                           newProject.selectedAdditionalServices.forEach(
                             (serviceId) => {
-                              const service = ADDITIONAL_SERVICES.find(
-                                (s) => s.id === serviceId,
+                              const s = ADDITIONAL_SERVICES.find(
+                                (item) => item.id === serviceId,
                               );
-                              if (service) servicesPrice += service.price;
+                              const p =
+                                newProject.additionalServicePrices[
+                                  serviceId
+                                ] !== undefined
+                                  ? newProject.additionalServicePrices[
+                                      serviceId
+                                    ]
+                                  : s?.price || 0;
+                              servicesPrice += p;
                             },
                           );
 
@@ -4859,79 +4911,170 @@ export default function AdminProjects() {
                     Additional Services
                   </label>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                    {ADDITIONAL_SERVICES.map((service) => (
-                      <div
-                        key={service.id}
-                        className="flex items-center space-x-2 bg-white dark:bg-slate-950 p-2 rounded border hover:bg-slate-50 transition-colors"
-                      >
-                        <Checkbox
-                          id={`service-${service.id}`}
-                          checked={newProject.selectedAdditionalServices.includes(
-                            service.id,
-                          )}
-                          onCheckedChange={(checked) => {
-                            let newServices = [
-                              ...newProject.selectedAdditionalServices,
-                            ];
-                            if (checked) {
-                              newServices.push(service.id);
-                            } else {
-                              newServices = newServices.filter(
-                                (s) => s !== service.id,
+                    {ADDITIONAL_SERVICES.map((service) => {
+                      const currentPrice =
+                        newProject.additionalServicePrices[service.id] !==
+                        undefined
+                          ? newProject.additionalServicePrices[service.id]
+                          : service.price;
+
+                      const isSelected =
+                        newProject.selectedAdditionalServices.includes(
+                          service.id,
+                        );
+
+                      return (
+                        <div
+                          key={service.id}
+                          className="flex items-center space-x-2 bg-white dark:bg-slate-950 p-2 rounded border hover:bg-slate-50 transition-colors"
+                        >
+                          <Checkbox
+                            id={`service-${service.id}`}
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              let newServices = [
+                                ...newProject.selectedAdditionalServices,
+                              ];
+                              let newPrices = {
+                                ...newProject.additionalServicePrices,
+                              };
+
+                              if (checked) {
+                                newServices.push(service.id);
+                                if (newPrices[service.id] === undefined) {
+                                  newPrices[service.id] = service.price;
+                                }
+                              } else {
+                                newServices = newServices.filter(
+                                  (s) => s !== service.id,
+                                );
+                                delete newPrices[service.id];
+                              }
+
+                              // Recalculate
+                              const currentCosts =
+                                PRICING_MATRIX.baseCosts[
+                                  newProject.indoorUnits
+                                ] || {};
+                              let basePrice = 0;
+                              newProject.selectedWorkTypes.forEach((type) => {
+                                const p =
+                                  newProject.workTypePrices[type] !== undefined
+                                    ? newProject.workTypePrices[type]
+                                    : (currentCosts as any)[type] || 0;
+                                basePrice += p;
+                              });
+
+                              let servicesPrice = 0;
+                              newServices.forEach((serviceId) => {
+                                const s = ADDITIONAL_SERVICES.find(
+                                  (item) => item.id === serviceId,
+                                );
+                                const p =
+                                  newPrices[serviceId] !== undefined
+                                    ? newPrices[serviceId]
+                                    : s?.price || 0;
+                                servicesPrice += p;
+                              });
+
+                              let customPrice = 0;
+                              newProject.customWorkTypes.forEach(
+                                (c) => (customPrice += c.price),
                               );
-                            }
 
-                            // Recalculate
-                            const currentCosts =
-                              PRICING_MATRIX.baseCosts[
-                                newProject.indoorUnits
-                              ] || {};
-                            let basePrice = 0;
-                            newProject.selectedWorkTypes.forEach((type) => {
-                              const p =
-                                newProject.workTypePrices[type] !== undefined
-                                  ? newProject.workTypePrices[type]
-                                  : (currentCosts as any)[type] || 0;
-                              basePrice += p;
-                            });
+                              setNewProject({
+                                ...newProject,
+                                selectedAdditionalServices: newServices,
+                                additionalServicePrices: newPrices,
+                                amount: (
+                                  basePrice +
+                                  servicesPrice +
+                                  customPrice
+                                ).toString(),
+                              });
+                            }}
+                          />
+                          <div className="flex-1 flex justify-between items-center">
+                            <label
+                              htmlFor={`service-${service.id}`}
+                              className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer block"
+                            >
+                              {service.label}
+                            </label>
+                            {isSelected ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-muted-foreground">
+                                  €
+                                </span>
+                                <Input
+                                  type="number"
+                                  className="h-6 w-16 text-[10px] px-1 py-0 text-right"
+                                  value={currentPrice}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    const newPrices = {
+                                      ...newProject.additionalServicePrices,
+                                      [service.id]: val,
+                                    };
 
-                            let servicesPrice = 0;
-                            newServices.forEach((serviceId) => {
-                              const s = ADDITIONAL_SERVICES.find(
-                                (item) => item.id === serviceId,
-                              );
-                              if (s) servicesPrice += s.price;
-                            });
+                                    // Recalculate
+                                    const currentCosts =
+                                      PRICING_MATRIX.baseCosts[
+                                        newProject.indoorUnits
+                                      ] || {};
+                                    let basePrice = 0;
+                                    newProject.selectedWorkTypes.forEach(
+                                      (type) => {
+                                        const p =
+                                          newProject.workTypePrices[type] !==
+                                          undefined
+                                            ? newProject.workTypePrices[type]
+                                            : (currentCosts as any)[type] || 0;
+                                        basePrice += p;
+                                      },
+                                    );
 
-                            let customPrice = 0;
-                            newProject.customWorkTypes.forEach(
-                              (c) => (customPrice += c.price),
-                            );
+                                    let servicesPrice = 0;
+                                    newProject.selectedAdditionalServices.forEach(
+                                      (serviceId) => {
+                                        const s = ADDITIONAL_SERVICES.find(
+                                          (item) => item.id === serviceId,
+                                        );
+                                        const p =
+                                          newPrices[serviceId] !== undefined
+                                            ? newPrices[serviceId]
+                                            : s?.price || 0;
+                                        servicesPrice += p;
+                                      },
+                                    );
 
-                            setNewProject({
-                              ...newProject,
-                              selectedAdditionalServices: newServices,
-                              amount: (
-                                basePrice +
-                                servicesPrice +
-                                customPrice
-                              ).toString(),
-                            });
-                          }}
-                        />
-                        <div className="flex-1">
-                          <label
-                            htmlFor={`service-${service.id}`}
-                            className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer block"
-                          >
-                            {service.label}
-                          </label>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            € {service.price}
-                          </p>
+                                    let customPrice = 0;
+                                    newProject.customWorkTypes.forEach(
+                                      (c) => (customPrice += c.price),
+                                    );
+
+                                    setNewProject({
+                                      ...newProject,
+                                      additionalServicePrices: newPrices,
+                                      amount: (
+                                        basePrice +
+                                        servicesPrice +
+                                        customPrice
+                                      ).toString(),
+                                    });
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                € {service.price}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>

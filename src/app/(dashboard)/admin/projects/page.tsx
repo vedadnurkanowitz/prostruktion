@@ -3336,15 +3336,9 @@ export default function AdminProjects() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="0">No Tier (€0)</SelectItem>
-                              <SelectItem value="150">
-                                Tier 1 (€150 &rarr; €105)
-                              </SelectItem>
-                              <SelectItem value="330">
-                                Tier 2 (€330 &rarr; €231)
-                              </SelectItem>
-                              <SelectItem value="600">
-                                Tier 3 (€600 &rarr; €420)
-                              </SelectItem>
+                              <SelectItem value="150">Tier 1 (€105)</SelectItem>
+                              <SelectItem value="330">Tier 2 (€231)</SelectItem>
+                              <SelectItem value="600">Tier 3 (€420)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

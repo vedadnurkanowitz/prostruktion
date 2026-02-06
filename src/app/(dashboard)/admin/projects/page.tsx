@@ -173,6 +173,7 @@ export default function AdminProjects() {
     ],
     selectedAdditionalServices: [] as string[],
     customWorkTypes: [] as { label: string; price: number }[],
+    workTypePrices: {} as Record<string, number>,
   });
 
   const WORK_TYPE_LABELS: Record<string, string> = {
@@ -326,6 +327,7 @@ export default function AdminProjects() {
       workers: [],
       indoorUnits: 0,
       customWorkTypes: [],
+      workTypePrices: {},
       selectedWorkTypes: [
         "montage",
         "hydraulik",
@@ -679,6 +681,13 @@ export default function AdminProjects() {
                 label: wt.work_type_key,
                 price: wt.price || 0,
               }));
+
+            const workTypePrices: Record<string, number> = {};
+            rawWorkTypes.forEach((wt: any) => {
+              if (WORK_TYPE_LABELS[wt.work_type_key]) {
+                workTypePrices[wt.work_type_key] = wt.price || 0;
+              }
+            });
             const selectedAdditionalServices =
               p.project_additional_services?.map((s: any) => s.service_id) ||
               [];
@@ -729,6 +738,7 @@ export default function AdminProjects() {
               indoorUnits: p.indoor_units || 0,
               selectedWorkTypes,
               customWorkTypes,
+              workTypePrices,
               selectedAdditionalServices,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
@@ -911,10 +921,14 @@ export default function AdminProjects() {
         ) {
           const standardInserts = newProject.selectedWorkTypes.map((type) => {
             const units = newProject.indoorUnits || 0;
-            const price =
+            const matrixPrice =
               PRICING_MATRIX.baseCosts[units]?.[
                 type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
               ] || 0;
+            const price =
+              newProject.workTypePrices[type] !== undefined
+                ? newProject.workTypePrices[type]
+                : matrixPrice;
             return {
               project_id: supabaseProjectId,
               work_type_key: type,
@@ -1066,6 +1080,7 @@ export default function AdminProjects() {
       selectedWorkTypes: project.selectedWorkTypes || [],
       selectedAdditionalServices: project.selectedAdditionalServices || [],
       customWorkTypes: project.customWorkTypes || [],
+      workTypePrices: project.workTypePrices || {},
       workers: project.workers || [],
     });
     setAddProjectOpen(true);
@@ -4466,7 +4481,11 @@ export default function AdminProjects() {
                     // Recalculate price
                     let basePrice = 0;
                     newProject.selectedWorkTypes.forEach((type) => {
-                      basePrice += (currentCosts as any)[type] || 0;
+                      const p =
+                        newProject.workTypePrices[type] !== undefined
+                          ? newProject.workTypePrices[type]
+                          : (currentCosts as any)[type] || 0;
+                      basePrice += p;
                     });
 
                     let servicesPrice = 0;
@@ -4513,7 +4532,14 @@ export default function AdminProjects() {
                     {Object.entries(WORK_TYPE_LABELS).map(([key, label]) => {
                       const unitCosts =
                         PRICING_MATRIX.baseCosts[newProject.indoorUnits] || {};
-                      const cost = (unitCosts as any)[key] || 0;
+                      const matrixCost = (unitCosts as any)[key] || 0;
+                      const currentPrice =
+                        newProject.workTypePrices[key] !== undefined
+                          ? newProject.workTypePrices[key]
+                          : matrixCost;
+
+                      const isSelected =
+                        newProject.selectedWorkTypes.includes(key);
 
                       return (
                         <div
@@ -4522,13 +4548,23 @@ export default function AdminProjects() {
                         >
                           <Checkbox
                             id={`work-${key}`}
-                            checked={newProject.selectedWorkTypes.includes(key)}
+                            checked={isSelected}
                             onCheckedChange={(checked) => {
                               let newTypes = [...newProject.selectedWorkTypes];
+                              let newPrices = { ...newProject.workTypePrices };
+
                               if (checked) {
                                 newTypes.push(key);
+                                // Initialize with current matrix cost if not present
+                                if (newPrices[key] === undefined) {
+                                  newPrices[key] = matrixCost;
+                                }
                               } else {
                                 newTypes = newTypes.filter((t) => t !== key);
+                                // Optional: Clear price override when unchecked?
+                                // Let's keep it in case they re-check, or clear it.
+                                // Clearing it is safer to reset to default.
+                                delete newPrices[key];
                               }
 
                               // Recalculate
@@ -4538,7 +4574,11 @@ export default function AdminProjects() {
                                 ] || {};
                               let basePrice = 0;
                               newTypes.forEach((type) => {
-                                basePrice += (currentCosts as any)[type] || 0;
+                                const p =
+                                  newPrices[type] !== undefined
+                                    ? newPrices[type]
+                                    : (currentCosts as any)[type] || 0;
+                                basePrice += p;
                               });
 
                               let servicesPrice = 0;
@@ -4559,6 +4599,7 @@ export default function AdminProjects() {
                               setNewProject({
                                 ...newProject,
                                 selectedWorkTypes: newTypes,
+                                workTypePrices: newPrices,
                                 amount: (
                                   basePrice +
                                   servicesPrice +
@@ -4567,16 +4608,81 @@ export default function AdminProjects() {
                               });
                             }}
                           />
-                          <div className="flex-1">
+                          <div className="flex-1 flex justify-between items-center">
                             <label
                               htmlFor={`work-${key}`}
                               className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer block"
                             >
                               {label}
                             </label>
-                            <p className="text-[10px] text-muted-foreground mt-1">
-                              € {cost}
-                            </p>
+                            {isSelected ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-muted-foreground">
+                                  €
+                                </span>
+                                <Input
+                                  type="number"
+                                  className="h-6 w-16 text-[10px] px-1 py-0 text-right"
+                                  value={currentPrice}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    const newPrices = {
+                                      ...newProject.workTypePrices,
+                                      [key]: val,
+                                    };
+
+                                    // Recalculate Total
+                                    // Use newPrices
+                                    const currentCosts =
+                                      PRICING_MATRIX.baseCosts[
+                                        newProject.indoorUnits
+                                      ] || {};
+                                    let basePrice = 0;
+                                    newProject.selectedWorkTypes.forEach(
+                                      (type) => {
+                                        const p =
+                                          newPrices[type] !== undefined
+                                            ? newPrices[type]
+                                            : (currentCosts as any)[type] || 0;
+                                        basePrice += p;
+                                      },
+                                    );
+
+                                    // Services & Custom (Existing)
+                                    let servicesPrice = 0;
+                                    newProject.selectedAdditionalServices.forEach(
+                                      (serviceId) => {
+                                        const service =
+                                          ADDITIONAL_SERVICES.find(
+                                            (s) => s.id === serviceId,
+                                          );
+                                        if (service)
+                                          servicesPrice += service.price;
+                                      },
+                                    );
+                                    let customPrice = 0;
+                                    newProject.customWorkTypes.forEach(
+                                      (c) => (customPrice += c.price),
+                                    );
+
+                                    setNewProject({
+                                      ...newProject,
+                                      workTypePrices: newPrices,
+                                      amount: (
+                                        basePrice +
+                                        servicesPrice +
+                                        customPrice
+                                      ).toString(),
+                                    });
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-muted-foreground">
+                                € {matrixCost}
+                              </p>
+                            )}
                           </div>
                         </div>
                       );
@@ -4616,7 +4722,12 @@ export default function AdminProjects() {
                                   ] || {};
                                 let basePrice = 0;
                                 newProject.selectedWorkTypes.forEach((type) => {
-                                  basePrice += (currentCosts as any)[type] || 0;
+                                  const p =
+                                    newProject.workTypePrices[type] !==
+                                    undefined
+                                      ? newProject.workTypePrices[type]
+                                      : (currentCosts as any)[type] || 0;
+                                  basePrice += p;
                                 });
 
                                 // 2. Services
@@ -4702,7 +4813,11 @@ export default function AdminProjects() {
                             {};
                           let basePrice = 0;
                           newProject.selectedWorkTypes.forEach((type) => {
-                            basePrice += (currentCosts as any)[type] || 0;
+                            const p =
+                              newProject.workTypePrices[type] !== undefined
+                                ? newProject.workTypePrices[type]
+                                : (currentCosts as any)[type] || 0;
+                            basePrice += p;
                           });
 
                           // 2. Services
@@ -4773,7 +4888,11 @@ export default function AdminProjects() {
                               ] || {};
                             let basePrice = 0;
                             newProject.selectedWorkTypes.forEach((type) => {
-                              basePrice += (currentCosts as any)[type] || 0;
+                              const p =
+                                newProject.workTypePrices[type] !== undefined
+                                  ? newProject.workTypePrices[type]
+                                  : (currentCosts as any)[type] || 0;
+                              basePrice += p;
                             });
 
                             let servicesPrice = 0;

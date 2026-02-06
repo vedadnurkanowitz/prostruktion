@@ -59,7 +59,7 @@ import {
 import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
-import { sendInvoiceEmail } from "@/app/actions-email";
+// import { sendInvoiceEmail } from "@/app/actions-email"; // Removed
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -3602,65 +3602,8 @@ export default function AdminProjects() {
 
                 const totalSubFee = subBaseFee + subBonusFee;
 
-                // Send email invoice
-                try {
-                  const emailResult = await sendInvoiceEmail({
-                    projectName: currentInvoice.project || "Unknown Project",
-                    projectAddress: currentInvoice.projectData?.address,
-                    partnerName: currentInvoice.projectData?.partner,
-                    mediatorName: currentInvoice.hasMediator
-                      ? currentInvoice.mediator
-                      : undefined,
-                    contractorName: currentInvoice.projectData?.contractor,
-                    subcontractorName: currentInvoice.projectData?.sub,
-                    projectValue: invoiceEditState.projectValue,
-                    qualityBonus: invoiceEditState.qualityBonus.enabled
-                      ? invoiceEditState.qualityBonus.amount
-                      : 0,
-                    quantityBonus: invoiceEditState.quantityBonus.enabled
-                      ? invoiceEditState.quantityBonus.amount
-                      : 0,
-                    partnerShare:
-                      invoiceEditState.projectValue *
-                      (invoiceEditState.partnerSharePercent / 100),
-                    mediatorShare: currentInvoice.hasMediator
-                      ? invoiceEditState.projectValue *
-                        (invoiceEditState.mediatorSharePercent / 100)
-                      : 0,
-                    subcontractorFee: totalSubFee,
-                    prostruktionFee:
-                      invoiceEditState.projectValue *
-                        (invoiceEditState.partnerSharePercent / 100) +
-                      (invoiceEditState.qualityBonus.enabled
-                        ? invoiceEditState.qualityBonus.amount
-                        : 0) +
-                      (invoiceEditState.quantityBonus.enabled
-                        ? invoiceEditState.quantityBonus.amount
-                        : 0),
-                    invoiceDate: new Date().toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    }),
-                  });
-
-                  if (emailResult.success) {
-                    console.log(
-                      "Invoice email sent successfully:",
-                      emailResult.id,
-                    );
-                  } else {
-                    console.error(
-                      "Failed to send invoice email:",
-                      emailResult.error,
-                    );
-                    alert(
-                      "Email sending failed. Invoice will still be recorded locally.",
-                    );
-                  }
-                } catch (emailError) {
-                  console.error("Email send error:", emailError);
-                }
+                // Email sending removed as per request
+                // Logic continues to register invoice locally
 
                 // 1. Update Project Status locally
                 const updatedProjects = [...projects];
@@ -3775,7 +3718,7 @@ export default function AdminProjects() {
                 setSuccessModalOpen(false);
               }}
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Send Included Invoices
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Register Invoices
             </Button>
           </DialogFooter>
         </DialogContent>

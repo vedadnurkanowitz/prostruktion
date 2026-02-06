@@ -3219,12 +3219,7 @@ export default function AdminProjects() {
                               !invoiceEditState.subQualityBonus?.enabled
                             }
                             value={
-                              invoiceEditState.subQualityBonus?.amount
-                                ? (
-                                    invoiceEditState.subQualityBonus.amount *
-                                    0.7
-                                  ).toFixed(2)
-                                : 0
+                              invoiceEditState.subQualityBonus?.amount || 0
                             }
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
@@ -3232,7 +3227,7 @@ export default function AdminProjects() {
                                 ...invoiceEditState,
                                 subQualityBonus: {
                                   ...invoiceEditState.subQualityBonus,
-                                  amount: val / 0.7,
+                                  amount: val, // Store full amount
                                 },
                               });
                             }}
@@ -3267,7 +3262,7 @@ export default function AdminProjects() {
                               htmlFor="sub-qty-bonus-chk"
                               className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
                             >
-                              Quantity Bonus (70%)
+                              Quantity Bonus
                             </label>
                             <div className="flex items-center gap-2 mt-0.5">
                               <Badge
@@ -3336,9 +3331,9 @@ export default function AdminProjects() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="0">No Tier (€0)</SelectItem>
-                              <SelectItem value="150">Tier 1 (€105)</SelectItem>
-                              <SelectItem value="330">Tier 2 (€231)</SelectItem>
-                              <SelectItem value="600">Tier 3 (€420)</SelectItem>
+                              <SelectItem value="150">Tier 1 (€150)</SelectItem>
+                              <SelectItem value="330">Tier 2 (€330)</SelectItem>
+                              <SelectItem value="600">Tier 3 (€600)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -3354,10 +3349,10 @@ export default function AdminProjects() {
                           {(
                             invoiceEditState.projectValue * 0.7 +
                             (invoiceEditState.subQuantityBonus?.enabled
-                              ? invoiceEditState.subQuantityBonus.amount * 0.7
+                              ? invoiceEditState.subQuantityBonus.amount
                               : 0) +
                             (invoiceEditState.subQualityBonus?.enabled
-                              ? invoiceEditState.subQualityBonus.amount * 0.7
+                              ? invoiceEditState.subQualityBonus.amount
                               : 0)
                           ).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
@@ -3897,10 +3892,10 @@ export default function AdminProjects() {
 
                 const subBonusFee =
                   (invoiceEditState.subQualityBonus.enabled
-                    ? invoiceEditState.subQualityBonus.amount * 0.7
+                    ? invoiceEditState.subQualityBonus.amount
                     : 0) +
                   (invoiceEditState.subQuantityBonus.enabled
-                    ? invoiceEditState.subQuantityBonus.amount * 0.7
+                    ? invoiceEditState.subQuantityBonus.amount
                     : 0);
 
                 const totalSubFee = subBaseFee + subBonusFee;

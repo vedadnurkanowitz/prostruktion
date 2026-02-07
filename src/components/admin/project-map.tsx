@@ -16,6 +16,8 @@ import {
   Briefcase,
   Search,
   Filter,
+  Navigation,
+  ArrowRight,
 } from "lucide-react";
 
 // OpenLayers imports
@@ -28,9 +30,12 @@ import VectorSource from "ol/source/Vector";
 import OSM from "ol/source/OSM";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
+import LineString from "ol/geom/LineString";
 import { fromLonLat } from "ol/proj";
 import { Style, Circle, Fill, Stroke, Text } from "ol/style";
 import Overlay from "ol/Overlay";
+import { createClient } from "@/lib/supabase/client";
+import { haversineDistance, formatDistance } from "@/utils/haversine";
 
 type Worker = {
   id: string;
@@ -70,6 +75,7 @@ type Company = {
 type Project = {
   project: string;
   address: string;
+  description?: string;
   status: string;
   statusColor: string;
   contractor?: string;
@@ -82,6 +88,7 @@ type Project = {
   lat?: number;
   lng?: number;
   complaints?: number;
+  isArchived?: boolean;
 };
 
 const getRandomInRange = (from: number, to: number, fixed: number) => {
@@ -96,9 +103,10 @@ const PROJECT_STATUS_COLORS: Record<string, string> = {
 };
 
 // Geocoding cache to avoid repeated API calls
+// Use a more persistent key structure if needed, but for now this is in-memory per session reload
+// unless we load it from localStorage.
 const geocodeCache: Record<string, { lat: number; lng: number } | null> = {};
 
-// Nominatim Geocoding Function
 const geocodeAddress = async (
   address: string,
 ): Promise<{ lat: number; lng: number } | null> => {
@@ -110,14 +118,10 @@ const geocodeAddress = async (
   }
 
   try {
-    // Nominatim requires a proper User-Agent
+    // Nominatim requires a proper User-Agent, but some browsers block it
+    // Moving to backend or removing custom header if blocked by CORS
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
-      {
-        headers: {
-          "User-Agent": "Prostruktion/1.0",
-        },
-      },
     );
 
     if (!response.ok) {
@@ -157,7 +161,11 @@ export default function ProjectMap() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showDetails, setShowDetails] = useState(false);
 
-  // Data from localStorage
+  // Data from Supabase
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const vectorSourceRef = useRef<VectorSource<Feature<Point>> | null>(null);
+
+  // Data from Supabase lists
   // Data from localStorage
   const [allWorkers, setAllWorkers] = useState<Worker[]>([]); // Cleared defaults
   const [subcontractors, setSubcontractors] = useState<Company[]>([]);
@@ -173,71 +181,121 @@ export default function ProjectMap() {
   const [filterPartner, setFilterPartner] = useState("all");
   const [filterContractor, setFilterContractor] = useState("all");
 
-  // Load companies and workers from localStorage
+  // Team Deployment State
+  const [showNearbyProjects, setShowNearbyProjects] = useState(false);
+  const [nearbyProjects, setNearbyProjects] = useState<
+    Array<Project & { distance: number }>
+  >([]);
+  const [assigningTeam, setAssigningTeam] = useState<string | null>(null);
+  const linesSourceRef = useRef<VectorSource | null>(null);
+
+  // 1. Unified Data Fetching Effect
   useEffect(() => {
-    // Load Subcontractors
-    try {
-      const storedSubs = localStorage.getItem("prostruktion_subcontractors");
-      if (storedSubs) {
-        const parsed = JSON.parse(storedSubs);
-        setSubcontractors(parsed);
-      }
-    } catch (e) {
-      console.error("Error loading subcontractors", e);
-    }
-
-    // Load Contractors
-    try {
-      const storedContractors = localStorage.getItem(
-        "prostruktion_contractors",
-      );
-      if (storedContractors) {
-        const parsed = JSON.parse(storedContractors);
-        setContractors(parsed);
-      }
-    } catch (e) {
-      console.error("Error loading contractors", e);
-    }
-
-    // Load Partners
-    try {
-      const storedPartners = localStorage.getItem("prostruktion_partners");
-      if (storedPartners) {
-        const parsed = JSON.parse(storedPartners);
-        setPartners(parsed);
-      }
-    } catch (e) {
-      console.error("Error loading partners", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-
     let isMounted = true;
 
-    const initializeMap = async () => {
-      let projects: Project[] = [];
+    const fetchData = async () => {
+      const supabase = createClient();
 
-      // Load Projects and Archive
-      const storedProjects = localStorage.getItem("prostruktion_projects_v1");
-      const storedArchive = localStorage.getItem("prostruktion_archive");
+      try {
+        // A. Fetch Lists (Workers, Companies)
+        const { data: workersData } = await supabase
+          .from("workers")
+          .select("*")
+          .eq("status", "Active");
+        if (workersData && isMounted) {
+          setAllWorkers(
+            workersData.map((w: any) => ({
+              id: w.id,
+              name: w.name,
+              role: w.role,
+              subRole: w.sub_role,
+              subcontractor: w.company_name,
+              status: w.status,
+              phone: w.phone,
+              email: w.email,
+              avatarSeed: w.avatar_seed || w.name,
+              successRate: w.success_rate || 98,
+              completedProjects: w.completed_projects || 0,
+              a1Status: "Valid",
+              certStatus: "Valid",
+            })),
+          );
+        }
 
-      let rawProjects: Project[] = [];
-      if (storedProjects) {
-        try {
-          rawProjects = [...rawProjects, ...JSON.parse(storedProjects)];
-        } catch (e) { }
-      }
-      if (storedArchive) {
-        try {
-          rawProjects = [...rawProjects, ...JSON.parse(storedArchive)];
-        } catch (e) { }
-      }
+        const { data: contacts } = await supabase.from("contacts").select("*");
+        const { data: profiles } = await supabase.from("profiles").select("*");
 
-      if (rawProjects.length > 0) {
-        try {
-          // Load real complaints aggregation
+        const allEntities: Company[] = [];
+        const nameMap: Record<string, string> = {};
+
+        if (profiles) {
+          profiles.forEach((p) => {
+            const name = p.company_name || p.full_name;
+            allEntities.push({
+              id: p.id,
+              name,
+              email: p.email,
+              status: "Active",
+              type: p.role,
+            });
+            nameMap[p.id] = name;
+          });
+        }
+        if (contacts) {
+          contacts.forEach((c) => {
+            const name = c.company_name || c.name;
+            allEntities.push({
+              id: c.id,
+              name,
+              email: c.email || "",
+              phone: c.phone || "",
+              status: "Active",
+              type: c.role,
+            });
+            nameMap[c.id] = name;
+          });
+        }
+
+        if (isMounted) {
+          setPartners(
+            allEntities.filter(
+              (e) =>
+                e.type === "partner" ||
+                e.type === "broker" ||
+                e.type === "mediator",
+            ),
+          );
+          setSubcontractors(
+            allEntities.filter((e) => e.type === "subcontractor"),
+          );
+          setContractors(allEntities.filter((e) => e.type === "contractor"));
+        }
+
+        // B. Fetch Projects
+        const { data: dbProjects } = await supabase
+          .from("projects")
+          .select(`*, project_workers(worker_id)`)
+          .order("created_at", { ascending: false });
+
+        if (dbProjects && isMounted) {
+          // Load caches
+          const storedCache = localStorage.getItem("prostruktion_geo_cache");
+          const localCacheMap: Record<string, { lat: number; lng: number }> =
+            {};
+          if (storedCache) {
+            try {
+              const parsed = JSON.parse(storedCache);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((p: any) => {
+                  if (p.project && p.lat)
+                    localCacheMap[p.project] = { lat: p.lat, lng: p.lng };
+                });
+              } else {
+                Object.assign(localCacheMap, parsed);
+              }
+            } catch (e) {}
+          }
+
           const storedComplaints = localStorage.getItem(
             "prostruktion_complaints",
           );
@@ -247,146 +305,160 @@ export default function ProjectMap() {
               const parsedC = JSON.parse(storedComplaints);
               if (Array.isArray(parsedC)) {
                 parsedC.forEach((c: any) => {
-                  if (c.project && (c.status1 === "red" || c.count > 0)) {
+                  if (c.project && (c.status1 === "red" || c.count > 0))
                     realComplaintsMap[c.project] =
                       (realComplaintsMap[c.project] || 0) + 1;
-                  }
                 });
               }
-            } catch (e) {
-              console.error("Error parsing complaints", e);
-            }
+            } catch (e) {}
           }
 
-          // Geocode projects that don't have coordinates
-          const geocodedProjects = await Promise.all(
-            rawProjects.map(async (p, index) => {
-              const isArchived =
-                p.status === "In Warranty" ||
-                p.status === "Expiring" ||
-                p.status === "Expired";
+          const rawProjects: Project[] = dbProjects.map((p: any) => {
+            const partnerName = nameMap[p.partner_id] || "";
+            const subName = nameMap[p.subcontractor_id] || "";
+            const contractorName = nameMap[p.contractor_id] || "";
+            const mediatorName = nameMap[p.broker_id] || "";
 
-              let latLng = { lat: p.lat, lng: p.lng };
+            const cached = localCacheMap[p.title];
+            let lat = p.lat || cached?.lat;
+            let lng = p.lng || cached?.lng;
 
-              // Only geocode if we don't have coordinates
-              if (!p.lat || !p.lng) {
-                // Add delay between geocoding requests (Nominatim rate limit: 1 req/sec)
-                if (index > 0) {
-                  await new Promise((resolve) => setTimeout(resolve, 1100));
-                }
+            const isArchived =
+              p.status === "In Warranty" ||
+              p.status === "Expiring" ||
+              p.status === "Expired";
+            const realCount = realComplaintsMap[p.title] || 0;
+            let complaints = realCount;
+            if (complaints === 0 && (p.status === "Finished" || isArchived)) {
+              complaints = p.complaints !== undefined ? p.complaints : 0;
+            }
 
-                const geocoded = await geocodeAddress(p.address);
-                if (geocoded) {
-                  latLng = geocoded;
-
-                  // Save geocoded coordinates back to localStorage
-                  const updatedProjects = JSON.parse(
-                    localStorage.getItem("prostruktion_projects_v1") || "[]",
-                  );
-                  const projectIndex = updatedProjects.findIndex(
-                    (proj: any) => proj.project === p.project,
-                  );
-                  if (projectIndex !== -1) {
-                    updatedProjects[projectIndex].lat = geocoded.lat;
-                    updatedProjects[projectIndex].lng = geocoded.lng;
-                    localStorage.setItem(
-                      "prostruktion_projects_v1",
-                      JSON.stringify(updatedProjects),
-                    );
-                  }
-                } else {
-                  // Fallback: center of Germany if geocoding fails
-                  latLng = { lat: 51.1657, lng: 10.4515 };
-                }
-              }
-
-              // Determine complaints
-              const realCount = realComplaintsMap[p.project] || 0;
-              let complaints = realCount;
-
-              if (complaints === 0 && (p.status === "Finished" || isArchived)) {
-                complaints = p.complaints !== undefined ? p.complaints : 0;
-              }
-
-              return {
-                ...p,
-                lat: latLng.lat,
-                lng: latLng.lng,
-                complaints,
-                isArchived,
-              };
-            }),
-          );
-
-          if (!isMounted) return;
-
-          // Filter projects
-          projects = geocodedProjects.filter((p: any) => {
-            // Apply dropdown filters
-            if (filterSub !== "all" && p.sub !== filterSub) return false;
-            if (
-              filterPartner !== "all" &&
-              p.partner !== filterPartner &&
-              p.mediator !== filterPartner
-            )
-              return false;
-            if (filterContractor !== "all" && p.contractor !== filterContractor)
-              return false;
-
-            // Include if has complaints
-            if (p.complaints && p.complaints > 0) return true;
-
-            // Include if Scheduled or Active (In Progress)
-            if (p.status === "Scheduled") return true;
-            if (p.status === "In Progress" || p.status === "active") return true;
-
-            return false;
+            return {
+              project: p.title,
+              address: p.address || "",
+              description: p.description,
+              status: p.status || "Scheduled",
+              statusColor: "",
+              contractor: contractorName,
+              sub: subName,
+              partner: partnerName,
+              mediator: mediatorName,
+              amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
+              start: p.actual_start
+                ? new Date(p.actual_start).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "",
+              workers: p.project_workers?.map((pw: any) => pw.worker_id) || [],
+              lat,
+              lng,
+              complaints,
+              isArchived,
+            } as Project;
           });
-        } catch (e) {
-          console.error("Error parsing projects for map", e);
+
+          console.log(
+            "[Map Debug] Fetched",
+            rawProjects.length,
+            "projects from Supabase:",
+            rawProjects.map((p) => p.project + ":" + p.status),
+          );
+
+          // 1. Set initial projects immediately (show even without geocoding)
+          if (isMounted) setAllProjects(rawProjects);
+
+          // 2. Background Geocoding
+          const processGeocoding = async () => {
+            let updated = false;
+            // Clone array to avoid mutation issues, though we will update indices
+            const workingProjects = [...rawProjects];
+
+            for (let i = 0; i < workingProjects.length; i++) {
+              if (!isMounted) break;
+              const p = workingProjects[i];
+
+              if (!p.lat || !p.lng) {
+                // Delay to respect rate limit if not first
+                if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+                if (!isMounted) break;
+
+                try {
+                  const geocoded = await geocodeAddress(p.address);
+
+                  if (geocoded) {
+                    p.lat = geocoded.lat;
+                    p.lng = geocoded.lng;
+
+                    // Update Cache
+                    try {
+                      const geoCache = JSON.parse(
+                        localStorage.getItem("prostruktion_geo_cache") || "{}",
+                      );
+                      geoCache[p.project] = {
+                        lat: geocoded.lat,
+                        lng: geocoded.lng,
+                      };
+                      localStorage.setItem(
+                        "prostruktion_geo_cache",
+                        JSON.stringify(geoCache),
+                      );
+                    } catch (e) {}
+                  } else {
+                    // Mark as defaulted to avoid re-trying endlessly?
+                    // For now just set to default in state implicitly by loop finishing
+                    // But finding it again next reload will retry. Acceptable.
+                    p.lat = 51.1657;
+                    p.lng = 10.4515;
+                  }
+                  updated = true;
+                  // Update state progressively (optional: batch this if too many re-renders)
+                  if (isMounted) setAllProjects([...workingProjects]);
+                } catch (e) {
+                  console.error("Geocoding error in loop", e);
+                }
+              }
+            }
+            if (updated && isMounted) setAllProjects([...workingProjects]);
+          };
+
+          processGeocoding();
         }
+      } catch (e) {
+        console.error("Error fetching data", e);
       }
+    };
 
-      if (!isMounted) return;
+    fetchData();
 
-      const features = projects.map((project) => {
-        const feature = new Feature({
-          geometry: new Point(fromLonLat([project.lng!, project.lat!])),
-          project: project,
-        });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-        const color = PROJECT_STATUS_COLORS[project.status] || "#64748b";
+  // 2. Initialize Map Effect
+  useEffect(() => {
+    if (mapRef.current && !map) {
+      const vectorSource = new VectorSource({ features: [] });
+      vectorSourceRef.current = vectorSource;
 
-        if (project.complaints && project.complaints > 0) {
-          feature.setStyle(
-            new Style({
-              text: new Text({
-                text: "!",
-                font: "900 24px sans-serif",
-                fill: new Fill({ color: "#ef4444" }),
-                stroke: new Stroke({ color: "#ffffff", width: 3 }),
-                offsetY: 0,
-              }),
-              zIndex: 10,
-            }),
-          );
-        } else {
-          feature.setStyle(
-            new Style({
-              image: new Circle({
-                radius: 10,
-                fill: new Fill({ color: color }),
-                stroke: new Stroke({ color: "#ffffff", width: 2 }),
-              }),
-            }),
-          );
-        }
-
-        return feature;
-      });
-
-      const vectorSource = new VectorSource({ features });
       const vectorLayer = new VectorLayer({ source: vectorSource });
+
+      // Lines layer for team deployment visualization
+      const linesSource = new VectorSource({ features: [] });
+      linesSourceRef.current = linesSource;
+      const linesLayer = new VectorLayer({
+        source: linesSource,
+        style: new Style({
+          stroke: new Stroke({
+            color: "#22c55e",
+            width: 3,
+            lineDash: [5, 5],
+          }),
+        }),
+        zIndex: 100, // Ensure lines are on top
+      });
 
       const popup = new Overlay({
         element: popupRef.current!,
@@ -397,7 +469,7 @@ export default function ProjectMap() {
 
       const olMap = new OLMap({
         target: mapRef.current!,
-        layers: [new TileLayer({ source: new OSM() }), vectorLayer],
+        layers: [new TileLayer({ source: new OSM() }), vectorLayer, linesLayer],
         view: new View({
           center: fromLonLat([10.4515, 51.1657]),
           zoom: 6,
@@ -425,24 +497,84 @@ export default function ProjectMap() {
       });
 
       setMap(olMap);
-    };
+    }
+  }, [map]);
 
-    initializeMap();
+  // 3. Update Map Features (Filters) Effect
+  useEffect(() => {
+    console.log("[Map Debug] allProjects:", allProjects.length, "map:", !!map);
+    if (!map || !allProjects.length) return;
 
-    return () => {
-      isMounted = false;
-      if (map) {
-        map.setTarget(undefined);
+    const filtered = allProjects.filter((p) => {
+      // Apply dropdown filters
+      if (filterSub !== "all" && p.sub !== filterSub) return false;
+      if (
+        filterPartner !== "all" &&
+        p.partner !== filterPartner &&
+        p.mediator !== filterPartner
+      )
+        return false;
+      if (filterContractor !== "all" && p.contractor !== filterContractor)
+        return false;
+
+      // Hide finished and archived projects (unless they have complaints)
+      const status = (p.status || "").toLowerCase();
+      if (status === "finished") return false;
+      if (p.isArchived && (!p.complaints || p.complaints === 0)) return false;
+
+      return true;
+    });
+
+    console.log(
+      "[Map Debug] Filtered projects:",
+      filtered.length,
+      filtered.map((p) => p.project + ":" + p.status),
+    );
+
+    const features = filtered.map((project) => {
+      // Use default coords if missing (while geocoding)
+      const lat = project.lat || 51.1657;
+      const lng = project.lng || 10.4515;
+
+      const feature = new Feature({
+        geometry: new Point(fromLonLat([lng, lat])),
+        project: project,
+      });
+
+      const color = PROJECT_STATUS_COLORS[project.status] || "#64748b";
+
+      if (project.complaints && project.complaints > 0) {
+        feature.setStyle(
+          new Style({
+            text: new Text({
+              text: "!",
+              font: "900 24px sans-serif",
+              fill: new Fill({ color: "#ef4444" }),
+              stroke: new Stroke({ color: "#ffffff", width: 3 }),
+              offsetY: 0,
+            }),
+            zIndex: 10,
+          }),
+        );
+      } else {
+        feature.setStyle(
+          new Style({
+            image: new Circle({
+              radius: 10,
+              fill: new Fill({ color: color }),
+              stroke: new Stroke({ color: "#ffffff", width: 2 }),
+            }),
+          }),
+        );
       }
-    };
-  }, [
-    filterSub,
-    filterPartner,
-    filterContractor,
-    subcontractors,
-    partners,
-    contractors,
-  ]);
+      return feature;
+    });
+
+    if (vectorSourceRef.current) {
+      vectorSourceRef.current.clear();
+      vectorSourceRef.current.addFeatures(features);
+    }
+  }, [allProjects, filterSub, filterPartner, filterContractor, map]);
 
   const closePopup = () => {
     setSelectedProject(null);
@@ -463,6 +595,96 @@ export default function ProjectMap() {
   ): Company | null => {
     if (!name) return null;
     return list.find((c) => c.name === name) || null;
+  };
+
+  // Find nearby scheduled projects for team deployment
+  const findNearbyScheduledProjects = (fromProject: Project) => {
+    if (!fromProject.lat || !fromProject.lng) return;
+
+    const scheduledProjects = allProjects
+      .filter((p) => {
+        // Only scheduled projects that are not the current one
+        const status = (p.status || "").toLowerCase();
+        return (
+          status === "scheduled" &&
+          p.project !== fromProject.project &&
+          p.lat &&
+          p.lng
+        );
+      })
+      .map((p) => ({
+        ...p,
+        distance: haversineDistance(
+          fromProject.lat!,
+          fromProject.lng!,
+          p.lat!,
+          p.lng!,
+        ),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 5); // Top 5 closest
+
+    setNearbyProjects(scheduledProjects);
+    setShowNearbyProjects(true);
+
+    // Draw lines on map
+    if (linesSourceRef.current) {
+      linesSourceRef.current.clear();
+      console.log(
+        "[Lines Debug] Drawing lines from",
+        fromProject.project,
+        "to",
+        scheduledProjects.length,
+        "projects",
+      );
+
+      const fromCoord = fromLonLat([fromProject.lng!, fromProject.lat!]);
+
+      scheduledProjects.forEach((p) => {
+        const toCoord = fromLonLat([p.lng!, p.lat!]);
+
+        // Color based on distance
+        let color = "#22c55e"; // Green for < 50km
+        if (p.distance > 100) {
+          color = "#ef4444"; // Red for > 100km
+        } else if (p.distance > 50) {
+          color = "#eab308"; // Yellow for 50-100km
+        }
+
+        const lineFeature = new Feature({
+          geometry: new LineString([fromCoord, toCoord]),
+        });
+
+        lineFeature.setStyle(
+          new Style({
+            stroke: new Stroke({
+              color: color,
+              width: 3,
+              lineDash: [8, 8],
+            }),
+          }),
+        );
+
+        linesSourceRef.current!.addFeature(lineFeature);
+        console.log(
+          "[Lines Debug] Added line to",
+          p.project,
+          "distance:",
+          p.distance.toFixed(1),
+          "km",
+        );
+      });
+    } else {
+      console.log("[Lines Debug] linesSourceRef is null!");
+    }
+  };
+
+  // Clear lines when hiding nearby projects
+  const clearDeploymentLines = () => {
+    if (linesSourceRef.current) {
+      linesSourceRef.current.clear();
+    }
+    setShowNearbyProjects(false);
   };
 
   return (
@@ -511,18 +733,18 @@ export default function ProjectMap() {
         {(filterSub !== "all" ||
           filterPartner !== "all" ||
           filterContractor !== "all") && (
-            <button
-              onClick={() => {
-                setFilterSub("all");
-                setFilterPartner("all");
-                setFilterContractor("all");
-              }}
-              className="h-8 px-2 text-xs bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 rounded transition-colors"
-              title="Reset Filters"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setFilterSub("all");
+              setFilterPartner("all");
+              setFilterContractor("all");
+            }}
+            className="h-8 px-2 text-xs bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 rounded transition-colors"
+            title="Reset Filters"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div ref={mapRef} className="w-full h-full" />
@@ -659,63 +881,63 @@ export default function ProjectMap() {
                     selectedProject.partner
                       .toLowerCase()
                       .includes(companySearch.toLowerCase()))) && (
-                    <div className="relative">
-                      <CompanyCard
-                        label="Partner"
-                        name={selectedProject.partner}
-                        company={getCompanyByName(
-                          selectedProject.partner,
-                          partners,
-                        )}
-                        icon={<Users className="h-4 w-4 text-purple-500" />}
-                        color="purple"
-                      />
+                  <div className="relative">
+                    <CompanyCard
+                      label="Partner"
+                      name={selectedProject.partner}
+                      company={getCompanyByName(
+                        selectedProject.partner,
+                        partners,
+                      )}
+                      icon={<Users className="h-4 w-4 text-purple-500" />}
+                      color="purple"
+                    />
 
-                      {/* Mediator (Child) - Connected Visually */}
-                      {selectedProject.mediator &&
-                        selectedProject.mediator !== "-" &&
-                        (!companySearch ||
-                          selectedProject.mediator
-                            .toLowerCase()
-                            .includes(companySearch.toLowerCase())) && (
-                          <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
-                            <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                            <CompanyCard
-                              label="Mediator"
-                              name={selectedProject.mediator}
-                              company={null}
-                              icon={
-                                <Briefcase className="h-4 w-4 text-green-500" />
-                              }
-                              color="green"
-                            />
-                          </div>
-                        )}
+                    {/* Mediator (Child) - Connected Visually */}
+                    {selectedProject.mediator &&
+                      selectedProject.mediator !== "-" &&
+                      (!companySearch ||
+                        selectedProject.mediator
+                          .toLowerCase()
+                          .includes(companySearch.toLowerCase())) && (
+                        <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
+                          <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                          <CompanyCard
+                            label="Mediator"
+                            name={selectedProject.mediator}
+                            company={null}
+                            icon={
+                              <Briefcase className="h-4 w-4 text-green-500" />
+                            }
+                            color="green"
+                          />
+                        </div>
+                      )}
 
-                      {/* Subcontractor (Child) - Connected Visually */}
-                      {selectedProject.sub &&
-                        (!companySearch ||
-                          selectedProject.sub
-                            .toLowerCase()
-                            .includes(companySearch.toLowerCase())) && (
-                          <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
-                            <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                            <CompanyCard
-                              label="Subcontractor"
-                              name={selectedProject.sub}
-                              company={getCompanyByName(
-                                selectedProject.sub,
-                                subcontractors,
-                              )}
-                              icon={
-                                <HardHat className="h-4 w-4 text-orange-500" />
-                              }
-                              color="orange"
-                            />
-                          </div>
-                        )}
-                    </div>
-                  )}
+                    {/* Subcontractor (Child) - Connected Visually */}
+                    {selectedProject.sub &&
+                      (!companySearch ||
+                        selectedProject.sub
+                          .toLowerCase()
+                          .includes(companySearch.toLowerCase())) && (
+                        <div className="mt-2 ml-6 pl-4 border-l-2 border-gray-200 dark:border-gray-700 relative">
+                          <div className="absolute -left-[2px] top-6 w-3 h-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                          <CompanyCard
+                            label="Subcontractor"
+                            name={selectedProject.sub}
+                            company={getCompanyByName(
+                              selectedProject.sub,
+                              subcontractors,
+                            )}
+                            icon={
+                              <HardHat className="h-4 w-4 text-orange-500" />
+                            }
+                            color="orange"
+                          />
+                        </div>
+                      )}
+                  </div>
+                )}
 
                 {/* Fallback if searching for sub only and not showing partner logic above restricts it? 
                     Actually the above logic nests Sub. If I search for "Sub", I might want to see it even if Partner doesn't match?
@@ -826,12 +1048,13 @@ export default function ProjectMap() {
                                 </p>
                                 {worker.status && (
                                   <span
-                                    className={`w-2 h-2 rounded-full ${worker.status === "Active"
-                                      ? "bg-green-500"
-                                      : worker.status === "Blocked"
-                                        ? "bg-red-500"
-                                        : "bg-gray-400"
-                                      }`}
+                                    className={`w-2 h-2 rounded-full ${
+                                      worker.status === "Active"
+                                        ? "bg-green-500"
+                                        : worker.status === "Blocked"
+                                          ? "bg-red-500"
+                                          : "bg-gray-400"
+                                    }`}
                                     title={worker.status}
                                   />
                                 )}
@@ -849,10 +1072,11 @@ export default function ProjectMap() {
                           <div className="text-right">
                             <Badge
                               variant="outline"
-                              className={`text-[10px] h-5 px-1.5 ${worker.successRate && worker.successRate >= 95
-                                ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-900/20"
-                                : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20"
-                                }`}
+                              className={`text-[10px] h-5 px-1.5 ${
+                                worker.successRate && worker.successRate >= 95
+                                  ? "border-green-500 text-green-600 bg-green-50 dark:bg-green-900/20"
+                                  : "border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20"
+                              }`}
                             >
                               {worker.successRate}% Success
                             </Badge>
@@ -882,19 +1106,21 @@ export default function ProjectMap() {
                             </p>
                             <div className="flex flex-wrap gap-1 mt-1">
                               <span
-                                className={`text-[10px] px-1 rounded border ${worker.a1Status === "Valid"
-                                  ? "border-green-200 text-green-700 bg-green-50"
-                                  : "border-red-200 text-red-700 bg-red-50"
-                                  }`}
+                                className={`text-[10px] px-1 rounded border ${
+                                  worker.a1Status === "Valid"
+                                    ? "border-green-200 text-green-700 bg-green-50"
+                                    : "border-red-200 text-red-700 bg-red-50"
+                                }`}
                               >
                                 A1: {worker.a1Status || "N/A"}
                               </span>
                               {worker.certStatus && (
                                 <span
-                                  className={`text-[10px] px-1 rounded border ${worker.certStatus === "Valid"
-                                    ? "border-green-200 text-green-700 bg-green-50"
-                                    : "border-yellow-200 text-yellow-700 bg-yellow-50"
-                                    }`}
+                                  className={`text-[10px] px-1 rounded border ${
+                                    worker.certStatus === "Valid"
+                                      ? "border-green-200 text-green-700 bg-green-50"
+                                      : "border-yellow-200 text-yellow-700 bg-yellow-50"
+                                  }`}
                                 >
                                   Cert: {worker.certStatus}
                                 </span>
@@ -935,12 +1161,142 @@ export default function ProjectMap() {
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800/30 shrink-0">
+          <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800/30 shrink-0 space-y-2">
+            {/* Deploy Team Button - Only show for In Progress projects */}
+            {(selectedProject.status === "In Progress" ||
+              selectedProject.status === "in progress" ||
+              selectedProject.status === "Active" ||
+              selectedProject.status === "active") && (
+              <Button
+                size="sm"
+                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => findNearbyScheduledProjects(selectedProject)}
+              >
+                <Navigation className="h-4 w-4 mr-2" />
+                Find Next Job for Team
+              </Button>
+            )}
+
+            {/* Nearby Projects Panel */}
+            {showNearbyProjects && nearbyProjects.length > 0 && (
+              <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-3 mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                    <Navigation className="h-3 w-3 text-green-500" />
+                    Nearby Scheduled Projects
+                  </h4>
+                  <button
+                    onClick={() => clearDeploymentLines()}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {nearbyProjects.map((project) => (
+                    <div
+                      key={project.project}
+                      className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 hover:border-green-400 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                            {project.project}
+                          </p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                            {project.address}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] shrink-0 ml-2 ${
+                            project.distance < 50
+                              ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200"
+                              : project.distance < 100
+                                ? "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200"
+                                : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200"
+                          }`}
+                        >
+                          {formatDistance(project.distance)}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-7 text-[10px]"
+                          onClick={() => {
+                            setSelectedProject(project);
+                            clearDeploymentLines();
+                          }}
+                        >
+                          View Details
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 h-7 text-[10px] bg-green-600 hover:bg-green-700 text-white"
+                          disabled={assigningTeam === project.project}
+                          onClick={async () => {
+                            if (!selectedProject) return;
+                            setAssigningTeam(project.project);
+
+                            // Get workers from current (finished) project
+                            const workersToAssign =
+                              selectedProject.workers || [];
+
+                            if (workersToAssign.length === 0) {
+                              alert("No workers to assign from this project.");
+                              setAssigningTeam(null);
+                              return;
+                            }
+
+                            try {
+                              const supabase = createClient();
+
+                              // Add workers to target project
+                              for (const workerId of workersToAssign) {
+                                await supabase.from("project_workers").upsert(
+                                  {
+                                    project_id: project.project, // Using project name as ID for now
+                                    worker_id: workerId,
+                                  },
+                                  { onConflict: "project_id,worker_id" },
+                                );
+                              }
+
+                              alert(
+                                `Successfully assigned ${workersToAssign.length} worker(s) to ${project.project}`,
+                              );
+                              clearDeploymentLines();
+                            } catch (error) {
+                              console.error("Error assigning workers:", error);
+                              alert(
+                                "Failed to assign workers. Please try again.",
+                              );
+                            } finally {
+                              setAssigningTeam(null);
+                            }
+                          }}
+                        >
+                          {assigningTeam === project.project
+                            ? "Assigning..."
+                            : "Assign Team"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <Button
               variant="outline"
               size="sm"
               className="w-full"
-              onClick={() => setShowDetails(false)}
+              onClick={() => {
+                setShowDetails(false);
+                clearDeploymentLines();
+              }}
             >
               Back to Map
             </Button>
@@ -1009,12 +1365,13 @@ function CompanyCard({
         </div>
         {company && (
           <Badge
-            className={`text-[10px] px-1.5 h-5 ${company.status === "Active"
-              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200"
-              : company.status === "Blocked"
-                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200"
-                : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200"
-              }`}
+            className={`text-[10px] px-1.5 h-5 ${
+              company.status === "Active"
+                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200"
+                : company.status === "Blocked"
+                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200"
+                  : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200"
+            }`}
           >
             {company.status || "Active"}
           </Badge>
@@ -1031,10 +1388,11 @@ function CompanyCard({
             {[1, 2, 3, 4, 5].map((star) => (
               <svg
                 key={star}
-                className={`w-3 h-3 ${star <= Math.round(company.rating || 0)
-                  ? "text-yellow-400 fill-current"
-                  : "text-gray-300 fill-current"
-                  }`}
+                className={`w-3 h-3 ${
+                  star <= Math.round(company.rating || 0)
+                    ? "text-yellow-400 fill-current"
+                    : "text-gray-300 fill-current"
+                }`}
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
               >

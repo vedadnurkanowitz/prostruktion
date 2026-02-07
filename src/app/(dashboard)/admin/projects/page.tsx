@@ -104,6 +104,7 @@ export default function AdminProjects() {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [currentInvoice, setCurrentInvoice] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Invoice Editing State
   const [activeInvoiceTab, setActiveInvoiceTab] = useState("partner");
@@ -1273,9 +1274,11 @@ export default function AdminProjects() {
       }
 
       let color = "bg-primary text-primary-foreground";
+      if (newStatus === "Scheduled") color = "bg-purple-600 text-white";
       if (newStatus === "In Progress") color = "bg-orange-500 text-white";
       if (newStatus === "In Abnahme") color = "bg-yellow-500 text-black";
       if (newStatus === "Finished") color = "bg-green-600 text-white";
+      if (newStatus === "Archived") color = "bg-gray-500 text-white";
 
       updatedProjects[realIndex].status = newStatus;
       updatedProjects[realIndex].statusColor = color;
@@ -1414,15 +1417,17 @@ export default function AdminProjects() {
     (p) => p.status === "Scheduled",
   ).length;
   const activeProjects = projects.filter(
-    (p) => p.status === "In Progress",
+    (p) => p.status !== "Scheduled" && p.status !== "Archived",
   ).length;
   const abnahmeProjects = projects.filter(
     (p) => p.status === "In Abnahme",
   ).length;
   // const invoicingProjects removed
   // const invoicingProjects removed
-  // Archived projects count comes from separate local storage logic now
-  const archivedProjects = archivedCount;
+  // Archived projects count from DB
+  const archivedProjects = projects.filter(
+    (p) => p.status === "Archived",
+  ).length;
 
   return (
     <div className="space-y-6 w-full">
@@ -2156,7 +2161,9 @@ export default function AdminProjects() {
             </TableHeader>
             <TableBody>
               {paginatedProjects
-                .filter((p) => p.status !== "Scheduled")
+                .filter(
+                  (p) => p.status !== "Scheduled" && p.status !== "Archived",
+                )
                 .map((item, i) => {
                   // Calculate stats for accordion details
                   const {
@@ -2218,6 +2225,9 @@ export default function AdminProjects() {
                               <SelectValue>{item.status}</SelectValue>
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="Scheduled">
+                                ↩ Return to Scheduled
+                              </SelectItem>
                               <SelectItem value="In Progress">
                                 In Progress
                               </SelectItem>
@@ -2225,6 +2235,7 @@ export default function AdminProjects() {
                                 In Abnahme
                               </SelectItem>
                               <SelectItem value="Finished">Finished</SelectItem>
+                              <SelectItem value="Archived">Archived</SelectItem>
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -2828,6 +2839,163 @@ export default function AdminProjects() {
       </div>
 
       {/* Success Modal */}
+      {/* Archived Projects Section */}
+      <div className="space-y-4 pt-8 border-t mt-8">
+        <div
+          className="flex items-center justify-between cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-900/50 p-2 rounded-lg transition-colors"
+          onClick={() => setShowArchived(!showArchived)}
+        >
+          <div className="flex items-center gap-2">
+            <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded-full">
+              <Archive className="h-5 w-5 text-gray-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold tracking-tight text-gray-700 dark:text-gray-300">
+                Archived Projects
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {archivedProjects} projects archived
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm">
+            {showArchived ? (
+              <ChevronDown className="h-5 w-5 text-gray-400" />
+            ) : (
+              <ChevronRight className="h-5 w-5 text-gray-400" />
+            )}
+          </Button>
+        </div>
+
+        {showArchived && (
+          <div className="rounded-md border bg-gray-50/30 dark:bg-gray-900/20 overflow-x-auto fade-in-0 zoom-in-95 animate-in">
+            <Table>
+              <TableHeader className="bg-gray-100/50 dark:bg-gray-800/50">
+                <TableRow>
+                  <TableHead className="font-semibold text-gray-500">
+                    Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-500">
+                    Subcontractor
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-500">
+                    Date
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-500">
+                    Status
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-500">
+                    Amount
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-gray-500">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projects
+                  .filter((p) => p.status === "Archived")
+                  .map((item, i) => (
+                    <TableRow
+                      key={item.id || i}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex flex-col">
+                          <span>{item.project}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {item.address}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{item.sub}</TableCell>
+                      <TableCell>{item.start}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={item.status}
+                          onValueChange={async (newStatus) => {
+                            if (!item.id) return;
+                            const supabase = createClient();
+
+                            const { error } = await supabase
+                              .from("projects")
+                              .update({ status: newStatus })
+                              .eq("id", item.id);
+
+                            if (error) {
+                              console.error("Error updating status:", error);
+                              alert("Failed to update status");
+                              return;
+                            }
+
+                            // Determine color
+                            let color = "bg-gray-500 text-white";
+                            if (newStatus === "In Progress")
+                              color = "bg-orange-500 text-white";
+                            if (newStatus === "Scheduled")
+                              color = "bg-purple-600 text-white";
+
+                            setProjects((prev) =>
+                              prev.map((p) =>
+                                p.id === item.id
+                                  ? {
+                                      ...p,
+                                      status: newStatus,
+                                      statusColor: color,
+                                    }
+                                  : p,
+                              ),
+                            );
+                          }}
+                        >
+                          <SelectTrigger
+                            className={`w-[130px] h-8 border-0 ${item.statusColor || "bg-gray-500 text-white"}`}
+                          >
+                            <SelectValue>{item.status}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="In Progress">
+                              Re-Activate
+                            </SelectItem>
+                            <SelectItem value="Archived">Archived</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        €{" "}
+                        {(parseGermanFloat(item.amount) || 0).toLocaleString(
+                          "de-DE",
+                          { minimumFractionDigits: 2 },
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditClick(item)}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                {projects.filter((p) => p.status === "Archived").length ===
+                  0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      No archived projects found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
       <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -4257,6 +4425,28 @@ export default function AdminProjects() {
                         error,
                       );
                       throw error;
+                    }
+
+                    // Archive the project
+                    if (inv.id) {
+                      const { error: updateError } = await supabase
+                        .from("projects")
+                        .update({ status: "Archived" })
+                        .eq("id", inv.id);
+
+                      if (updateError) {
+                        console.error(
+                          "Failed to archive project:",
+                          updateError,
+                        );
+                      } else {
+                        // Update local state
+                        setProjects((prev) =>
+                          prev.map((p) =>
+                            p.id === inv.id ? { ...p, status: "Archived" } : p,
+                          ),
+                        );
+                      }
                     }
                   }
                   console.log("Invoices synced to Supabase successfully.");

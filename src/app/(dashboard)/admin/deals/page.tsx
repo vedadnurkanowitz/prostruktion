@@ -92,12 +92,37 @@ export default function FinancialDashboardPage() {
       try {
         const parsed = JSON.parse(storedInvoices);
         if (Array.isArray(parsed)) {
+          // Helper to deduplicate items by Project + Type (keeping newest)
+          const deduplicate = (items: any[]) => {
+            const uniqueMap = new Map();
+            // Sort by ID descending (newest first)
+            const sorted = [...items].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+            sorted.forEach((item) => {
+              // Composite key: Project Name + Invoice Type
+              // Identify duplicates based on validation of Project Identity + Invoice Type
+              const typeKey = item.action || item.type || "Invoice";
+              const projKey = item.projectId || item.project;
+              const uniqueKey = `${projKey}-${typeKey}`;
+
+              if (!uniqueMap.has(uniqueKey)) {
+                uniqueMap.set(uniqueKey, item);
+              }
+            });
+            return Array.from(uniqueMap.values());
+          };
+
+          // 0. Deduplicate ALL items first to handle cross-status duplicates
+          const uniqueItems = deduplicate(parsed);
+
           // 1. Separate "For Invoice" items
-          const forInvoice = parsed.filter((p) => p.status === "For Invoice");
+          const forInvoice = uniqueItems.filter(
+            (p) => p.status === "For Invoice",
+          );
           setForInvoiceProjects(forInvoice);
 
           // 2. Separate "Ready" items (waiting for batch invoice)
-          const ready = parsed.filter((p) => p.status === "Ready");
+          const ready = uniqueItems.filter((p) => p.status === "Ready");
           setReadyToInvoiceProjects(ready);
         }
       } catch (e) {

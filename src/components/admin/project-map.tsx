@@ -327,7 +327,8 @@ export default function ProjectMap() {
             const isArchived =
               p.status === "In Warranty" ||
               p.status === "Expiring" ||
-              p.status === "Expired";
+              p.status === "Expired" ||
+              p.status === "Archived";
             const realCount = realComplaintsMap[p.title] || 0;
             let complaints = realCount;
             if (complaints === 0 && (p.status === "Finished" || isArchived)) {
@@ -527,7 +528,7 @@ export default function ProjectMap() {
 
       // Hide finished and archived projects (unless they have complaints)
       const status = (p.status || "").toLowerCase();
-      if (status === "finished") return false;
+      if (status === "finished" || status === "archived") return false;
       if (p.isArchived && (!p.complaints || p.complaints === 0)) return false;
 
       return true;

@@ -784,12 +784,25 @@ export default function AdminProjects() {
                 ? p.scheduled_start.split("T")[0]
                 : "",
               amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
-              status: p.status || "Scheduled",
-              statusColor,
-              abnahme: p.status === "In Abnahme" ? "Yes" : "No",
+              // Status Masquerade Logic:
+              // If DB says "In Progress" but abnahme_confirmed is true, show "In Abnahme"
+              status:
+                p.status === "In Progress" && p.abnahme_confirmed
+                  ? "In Abnahme"
+                  : p.status || "Scheduled",
+              statusColor:
+                p.status === "In Progress" && p.abnahme_confirmed
+                  ? "bg-yellow-500 text-black"
+                  : statusColor,
+              abnahme:
+                p.status === "In Abnahme" ||
+                (p.status === "In Progress" && p.abnahme_confirmed)
+                  ? "Yes"
+                  : "No",
               invoiceHeader: "Create Invoice",
               invoiceStatus: "Ready",
               workers: p.project_workers?.map((pw: any) => pw.worker_id) || [],
+              abnahme_confirmed: p.abnahme_confirmed, // Keep raw value
             };
           });
 
@@ -1124,17 +1137,11 @@ export default function AdminProjects() {
     setAddProjectOpen(true);
   };
 
-  const handleStartProject = async (projectIndex: number) => {
+  const handleStartProject = async (project: any) => {
     const supabase = createClient();
     const updatedProjects = [...projects];
 
-    // Find the project in the filtered scheduled list
-    const scheduledProjects = projects.filter(
-      (p: any) => p.status === "Scheduled",
-    );
-    const projectToUpdate = scheduledProjects[projectIndex];
-
-    if (projectToUpdate) {
+    if (project && project.id) {
       const newStartDate = new Date().toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
@@ -1148,25 +1155,26 @@ export default function AdminProjects() {
           status: "In Progress",
           actual_start: new Date().toISOString(),
         })
-        .eq("id", projectToUpdate.id);
+        .eq("id", project.id);
 
       if (error) {
-        console.error("Error updating project status in Supabase:", error);
-        alert("Failed to start project. Please try again.");
+        console.error(
+          "Error starting project:",
+          JSON.stringify(error, null, 2),
+        );
+        alert("Failed to start project.");
         return;
       }
 
       // Update local state
-      const indexInMainArray = projects.findIndex(
-        (p) => p.id === projectToUpdate.id,
-      );
-      if (indexInMainArray !== -1) {
-        updatedProjects[indexInMainArray] = {
-          ...updatedProjects[indexInMainArray],
-          status: "In Progress",
-          statusColor: "bg-orange-500 text-white",
-          start: newStartDate,
-        };
+      const actualIndex = updatedProjects.findIndex((p) => p.id === project.id);
+      if (actualIndex !== -1) {
+        updatedProjects[actualIndex].status = "In Progress";
+        updatedProjects[actualIndex].start = newStartDate;
+        updatedProjects[actualIndex].statusColor = "bg-orange-500 text-white";
+        // Also ensure abnahme flag is reset just in case
+        updatedProjects[actualIndex].abnahme = "No";
+
         setProjects(updatedProjects);
         localStorage.setItem(
           "prostruktion_projects_v1",
@@ -1249,26 +1257,40 @@ export default function AdminProjects() {
     );
   };
 
-  const handleStatusChange = async (index: number, newStatus: string) => {
+  const handleStatusChange = async (project: any, newStatus: string) => {
     const supabase = createClient();
     const updatedProjects = [...projects];
-    // Find project based on filtering logic
-
-    const activeProjects = projects.filter((p) => p.status !== "Scheduled");
-    const targetProject = activeProjects[index];
 
     // Find actual index in main array
-    const realIndex = projects.findIndex((p) => p === targetProject);
+    const realIndex = projects.findIndex((p) => p.id === project.id);
 
-    if (realIndex !== -1 && targetProject.id) {
-      // Update in Supabase first
+    if (realIndex !== -1 && project.id) {
+      // Logic:
+      // "In Abnahme" in UI -> DB Status "In Progress" + abnahme_confirmed = true
+      // Any other status -> DB Status = newStatus + abnahme_confirmed = false (reset)
+
+      let dbStatus = newStatus;
+      let dbAbnahmeConfirmed = false;
+
+      if (newStatus === "In Abnahme") {
+        dbStatus = "In Progress";
+        dbAbnahmeConfirmed = true;
+      }
+
+      // Update in Supabase
       const { error } = await supabase
         .from("projects")
-        .update({ status: newStatus })
-        .eq("id", targetProject.id);
+        .update({
+          status: dbStatus,
+          abnahme_confirmed: dbAbnahmeConfirmed,
+        })
+        .eq("id", project.id);
 
       if (error) {
-        console.error("Error updating project status in Supabase:", error);
+        console.error(
+          "Error updating project status in Supabase:",
+          JSON.stringify(error, null, 2),
+        );
         alert("Failed to update status. Please try again.");
         return;
       }
@@ -1280,8 +1302,10 @@ export default function AdminProjects() {
       if (newStatus === "Finished") color = "bg-green-600 text-white";
       if (newStatus === "Archived") color = "bg-gray-500 text-white";
 
+      // Update local state with the UI status "In Abnahme"
       updatedProjects[realIndex].status = newStatus;
       updatedProjects[realIndex].statusColor = color;
+      updatedProjects[realIndex].abnahme_confirmed = dbAbnahmeConfirmed;
 
       // Update abnahme flag based on status for stats logic
       if (newStatus === "Abnahme" || newStatus === "In Abnahme") {
@@ -1417,16 +1441,16 @@ export default function AdminProjects() {
     (p) => p.status === "Scheduled",
   ).length;
   const activeProjects = projects.filter(
-    (p) => p.status !== "Scheduled" && p.status !== "Archived",
+    (p) =>
+      p.status === "In Progress" ||
+      p.status === "active" ||
+      p.status === "Active",
   ).length;
   const abnahmeProjects = projects.filter(
     (p) => p.status === "In Abnahme",
   ).length;
-  // const invoicingProjects removed
-  // const invoicingProjects removed
-  // Archived projects count from DB
   const archivedProjects = projects.filter(
-    (p) => p.status === "Archived",
+    (p) => p.status === "Archived" || p.status === "Finished",
   ).length;
 
   return (
@@ -1770,7 +1794,7 @@ export default function AdminProjects() {
                               <Button
                                 size="sm"
                                 className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
-                                onClick={() => handleStartProject(i)}
+                                onClick={() => handleStartProject(project)}
                               >
                                 <Rocket className="mr-1 h-3 w-3" /> Start
                               </Button>
@@ -2217,7 +2241,9 @@ export default function AdminProjects() {
                         <TableCell>
                           <Select
                             value={item.status}
-                            onValueChange={(val) => handleStatusChange(i, val)}
+                            onValueChange={(val) =>
+                              handleStatusChange(item, val)
+                            }
                           >
                             <SelectTrigger
                               className={`w-[130px] h-8 border-0 ${item.statusColor}`}
@@ -4140,8 +4166,27 @@ export default function AdminProjects() {
                 }
 
                 // 2. Generate Financial Records (Invoices)
-                const existingInvoices = JSON.parse(
+                // 2. Generate Financial Records (Invoices)
+                // Filter out any existing pending invoices for this project to avoid duplicates
+                const rawExistingInvoices = JSON.parse(
                   localStorage.getItem("prostruktion_invoices") || "[]",
+                );
+
+                const existingInvoices = rawExistingInvoices.filter(
+                  (inv: any) => {
+                    // Keep invoice if:
+                    // 1. Project ID doesn't match current project (different project)
+                    // 2. OR status is not "For Invoice" or "Ready" (e.g. "Sent", "Paid" - keep history)
+                    const isSameProject =
+                      (inv.projectId &&
+                        inv.projectId === currentInvoice.projectData.id) ||
+                      inv.project === currentInvoice.project;
+
+                    const isPending =
+                      inv.status === "For Invoice" || inv.status === "Ready";
+
+                    return !(isSameProject && isPending);
+                  },
                 );
                 const newInvoices = [];
                 const nowStr = new Date().toLocaleDateString("en-US", {
@@ -4165,6 +4210,7 @@ export default function AdminProjects() {
                 const partnerInvoiceId = Date.now();
                 newInvoices.push({
                   id: partnerInvoiceId,
+                  projectId: currentInvoice.projectData.id,
                   project: currentInvoice.project,
                   partner: currentInvoice.projectData.partner,
                   mediator: currentInvoice.hasMediator
@@ -4186,6 +4232,7 @@ export default function AdminProjects() {
                     (invoiceEditState.mediatorSharePercent / 100);
                   newInvoices.push({
                     id: partnerInvoiceId + 1,
+                    projectId: currentInvoice.projectData.id,
                     project: currentInvoice.project,
                     partner: currentInvoice.projectData.partner, // Context
                     mediator: currentInvoice.mediator, // Recipient
@@ -4202,6 +4249,7 @@ export default function AdminProjects() {
                 if (totalSubFee > 0 || currentInvoice.projectData.sub) {
                   newInvoices.push({
                     id: partnerInvoiceId + 2,
+                    projectId: currentInvoice.projectData.id,
                     project: currentInvoice.project,
                     partner: currentInvoice.projectData.partner,
                     mediator: "-",

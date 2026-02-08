@@ -148,9 +148,9 @@ export default function ArchivePage() {
           : p.start
             ? new Date(p.start)
             : null;
-        let displayStatus = "Archived";
+        let displayStatus = "In Warranty";
         let statusColor =
-          "text-gray-500 bg-gray-100 dark:text-gray-400 dark:bg-gray-800";
+          "text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900/20";
 
         if (abnahmeDate) {
           const now = new Date();
@@ -466,7 +466,8 @@ export default function ArchivePage() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        {item.id ? item.id.substring(0, 8) + "..." : "N/A"}
+                        {item.customerNumber ||
+                          (item.id ? item.id.substring(0, 8) + "..." : "N/A")}
                       </TableCell>
                       <TableCell>{item.sub}</TableCell>
                       <TableCell className="text-sm">

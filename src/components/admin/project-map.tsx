@@ -165,6 +165,7 @@ export default function ProjectMap() {
   // Data from Supabase
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const vectorSourceRef = useRef<VectorSource<Feature<Point>> | null>(null);
+  const mapInitialized = useRef(false);
 
   // Data from Supabase lists
   // Data from localStorage
@@ -448,66 +449,94 @@ export default function ProjectMap() {
 
   // 2. Initialize Map Effect
   useEffect(() => {
-    if (mapRef.current && !map) {
-      const vectorSource = new VectorSource({ features: [] });
-      vectorSourceRef.current = vectorSource;
+    let olMap: OLMap | null = null;
+    let timer: any;
 
-      const vectorLayer = new VectorLayer({ source: vectorSource });
+    if (mapRef.current && !mapInitialized.current) {
+      mapInitialized.current = true;
 
-      // Lines layer for team deployment visualization
-      const linesSource = new VectorSource({ features: [] });
-      linesSourceRef.current = linesSource;
-      const linesLayer = new VectorLayer({
-        source: linesSource,
-        style: new Style({
-          stroke: new Stroke({
-            color: "#22c55e",
-            width: 3,
-            lineDash: [5, 5],
+      // Delay initialization slightly to ensure DOM is ready and sized
+      timer = setTimeout(() => {
+        if (!mapRef.current) return;
+
+        const vectorSource = new VectorSource({ features: [] });
+        vectorSourceRef.current = vectorSource;
+
+        const vectorLayer = new VectorLayer({ source: vectorSource });
+
+        // Lines layer for team deployment visualization
+        const linesSource = new VectorSource({ features: [] });
+        linesSourceRef.current = linesSource;
+        const linesLayer = new VectorLayer({
+          source: linesSource,
+          style: new Style({
+            stroke: new Stroke({
+              color: "#22c55e",
+              width: 3,
+              lineDash: [5, 5],
+            }),
           }),
-        }),
-        zIndex: 100, // Ensure lines are on top
-      });
+          zIndex: 100, // Ensure lines are on top
+        });
 
-      const popup = new Overlay({
-        element: popupRef.current!,
-        positioning: "bottom-center",
-        stopEvent: true,
-        offset: [0, -15],
-      });
+        const popup = new Overlay({
+          element: popupRef.current!,
+          positioning: "bottom-center",
+          stopEvent: true,
+          offset: [0, -15],
+        });
 
-      const olMap = new OLMap({
-        target: mapRef.current!,
-        layers: [new TileLayer({ source: new OSM() }), vectorLayer, linesLayer],
-        view: new View({
-          center: fromLonLat([10.4515, 51.1657]),
-          zoom: 6,
-        }),
-        overlays: [popup],
-      });
+        const mapInstance = new OLMap({
+          target: mapRef.current!,
+          layers: [
+            new TileLayer({ source: new OSM() }),
+            vectorLayer,
+            linesLayer,
+          ],
+          view: new View({
+            center: fromLonLat([10.4515, 51.1657]),
+            zoom: 6,
+          }),
+          overlays: [popup],
+        });
 
-      olMap.on("click", (evt) => {
-        const feature = olMap.forEachFeatureAtPixel(evt.pixel, (f) => f);
-        if (feature) {
-          const proj = feature.get("project") as Project;
-          setSelectedProject(proj);
-          setShowDetails(false);
-          popup.setPosition(evt.coordinate);
-        } else {
-          setSelectedProject(null);
-          setShowDetails(false);
-          popup.setPosition(undefined);
-        }
-      });
+        // Store reference for cleanup
+        olMap = mapInstance;
 
-      olMap.on("pointermove", (evt) => {
-        const hit = olMap.hasFeatureAtPixel(evt.pixel);
-        olMap.getTargetElement().style.cursor = hit ? "pointer" : "";
-      });
+        mapInstance.on("click", (evt) => {
+          const feature = mapInstance.forEachFeatureAtPixel(
+            evt.pixel,
+            (f) => f,
+          );
+          if (feature) {
+            const proj = feature.get("project") as Project;
+            setSelectedProject(proj);
+            setShowDetails(false);
+            popup.setPosition(evt.coordinate);
+          } else {
+            setSelectedProject(null);
+            setShowDetails(false);
+            popup.setPosition(undefined);
+          }
+        });
 
-      setMap(olMap);
+        mapInstance.on("pointermove", (evt) => {
+          const hit = mapInstance.hasFeatureAtPixel(evt.pixel);
+          mapInstance.getTargetElement().style.cursor = hit ? "pointer" : "";
+        });
+
+        setMap(mapInstance);
+      }, 100);
     }
-  }, [map]);
+
+    return () => {
+      clearTimeout(timer);
+      if (olMap) {
+        olMap.setTarget(undefined);
+        olMap = null;
+      }
+    };
+  }, []);
 
   // 3. Update Map Features (Filters) Effect
   useEffect(() => {
@@ -582,6 +611,11 @@ export default function ProjectMap() {
     if (vectorSourceRef.current) {
       vectorSourceRef.current.clear();
       vectorSourceRef.current.addFeatures(features);
+    }
+
+    // Force map size update to fix rendering issues on tab switch
+    if (map) {
+      setTimeout(() => map.updateSize(), 200);
     }
   }, [allProjects, filterSub, filterPartner, filterContractor, map]);
 

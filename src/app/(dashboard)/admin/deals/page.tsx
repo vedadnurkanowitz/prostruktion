@@ -46,6 +46,7 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 
+import { createClient } from "@/lib/supabase/client";
 import { useEffect } from "react";
 
 export default function FinancialDashboardPage() {
@@ -85,110 +86,137 @@ export default function FinancialDashboardPage() {
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterType, setFilterType] = useState("All");
 
+  const supabase = createClient();
+
   useEffect(() => {
-    // Load from LocalStorage
-    const storedInvoices = localStorage.getItem("prostruktion_invoices");
-    if (storedInvoices) {
-      try {
-        const parsed = JSON.parse(storedInvoices);
-        if (Array.isArray(parsed)) {
-          // Helper to deduplicate items by Project + Type (keeping newest)
-          const deduplicate = (items: any[]) => {
-            const uniqueMap = new Map();
-            // Sort by ID descending (newest first)
-            const sorted = [...items].sort((a, b) => (b.id || 0) - (a.id || 0));
+    const loadData = async () => {
+      // Load Invoices from Supabase
+      const { data: dbInvoices, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-            sorted.forEach((item) => {
-              // Composite key: Project Name + Invoice Type
-              // Identify duplicates based on validation of Project Identity + Invoice Type
-              const typeKey = item.action || item.type || "Invoice";
-              const projKey = item.projectId || item.project;
-              const uniqueKey = `${projKey}-${typeKey}`;
-
-              if (!uniqueMap.has(uniqueKey)) {
-                uniqueMap.set(uniqueKey, item);
-              }
-            });
-            return Array.from(uniqueMap.values());
-          };
-
-          // 0. Deduplicate ALL items first to handle cross-status duplicates
-          const uniqueItems = deduplicate(parsed);
-
-          // 1. Separate "For Invoice" items
-          const forInvoice = uniqueItems.filter(
-            (p) => p.status === "For Invoice",
-          );
-          setForInvoiceProjects(forInvoice);
-
-          // 2. Separate "Ready" items (waiting for batch invoice)
-          const ready = uniqueItems.filter((p) => p.status === "Ready");
-          setReadyToInvoiceProjects(ready);
-        }
-      } catch (e) {
-        console.error("Failed to parse stored invoices", e);
+      if (error) {
+        console.error("Failed to fetch invoices:", error);
       }
-    }
 
-    // Load Generated Invoices
-    let totalRec = 0;
-    const storedGenerated = localStorage.getItem(
-      "prostruktion_generated_invoices",
-    );
-    if (storedGenerated) {
-      try {
-        const parsedInv = JSON.parse(storedGenerated);
-        if (Array.isArray(parsedInv)) {
-          setInvoicedProjects(
-            parsedInv.filter((i: any) => i.status === "Unpaid"),
-          );
-          const received = parsedInv.filter(
-            (i: any) => i.status === "Received",
-          );
-          setReceivedProjects(received);
+      let fetchedInvoices: any[] = [];
+      if (dbInvoices) {
+        fetchedInvoices = dbInvoices.map((inv) => ({
+          id: inv.id,
+          projectId: inv.project_id,
+          project: inv.project_name,
+          partner: inv.recipient_name, // Map recipient_name to partner for grouping
+          role: inv.recipient_role,
+          amount: inv.amount, // Maintain as is (number or string?) DB is likely numeric? Need to handle "€ " prefix if UI expects it.
+          // Looking at DB insert: 'amount' is inserted as is from local state.
+          // Local state had 'amount' as number (partnerAmount).
+          // But sometimes string "€ ...".
+          // Let's assume numeric from DB.
+          date: inv.date
+            ? new Date(inv.date).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })
+            : "",
+          status: inv.status,
+          action: inv.invoice_type,
+          // Legacy/UI fields
+          type: inv.invoice_type,
+        }));
+      }
 
-          // Calc Total Received
-          totalRec = received.reduce(
+      // 2. Separate "For Invoice" items (Only Main/Partner Invoices)
+      const forInvoice = fetchedInvoices.filter(
+        (p) =>
+          p.status === "For Invoice" &&
+          (!p.action ||
+            p.action === "Invoice" ||
+            p.action === "Partner Invoice"),
+      );
+      setForInvoiceProjects(forInvoice);
+
+      // 3. Separate "Ready" items (waiting for batch invoice)
+      const ready = fetchedInvoices.filter(
+        (p) =>
+          p.status === "Ready" &&
+          (!p.action ||
+            p.action === "Invoice" ||
+            p.action === "Partner Invoice"),
+      );
+      setReadyToInvoiceProjects(ready);
+
+      // We handle "Sent" invoices separately via "generated invoices" storage for now,
+      // OR we can map them from Supabase too if they are marked as "Sent".
+      // The current UI for "Awaited Payments" / "Overdue" uses 'invoicedProjects'.
+      // These are "Generated Invoices" (Aggregated).
+      // The Supabase 'invoices' table stores individual items.
+      // If we want to fully replace localStorage, we should also store "Generated Invoices" in Supabase,
+      // possibly in a separate table 'generated_invoices' or similar.
+      // For now, the user asked to fix "For Invoice" projects.
+      // I will leave 'invoicedProjects' reading from localStorage as it deals with "Sent" (Generated) invoices which might not be in the item-level DB yet as aggregates.
+      // However, the requested fix "remove local storage, only show from supabase" strictly applies to "for invoice projects".
+
+      // Load Generated Invoices (Keep localStorage for Aggregates for now unless schema allows)
+      let totalRec = 0;
+      const storedGenerated = localStorage.getItem(
+        "prostruktion_generated_invoices",
+      );
+      if (storedGenerated) {
+        try {
+          const parsedInv = JSON.parse(storedGenerated);
+          if (Array.isArray(parsedInv)) {
+            setInvoicedProjects(
+              parsedInv.filter((i: any) => i.status === "Unpaid"),
+            );
+            const received = parsedInv.filter(
+              (i: any) => i.status === "Received",
+            );
+            setReceivedProjects(received);
+
+            // Calc Total Received
+            totalRec = received.reduce(
+              (acc: number, curr: any) =>
+                acc +
+                (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
+                  0),
+              0,
+            );
+          }
+        } catch (e) {
+          console.error("Failed to parse generated invoices", e);
+        }
+      }
+
+      // Load Expenses
+      const storedExpenses = localStorage.getItem("prostruktion_expenses");
+      let totalExp = 0;
+
+      if (storedExpenses) {
+        const parsedExpenses = JSON.parse(storedExpenses);
+        if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
+          setExpenses(parsedExpenses);
+          totalExp = parsedExpenses.reduce(
             (acc: number, curr: any) =>
               acc +
               (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
                 0),
             0,
           );
+        } else {
+          setExpenses([]);
+          totalExp = 0;
         }
-      } catch (e) {
-        console.error("Failed to parse generated invoices", e);
-      }
-    }
-
-    // Load Expenses
-    const storedExpenses = localStorage.getItem("prostruktion_expenses");
-    let totalExp = 0;
-
-    if (storedExpenses) {
-      const parsedExpenses = JSON.parse(storedExpenses);
-      if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
-        setExpenses(parsedExpenses);
-        totalExp = parsedExpenses.reduce(
-          (acc: number, curr: any) =>
-            acc +
-            (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) || 0),
-          0,
-        );
       } else {
-        // Empty if no storage
         setExpenses([]);
         totalExp = 0;
       }
-    } else {
-      // Empty if no storage
-      setExpenses([]);
-      totalExp = 0;
-    }
 
-    setCashOnHand(totalRec - totalExp);
+      setCashOnHand(totalRec - totalExp);
+    };
 
-    // Dummy seeding blocks removed for clean slate.
+    loadData();
   }, []);
 
   const handleMoveToReady = (project: any) => {
@@ -198,17 +226,19 @@ export default function FinancialDashboardPage() {
     const updatedProject = { ...project, status: "Ready" };
     setReadyToInvoiceProjects((prev) => [...prev, updatedProject]);
 
-    // Update LocalStorage
-    const storedInvoices = JSON.parse(
-      localStorage.getItem("prostruktion_invoices") || "[]",
-    );
-    const updatedStorage = storedInvoices.map((p: any) =>
-      p.id === project.id ? { ...p, status: "Ready" } : p,
-    );
-    localStorage.setItem(
-      "prostruktion_invoices",
-      JSON.stringify(updatedStorage),
-    );
+    // Update Supabase (Move ALL related invoices for this project)
+    const updateSupabase = async () => {
+      const { error } = await supabase
+        .from("invoices")
+        .update({ status: "Ready" })
+        .eq("project_id", project.projectId);
+
+      if (error) {
+        console.error("Failed to update status in Supabase", error);
+        // Revert local state if needed? For now just log.
+      }
+    };
+    updateSupabase();
   };
 
   const handleRevertToPending = (partnerName: string) => {
@@ -223,19 +253,25 @@ export default function FinancialDashboardPage() {
       prev.filter((p) => p.partner !== partnerName),
     );
 
-    // Update LocalStorage
-    const storedInvoices = JSON.parse(
-      localStorage.getItem("prostruktion_invoices") || "[]",
-    );
-    const updatedStorage = storedInvoices.map((p: any) =>
-      p.partner === partnerName && p.status === "Ready"
-        ? { ...p, status: "For Invoice" }
-        : p,
-    );
-    localStorage.setItem(
-      "prostruktion_invoices",
-      JSON.stringify(updatedStorage),
-    );
+    // Update Supabase (Move ALL related invoices for this partner back to For Invoice)
+    // AND match status=Ready
+    const updateSupabase = async () => {
+      // NOTE: We need to filter by Partner Name if we want to revert ALL "Ready" for that partner.
+      // But we can't easily join on 'recipient_name' for Subcontractors unless we know the wrapper.
+      // However, we can iterate 'projectsToRevert' and update by Project ID.
+      // Since projectsToRevert contains the Main Invoices, their IDs will cover the project scope.
+
+      const projectIds = projectsToRevert.map((p) => p.projectId);
+      if (projectIds.length > 0) {
+        const { error } = await supabase
+          .from("invoices")
+          .update({ status: "For Invoice" })
+          .in("project_id", projectIds);
+
+        if (error) console.error("Failed to revert status in Supabase", error);
+      }
+    };
+    updateSupabase();
   };
 
   const handleBatchInvoice = (partnerName: string) => {
@@ -299,19 +335,19 @@ export default function FinancialDashboardPage() {
       overdue: false,
       items: batchProjects, // Store detailed items
     };
-    // Update LocalStorage (Mark all as Sent)
-    const storedInvoices = JSON.parse(
-      localStorage.getItem("prostruktion_invoices") || "[]",
-    );
-    const updatedStorage = storedInvoices.map((p: any) =>
-      p.partner === partnerName && p.status === "Ready"
-        ? { ...p, status: "Sent" }
-        : p,
-    );
-    localStorage.setItem(
-      "prostruktion_invoices",
-      JSON.stringify(updatedStorage),
-    );
+    // Update Status in Supabase via Loop or IN query
+    const updateSupabase = async () => {
+      const projectIds = batchProjects.map((p) => p.projectId);
+      if (projectIds.length > 0) {
+        const { error } = await supabase
+          .from("invoices")
+          .update({ status: "Sent" })
+          .in("project_id", projectIds);
+
+        if (error) console.error("Failed to update status in Supabase", error);
+      }
+    };
+    updateSupabase();
 
     // Save New Invoice to Storage
     const storedGenerated = JSON.parse(

@@ -815,10 +815,12 @@ export default function ProjectMap() {
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
                   {selectedProject.project}
                 </h2>
-                <p className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                <div className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
-                  {selectedProject.address}
-                </p>
+                  <span className="text-xs text-gray-700 dark:text-gray-300 font-medium truncate">
+                    {selectedProject.address}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={closePopup}
@@ -841,7 +843,7 @@ export default function ProjectMap() {
               {selectedProject.amount && (
                 <Badge
                   variant="outline"
-                  className="text-xs text-gray-300 border-gray-600"
+                  className="text-xs text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"
                 >
                   <Euro className="h-3 w-3 mr-1" />
                   {selectedProject.amount.replace("€ ", "")}
@@ -850,10 +852,10 @@ export default function ProjectMap() {
               {selectedProject.start && (
                 <Badge
                   variant="outline"
-                  className="text-xs text-gray-300 border-gray-600"
+                  className="text-xs text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"
                 >
                   <Calendar className="h-3 w-3 mr-1" />
-                  {selectedProject.start}
+                  <span className="font-medium">{selectedProject.start}</span>
                 </Badge>
               )}
             </div>
@@ -872,13 +874,13 @@ export default function ProjectMap() {
 
               {/* Company Filter */}
               <div className="relative mb-3">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
                 <input
                   type="text"
                   placeholder="Filter companies..."
                   value={companySearch}
                   onChange={(e) => setCompanySearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 text-gray-900 dark:text-gray-100"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-500"
                 />
               </div>
 
@@ -981,13 +983,13 @@ export default function ProjectMap() {
                 {/* Workers Filter */}
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
                     <input
                       type="text"
                       placeholder="Search workers..."
                       value={workerSearch}
                       onChange={(e) => setWorkerSearch(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 text-gray-900 dark:text-gray-100"
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-500"
                     />
                   </div>
                   <select
@@ -1044,7 +1046,7 @@ export default function ProjectMap() {
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <div className="text-xs font-bold text-gray-500">
+                                <div className="text-xs font-bold text-gray-600 dark:text-gray-400">
                                   {worker.name.charAt(0)}
                                 </div>
                               )}
@@ -1071,7 +1073,7 @@ export default function ProjectMap() {
                                 {worker.role}
                               </p>
                               {worker.subRole && (
-                                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                                <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium">
                                   {worker.subRole}
                                 </p>
                               )}
@@ -1093,7 +1095,7 @@ export default function ProjectMap() {
 
                         <div className="grid grid-cols-2 gap-2 mb-3">
                           <div className="bg-white dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">
+                            <p className="text-[10px] text-gray-600 dark:text-gray-400 uppercase tracking-widest font-semibold">
                               Stats
                             </p>
                             <div className="flex items-center gap-2 mt-1">
@@ -1109,7 +1111,7 @@ export default function ProjectMap() {
                             </div>
                           </div>
                           <div className="bg-white dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-800">
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">
+                            <p className="text-[10px] text-gray-600 dark:text-gray-400 uppercase tracking-widest font-semibold">
                               Compliance
                             </p>
                             <div className="flex flex-wrap gap-1 mt-1">
@@ -1214,8 +1216,8 @@ export default function ProjectMap() {
                           <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                             {project.address}
                           </p>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
-                            <Calendar className="h-3 w-3" />
+                          <p className="text-[10px] text-gray-600 dark:text-gray-400 flex items-center gap-1 mt-0.5 font-medium">
+                            <Calendar className="h-3 w-3 text-gray-500" />
                             {project.scheduledStart || "No Date"}
                           </p>
                         </div>
@@ -1377,12 +1379,12 @@ function CompanyCard({
         </div>
         {company && (
           <Badge
-            className={`text-[10px] px-1.5 h-5 ${
+            className={`text-[10px] px-1.5 h-5 font-semibold ${
               company.status === "Active"
-                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200"
+                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-200"
                 : company.status === "Blocked"
-                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200"
-                  : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200"
+                  ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 hover:bg-red-200"
+                  : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200"
             }`}
           >
             {company.status || "Active"}
@@ -1420,9 +1422,9 @@ function CompanyCard({
 
       {company && (
         <>
-          <div className="flex gap-2 mb-2 text-xs text-gray-600 dark:text-gray-400">
+          <div className="flex gap-2 mb-2 text-xs text-gray-700 dark:text-gray-300 font-medium">
             <div className="flex items-center gap-1" title="Active Projects">
-              <Building2 className="h-3 w-3" />
+              <Building2 className="h-3 w-3 text-gray-500" />
               <span>{company.activeProjects || 1} Proj.</span>
             </div>
             {company.complaints !== undefined && (

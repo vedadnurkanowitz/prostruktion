@@ -92,6 +92,7 @@ type Contact = {
   mediator?: string;
   contractor?: string;
   documents?: any[];
+  address?: string; // Added address field
   // CRM Fields
   stage?: LeadStage;
   notes?: string;
@@ -424,6 +425,7 @@ export default function ContactsPage() {
       successRate: 0,
       stage: "new",
       mediator: newContact.mediatorName, // Keep for display
+      address: newContact.address, // Added address
     };
 
     setContacts((prev) => [newContactObj, ...prev]);
@@ -479,9 +481,76 @@ export default function ContactsPage() {
     async function fetchData() {
       setLoading(true);
       const allContacts: Contact[] = [];
+      const supabase = createClient();
+
+      // 0. PRE-FETCH METRICS DATA
+      // A. Workers Count (Grouped by Company Name)
+      const { data: workersData } = await supabase
+        .from("workers")
+        .select("company_name, status")
+        .eq("status", "Active");
+
+      const workersCountMap: Record<string, number> = {};
+      if (workersData) {
+        workersData.forEach((w) => {
+          if (w.company_name) {
+            workersCountMap[w.company_name] =
+              (workersCountMap[w.company_name] || 0) + 1;
+          }
+        });
+      }
+
+      // B. Project Stats (Grouped by Entity ID)
+      const { data: projectsData } = await supabase
+        .from("projects")
+        .select(
+          "status, contractor_id, subcontractor_id, partner_id, broker_id, complaints",
+        );
+
+      const statsMap: Record<
+        string,
+        { active: number; completed: number; complaints: number }
+      > = {};
+
+      const incrementStat = (
+        id: string | null,
+        type: "active" | "completed" | "complaints",
+        count = 1,
+      ) => {
+        if (!id) return;
+        if (!statsMap[id])
+          statsMap[id] = { active: 0, completed: 0, complaints: 0 };
+        statsMap[id][type] += count;
+      };
+
+      if (projectsData) {
+        projectsData.forEach((p) => {
+          const isActive =
+            p.status === "In Progress" ||
+            p.status === "active" ||
+            p.status === "Scheduled";
+          const isCompleted =
+            p.status === "Finished" ||
+            p.status === "In Abnahme" ||
+            p.status === "In Warranty";
+          const hasComplaints = p.complaints && p.complaints > 0;
+
+          // Helper to update for all roles in this project
+          const roles = [
+            p.contractor_id,
+            p.subcontractor_id,
+            p.partner_id,
+            p.broker_id,
+          ];
+          roles.forEach((id) => {
+            if (isActive) incrementStat(id, "active");
+            if (isCompleted) incrementStat(id, "completed");
+            if (hasComplaints) incrementStat(id, "complaints", p.complaints);
+          });
+        });
+      }
 
       // 1. Fetch Supabase Users (Partners & Mediators & Admins)
-      const supabase = createClient();
       const { data: profiles } = await supabase
         .from("profiles")
         .select("*")
@@ -493,6 +562,26 @@ export default function ContactsPage() {
           if (p.role === "broker") derivedRole = "broker";
           if (p.role === "super_admin") derivedRole = "staff";
 
+          // Calculate Metrics
+          const stats = statsMap[p.id] || {
+            active: 0,
+            completed: 0,
+            complaints: 0,
+          };
+          const workerCount =
+            workersCountMap[p.company_name || p.full_name] || 0;
+
+          const totalProj = stats.active + stats.completed;
+          let successRate = 100;
+          if (totalProj > 0 && stats.complaints > 0) {
+            successRate = Math.max(
+              0,
+              100 - Math.round((stats.complaints / totalProj) * 20),
+            );
+          } else if (totalProj === 0) {
+            successRate = 0;
+          }
+
           allContacts.push({
             id: p.id,
             name: p.full_name || p.email || "Unknown",
@@ -501,32 +590,28 @@ export default function ContactsPage() {
             jobTitle: p.role === "super_admin" ? "Admin" : "Manager",
             email: p.email,
             phone: p.phone || "+49 123 4567890",
+            address: p.address || "", // Added default address for profiles
             status: "Active",
-            regWorkers: 0,
-            activeProjects: 0,
+            regWorkers: workerCount,
+            activeProjects: stats.active,
             complaints: 0,
-            activeComplaints: 0,
-            completedProjects: 0,
-            successRate: 0,
-            stage: "active", // Supabase users are likely active
+            activeComplaints: stats.complaints,
+            completedProjects: stats.completed,
+            successRate: successRate,
+            stage: "active",
           });
         });
       }
 
-      // 2. Fetch All Contacts (combined contacts and profiles)
-      // Note: We are prioritizing 'contacts' table but also checking 'profiles' if needed for legacy or auth users.
-      // But user requested to use 'contacts' table mostly.
-
-      // Fetch from 'contacts' table
-      const { data: contactsData, error: contactsError } = await supabase
+      // 2. Fetch All Contacts
+      const { data: contactsData } = await supabase
         .from("contacts")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (contactsData) {
         contactsData.forEach((c) => {
-          // Normalize role
-          let role: Contact["role"] = "subcontractor"; // default fallback
+          let role: Contact["role"] = "subcontractor";
           if (
             c.role === "partner" ||
             c.role === "broker" ||
@@ -540,6 +625,28 @@ export default function ContactsPage() {
           const rawMediatorId =
             c.mediator_id || (c.metrics as any)?.manual_mediator_id;
 
+          // Calculate Metrics
+          const stats = statsMap[c.id] || {
+            active: 0,
+            completed: 0,
+            complaints: 0,
+          };
+          const workerCount =
+            workersCountMap[c.company_name || c.name] ||
+            workersCountMap[c.name] ||
+            0;
+
+          const totalProj = stats.active + stats.completed;
+          let successRate = 100;
+          if (totalProj > 0 && stats.complaints > 0) {
+            successRate = Math.max(
+              0,
+              100 - Math.round((stats.complaints / totalProj) * 20),
+            );
+          } else if (totalProj === 0) {
+            successRate = 0;
+          }
+
           allContacts.push({
             id: c.id,
             name: c.name,
@@ -548,57 +655,28 @@ export default function ContactsPage() {
             jobTitle: role.charAt(0).toUpperCase() + role.slice(1),
             email: c.email || "",
             phone: c.phone || "",
+            address: c.address || "", // Added active address for contacts
             status: (c.status as any) || "Active",
-            regWorkers: 0,
-            activeProjects: 0,
+            regWorkers: workerCount,
+            activeProjects: stats.active,
             complaints: 0,
-            activeComplaints: 0,
-            completedProjects: 0,
-            successRate: 0,
-            mediator: rawMediatorId, // Use the resolved ID
-            documents: [], // Handle documents if stored in Supabase later
-            stage: "active", // Default stage
-          });
-        });
-      }
-
-      // Fetch from 'profiles' table (registered users) - Keeping this as read-only source for now ensuring no duplicates if possible
-      // If a profile exists with same email as contact, we might duplicate or prefer one.
-      // For now, let's include them as they are likely system users/partners.
-      if (profiles) {
-        profiles.forEach((p) => {
-          // Check if already exists from contacts table
-          if (allContacts.some((existing) => existing.email === p.email))
-            return;
-
-          let derivedRole: Contact["role"] = "partner";
-          if (p.role === "broker") derivedRole = "broker";
-          if (p.role === "super_admin") derivedRole = "staff";
-
-          allContacts.push({
-            id: p.id,
-            name: p.full_name || p.email || "Unknown",
-            companyName: p.company_name || p.full_name || "Prostruktion",
-            role: derivedRole,
-            jobTitle: p.role === "super_admin" ? "Admin" : "Manager",
-            email: p.email,
-            phone: p.phone || "",
-            status: "Active",
-            regWorkers: 0,
-            activeProjects: 0,
-            complaints: 0,
-            activeComplaints: 0,
-            completedProjects: 0,
-            successRate: 0,
+            activeComplaints: stats.complaints,
+            completedProjects: stats.completed,
+            successRate: successRate,
+            mediator: rawMediatorId,
+            documents: [],
             stage: "active",
           });
         });
       }
 
-      // Filter out mediators (brokers) and staff/admin immediately as per requirement
-      // "Contact type colum should only contain subcontractors, contractors and partners but no mediators."
-      // Filter Logic for Main Table (Contractors, Subs, Partners)
-      const filteredRaw = allContacts.filter(
+      // Filter and De-duplicate if necessary (simple uniqueness by id)
+      const uniqueContacts = Array.from(
+        new Map(allContacts.map((c) => [c.id, c])).values(),
+      );
+
+      // Filter Logic for Main Table
+      const filteredRaw = uniqueContacts.filter(
         (c) =>
           c.role === "contractor" ||
           c.role === "subcontractor" ||
@@ -606,22 +684,9 @@ export default function ContactsPage() {
       );
 
       // Filter Logic for Mediators Table
-      // Assuming 'broker' is the role for Mediator from previous context
-      const mediatorsRaw = allContacts.filter((c) => c.role === "broker");
+      const mediatorsRaw = uniqueContacts.filter((c) => c.role === "broker");
 
-      // Add mock metrics for contacts (Not needed for mediators per requirement "it's information" - likely standard)
-      const contactsWithMetrics = filteredRaw.map((c) => ({
-        ...c,
-        regWorkers: 0,
-        activeProjects: 0,
-        complaints: 0,
-        activeComplaints: 0,
-        completedProjects: 0,
-        successRate: 0,
-        documents: c.documents || [], // Preserve documents!
-      }));
-
-      setContacts([...contactsWithMetrics, ...mediatorsRaw]); // Store all, filter in render
+      setContacts([...filteredRaw, ...mediatorsRaw]);
       setLoading(false);
     }
 

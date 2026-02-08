@@ -84,6 +84,7 @@ type Project = {
   mediator?: string;
   amount?: string;
   start?: string;
+  scheduledStart?: string;
   workers?: string[];
   lat?: number;
   lng?: number;
@@ -346,6 +347,13 @@ export default function ProjectMap() {
               amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "",
+              scheduledStart: p.scheduled_start
+                ? new Date(p.scheduled_start).toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "short",
                     day: "numeric",
@@ -1169,7 +1177,7 @@ export default function ProjectMap() {
               selectedProject.status === "active") && (
               <Button
                 size="sm"
-                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900"
                 onClick={() => findNearbyScheduledProjects(selectedProject)}
               >
                 <Navigation className="h-4 w-4 mr-2" />
@@ -1206,6 +1214,10 @@ export default function ProjectMap() {
                           <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                             {project.address}
                           </p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
+                            <Calendar className="h-3 w-3" />
+                            {project.scheduledStart || "No Date"}
+                          </p>
                         </div>
                         <Badge
                           variant="outline"
@@ -1234,7 +1246,7 @@ export default function ProjectMap() {
                         </Button>
                         <Button
                           size="sm"
-                          className="flex-1 h-7 text-[10px] bg-green-600 hover:bg-green-700 text-white"
+                          className="flex-1 h-7 text-[10px] bg-yellow-500 hover:bg-yellow-600 text-gray-900"
                           disabled={assigningTeam === project.project}
                           onClick={async () => {
                             if (!selectedProject) return;

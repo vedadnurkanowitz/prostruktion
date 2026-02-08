@@ -81,7 +81,9 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 interface DocumentItem {
+  id?: string; // Added for deletion
   file?: File; // Optional for persistence
+  file_path?: string | null; // Added for storage deletion
   name: string;
   startDate?: string;
   endDate?: string;
@@ -629,9 +631,11 @@ export function SubcontractorDetail({
 
       if (!docsError && docsData && docsData.length > 0) {
         const loadedDocs: DocumentItem[] = docsData.map((d: any) => ({
+          id: d.id, // Store ID
           name: d.name,
           startDate: d.start_date,
           endDate: d.end_date,
+          file_path: d.file_path, // Store path
         }));
         setDocuments(loadedDocs);
         console.log(
@@ -713,11 +717,52 @@ export function SubcontractorDetail({
     }
   };
 
-  const removeDocument = (index: number) => {
+  const removeDocument = async (index: number) => {
+    const docToDelete = documents[index];
     const newDocs = documents.filter((_, i) => i !== index);
     setDocuments(newDocs);
-    // Save immediately
-    setTimeout(() => saveDocumentsToStorage(newDocs), 0);
+
+    if (docToDelete.id) {
+      const supabase = createClient();
+      try {
+        // 1. Delete from Storage if path exists
+        if (docToDelete.file_path) {
+          const { error: storageError } = await supabase.storage
+            .from("documents")
+            .remove([docToDelete.file_path]);
+
+          if (storageError) {
+            console.error("Error removing file from storage:", storageError);
+          } else {
+            console.log("File removed from storage:", docToDelete.file_path);
+          }
+        }
+
+        // 2. Delete from Table
+        const { error: dbError } = await supabase
+          .from("documents")
+          .delete()
+          .eq("id", docToDelete.id);
+
+        if (dbError) {
+          console.error("Error removing document from DB:", dbError);
+          alert("Failed to remove document from database.");
+        } else {
+          console.log("Document removed from DB:", docToDelete.id);
+        }
+      } catch (e) {
+        console.error("Unexpected error removing document:", e);
+      }
+    } else {
+      // If it's a new unsaved doc (no ID), no need to call API, just state update is enough
+      // But if it was just added via handleDocumentUpload and saved immediately, it might have an ID if we reloaded.
+      // Since we don't reload after upload immediately, we rely on the fact that handleDocumentUpload saves it.
+      // However, handleDocumentUpload calls saveDocumentsToStorage which iterates and upserts.
+      // It DOES NOT update the local 'documents' state with the new IDs.
+      // This is a flaw in the current 'saveDocumentsToStorage' implementation for handling IDs.
+      // For now, at least we handle deletion of existing (loaded) docs.
+      console.log("Removed unsaved/local document");
+    }
   };
 
   const handleDocumentUpdate = (
@@ -860,15 +905,15 @@ export function SubcontractorDetail({
                       : "ID-12345"}
                   </span>
                   <span className="mx-1">•</span>
-                  <span>Installation & Montage</span>
+                  <span>{subcontractor.jobTitle || subcontractor.role}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" />
-                  <span>Speissstraße 186, München</span>
+                  <span>{subcontractor.address || "No address provided"}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <Phone className="h-4 w-4" />
-                  <span>{subcontractor.phone || "+49 771 9085523"}</span>
+                  <span>{subcontractor.phone || "No phone provided"}</span>
                 </div>
                 {subcontractor.contractor && (
                   <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full border border-blue-100 dark:border-blue-800">

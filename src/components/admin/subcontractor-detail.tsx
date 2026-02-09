@@ -661,25 +661,51 @@ export function SubcontractorDetail({
         }
 
         // 2. Process LocalStorage Archive (Legacy/Failover)
-        // This is necessary because the user might have data in the local 'Archive' that isn't in Supabase yet.
         const localArchiveJson = localStorage.getItem("prostruktion_archive");
         if (localArchiveJson) {
           try {
             const localArchive = JSON.parse(localArchiveJson);
+            console.log(
+              "[PerformanceDebug] Local Archive found:",
+              localArchive.length,
+              "items",
+            );
+            console.log(
+              "[PerformanceDebug] Current Subcontractor:",
+              subcontractor.name,
+              subcontractor.id,
+            );
 
             localArchive.forEach((p: any) => {
               // Check if this project belongs to the current subcontractor
               // Match by ID (preferred) or Name (fallback)
-              const isLinked =
-                (subcontractor.id &&
-                  (p.subId === subcontractor.id ||
-                    p.subcontractorId === subcontractor.id)) ||
-                p.sub === subcontractor.name ||
-                p.subcontractor === subcontractor.name;
+              // Robust matching logic
+              const pSubId = p.subId || p.subcontractorId;
+              const pSubName = (p.sub || p.subcontractor || "")
+                .toLowerCase()
+                .trim();
+              const currentSubName = (subcontractor.name || "")
+                .toLowerCase()
+                .trim();
+
+              const idMatch = subcontractor.id && pSubId === subcontractor.id;
+              // Check for exact match or partial match (e.g. "NDAS" in "NDAS d.o.o.")
+              const nameMatch =
+                pSubName &&
+                currentSubName &&
+                (pSubName === currentSubName ||
+                  currentSubName.includes(pSubName) ||
+                  pSubName.includes(currentSubName));
+
+              const isLinked = idMatch || nameMatch;
 
               if (isLinked) {
+                console.log(
+                  "[PerformanceDebug] Match found:",
+                  p.project || p.title,
+                  p.status,
+                );
                 // Archive projects are implicitly "Done", but check status if available
-                // Usually items in 'prostruktion_archive' are considered archived/completed.
                 const dateStr =
                   p.actualStart || p.start || p.created_at || p.date;
                 if (dateStr) {
@@ -696,6 +722,8 @@ export function SubcontractorDetail({
           } catch (err) {
             console.error("Error parsing local archive for stats:", err);
           }
+        } else {
+          console.log("[PerformanceDebug] No local archive found.");
         }
 
         const stats = months.map((month) => ({

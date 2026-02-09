@@ -113,7 +113,14 @@ export default function ArchivePage() {
       // 1. Fetch Projects
       const { data: projectsData, error } = await supabase
         .from("projects")
-        .select("*")
+        .select(
+          `
+        *,
+        project_work_types(work_type_key, price),
+        project_additional_services(service_id, price),
+        project_workers(worker_id)
+      `,
+        )
         .eq("status", "Archived")
         .order("created_at", { ascending: false });
 
@@ -127,6 +134,42 @@ export default function ArchivePage() {
       const { data: profilesData } = await supabase
         .from("profiles")
         .select("*");
+      const { data: customersData } = await supabase
+        .from("customers")
+        .select("id, customer_number, email, phone");
+
+      // Fetch workers details for all workers in these projects
+      const allWorkerIds = Array.from(
+        new Set(
+          projectsData
+            .flatMap((p) => p.project_workers?.map((pw: any) => pw.worker_id))
+            .filter(Boolean),
+        ),
+      );
+
+      let workersMap: Record<string, any> = {};
+      if (allWorkerIds.length > 0) {
+        const { data: workersList } = await supabase
+          .from("workers")
+          .select("id, name, cert_status, a1_status, success_rate, cert_files")
+          .in("id", allWorkerIds);
+
+        if (workersList) {
+          workersMap = workersList.reduce(
+            (acc: any, w: any) => {
+              acc[w.id] = {
+                name: w.name,
+                certStatus: w.cert_status,
+                a1Status: w.a1_status,
+                successRate: w.success_rate,
+                certFiles: w.cert_files || [],
+              };
+              return acc;
+            },
+            {} as Record<string, any>,
+          );
+        }
+      }
 
       // Helper to find name
       const findContactName = (id: string) => {
@@ -140,6 +183,11 @@ export default function ArchivePage() {
         return id; // Fallback
       };
 
+      const customersMap = (customersData || []).reduce((acc: any, c: any) => {
+        acc[c.id] = c;
+        return acc;
+      }, {});
+
       // 3. Map Data
       const mapped = projectsData.map((p) => {
         // Parse dates
@@ -148,6 +196,8 @@ export default function ArchivePage() {
           : p.start
             ? new Date(p.start)
             : null;
+
+        const customer = customersMap[p.customer_id];
         let displayStatus = "In Warranty";
         let statusColor =
           "text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900/20";
@@ -188,7 +238,7 @@ export default function ArchivePage() {
           mediator: findContactName(p.mediator_id) || p.mediator || "",
 
           additionalWorks: p.additional_works || p.additionalWorks || [],
-          workers: p.workers || [], // Array of IDs expected
+
           selectedWorkTypes: p.selected_work_types || p.selectedWorkTypes || [],
           selectedAdditionalServices:
             p.selected_additional_services ||
@@ -197,15 +247,49 @@ export default function ArchivePage() {
           indoorUnits: p.indoor_units || 0,
           amount: p.amount || 0,
 
+          // Enhanced mappings for details
+          projectWorkTypesRaw: p.project_work_types,
+          projectAdditionalServicesRaw: p.project_additional_services,
+          // If project_workers relation exists, use it, else fallback to p.workers array if legacy
+          workers:
+            p.project_workers?.map((pw: any) => pw.worker_id) ||
+            p.workers ||
+            [],
+
           // Map details
-          customerNumber: p.customer_number || "",
-          customerPhone: p.customer_phone || "",
-          customerEmail: p.customer_email || "",
+          customerNumber: customer?.customer_number || p.customer_number || "",
+          customerPhone: customer?.phone || p.customer_phone || "",
+          customerEmail: customer?.email || p.customer_email || "",
           description: p.description || "",
         };
       });
 
-      setArchivedProjects(mapped);
+      // Pass map to state or use a ref/context if needed, but here we can attach detailed worker info to project object for simpler rendering
+      // modifying mapped project to include the looked-up worker objects
+      const finalMapped = mapped.map((p) => ({
+        ...p,
+        workerDetails: p.workers.map((id: string) => ({
+          id,
+          ...workersMap[id],
+        })),
+        // Pre-calculate costs for UI
+        workTypeCosts: (p.projectWorkTypesRaw || []).reduce(
+          (acc: any, wt: any) => {
+            acc[wt.work_type_key] = wt.price;
+            return acc;
+          },
+          {},
+        ),
+        additionalServiceCosts: (p.projectAdditionalServicesRaw || []).reduce(
+          (acc: any, s: any) => {
+            acc[s.service_id] = s.price;
+            return acc;
+          },
+          {},
+        ),
+      }));
+
+      setArchivedProjects(finalMapped);
 
       // 4. Update Stats
       setStats({
@@ -390,7 +474,7 @@ export default function ArchivePage() {
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Project & Address
+                Name
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                 Project ID
@@ -597,35 +681,81 @@ export default function ArchivePage() {
                                         <TableHead className="h-8 text-[10px] font-semibold text-center">
                                           Cert
                                         </TableHead>
+                                        <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                          A1
+                                        </TableHead>
+                                        <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                          Success
+                                        </TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                      {item.workers.map((workerId: string) => (
-                                        <TableRow
-                                          key={workerId}
-                                          className="h-8 hover:bg-transparent border-0"
-                                        >
-                                          <TableCell className="py-1">
-                                            <div className="flex items-center gap-2">
-                                              <Avatar className="h-5 w-5 border">
-                                                <AvatarImage
-                                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                />
-                                                <AvatarFallback className="text-[9px]">
-                                                  {workerId.charAt(0)}
-                                                </AvatarFallback>
-                                              </Avatar>
-                                              <span className="text-xs font-medium truncate max-w-[100px]">
-                                                Worker{" "}
-                                                {workerId.substring(0, 6)}
-                                              </span>
-                                            </div>
-                                          </TableCell>
-                                          <TableCell className="py-1 text-xs text-muted-foreground text-center">
-                                            Yes
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
+                                      {item.workerDetails?.map(
+                                        (worker: any) => {
+                                          const certValid =
+                                            worker.certStatus === "Valid" &&
+                                            worker.certFiles &&
+                                            worker.certFiles.length > 0;
+                                          const a1Valid =
+                                            worker.a1Status === "Valid";
+
+                                          return (
+                                            <TableRow
+                                              key={worker.id}
+                                              className="h-8 hover:bg-transparent border-0"
+                                            >
+                                              <TableCell className="py-1">
+                                                <div className="flex items-center gap-2">
+                                                  <Avatar className="h-5 w-5 border">
+                                                    <AvatarImage
+                                                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${worker.id}`}
+                                                    />
+                                                    <AvatarFallback className="text-[9px]">
+                                                      {worker.id.charAt(0)}
+                                                    </AvatarFallback>
+                                                  </Avatar>
+                                                  <span className="text-xs font-medium truncate max-w-[100px]">
+                                                    {worker.name ||
+                                                      `Worker ${worker.id.substring(0, 6)}`}
+                                                  </span>
+                                                </div>
+                                              </TableCell>
+                                              <TableCell className="py-1 text-xs text-center">
+                                                <span
+                                                  className={
+                                                    certValid
+                                                      ? "text-green-600 font-medium"
+                                                      : "text-muted-foreground"
+                                                  }
+                                                >
+                                                  {certValid
+                                                    ? "Yes"
+                                                    : worker.certStatus || "No"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="py-1 text-xs text-center">
+                                                <span
+                                                  className={
+                                                    a1Valid
+                                                      ? "text-green-600 font-medium"
+                                                      : "text-muted-foreground"
+                                                  }
+                                                >
+                                                  {a1Valid
+                                                    ? "Yes"
+                                                    : worker.a1Status || "No"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                {worker.successRate !==
+                                                undefined
+                                                  ? `${worker.successRate}%`
+                                                  : "100%"}
+                                              </TableCell>
+                                            </TableRow>
+                                          );
+                                        },
+                                      )}
                                     </TableBody>
                                   </Table>
                                 </div>
@@ -674,8 +804,13 @@ export default function ArchivePage() {
                                                 PRICING_MATRIX.baseCosts[
                                                   units
                                                 ] || {};
+                                              // Use stored price if available, else calc
                                               const cost =
-                                                (unitCosts as any)[type] || 0;
+                                                item.workTypeCosts?.[type] !==
+                                                undefined
+                                                  ? item.workTypeCosts[type]
+                                                  : (unitCosts as any)[type] ||
+                                                    0;
 
                                               return (
                                                 <div
@@ -726,7 +861,16 @@ export default function ArchivePage() {
                                                         serviceId}
                                                     </span>
                                                     <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                      € {service?.price || 0}
+                                                      €{" "}
+                                                      {item
+                                                        .additionalServiceCosts?.[
+                                                        serviceId
+                                                      ] !== undefined
+                                                        ? item
+                                                            .additionalServiceCosts[
+                                                            serviceId
+                                                          ]
+                                                        : service?.price || 0}
                                                     </span>
                                                   </div>
                                                 );

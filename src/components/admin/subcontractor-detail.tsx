@@ -601,6 +601,7 @@ export function SubcontractorDetail({
       }
 
       // Load Project Stats
+      // Load Project Stats
       try {
         setLoadingStats(true);
         const filterColumn =
@@ -610,15 +611,28 @@ export function SubcontractorDetail({
               ? "broker_id"
               : "subcontractor_id";
 
-        let query = supabase
-          .from("projects")
-          .select("created_at, actual_start, status");
+        // Validate UUID format
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const isValidUUID =
+          subcontractor.id && uuidRegex.test(subcontractor.id);
 
-        if (subcontractor.id) {
-          query = query.eq(filterColumn, subcontractor.id);
+        let projects: any[] | null = [];
+        let projectsError = null;
+
+        if (isValidUUID) {
+          const { data, error } = await supabase
+            .from("projects")
+            .select("created_at, actual_start, status")
+            .eq(filterColumn, subcontractor.id);
+          projects = data;
+          projectsError = error;
+        } else {
+          console.warn(
+            "[PerformanceDebug] Invalid or missing UUID for subcontractor, skipping DB stats fetch:",
+            subcontractor.id,
+          );
         }
-
-        const { data: projects, error: projectsError } = await query;
 
         if (projectsError) {
           console.error("Error fetching project stats:", projectsError);

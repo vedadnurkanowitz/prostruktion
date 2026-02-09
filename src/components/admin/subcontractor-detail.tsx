@@ -622,40 +622,87 @@ export function SubcontractorDetail({
 
         if (projectsError) {
           console.error("Error fetching project stats:", projectsError);
-        } else if (projects) {
-          const monthlyCounts: Record<string, number> = {};
-          const months = [
-            "Jan",
-            "Feb",
-            "Mar",
-            "Apr",
-            "May",
-            "Jun",
-            "Jul",
-            "Aug",
-            "Sep",
-            "Oct",
-            "Nov",
-            "Dec",
-          ];
-          months.forEach((m) => (monthlyCounts[m] = 0));
+        }
 
+        // Initialize monthly counts
+        const monthlyCounts: Record<string, number> = {};
+        const months = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+        months.forEach((m) => (monthlyCounts[m] = 0));
+
+        // 1. Process Supabase Data
+        if (projects) {
           projects.forEach((p: any) => {
-            const dateStr = p.actual_start || p.created_at;
-            if (dateStr) {
-              const date = new Date(dateStr);
-              const monthIndex = date.getMonth();
-              const monthName = months[monthIndex];
-              monthlyCounts[monthName] = (monthlyCounts[monthName] || 0) + 1;
+            const isCompleted = ["Completed", "Finished", "Archived"].includes(
+              p.status,
+            );
+            if (isCompleted) {
+              const dateStr = p.actual_start || p.created_at;
+              if (dateStr) {
+                const date = new Date(dateStr);
+                const monthIndex = date.getMonth();
+                const monthName = months[monthIndex];
+                monthlyCounts[monthName] = (monthlyCounts[monthName] || 0) + 1;
+              }
             }
           });
-
-          const stats = months.map((month) => ({
-            name: month,
-            value: monthlyCounts[month],
-          }));
-          setProjectStats(stats);
         }
+
+        // 2. Process LocalStorage Archive (Legacy/Failover)
+        // This is necessary because the user might have data in the local 'Archive' that isn't in Supabase yet.
+        const localArchiveJson = localStorage.getItem("prostruktion_archive");
+        if (localArchiveJson) {
+          try {
+            const localArchive = JSON.parse(localArchiveJson);
+
+            localArchive.forEach((p: any) => {
+              // Check if this project belongs to the current subcontractor
+              // Match by ID (preferred) or Name (fallback)
+              const isLinked =
+                (subcontractor.id &&
+                  (p.subId === subcontractor.id ||
+                    p.subcontractorId === subcontractor.id)) ||
+                p.sub === subcontractor.name ||
+                p.subcontractor === subcontractor.name;
+
+              if (isLinked) {
+                // Archive projects are implicitly "Done", but check status if available
+                // Usually items in 'prostruktion_archive' are considered archived/completed.
+                const dateStr =
+                  p.actualStart || p.start || p.created_at || p.date;
+                if (dateStr) {
+                  const date = new Date(dateStr);
+                  if (!isNaN(date.getTime())) {
+                    const monthIndex = date.getMonth();
+                    const monthName = months[monthIndex];
+                    monthlyCounts[monthName] =
+                      (monthlyCounts[monthName] || 0) + 1;
+                  }
+                }
+              }
+            });
+          } catch (err) {
+            console.error("Error parsing local archive for stats:", err);
+          }
+        }
+
+        const stats = months.map((month) => ({
+          name: month,
+          value: monthlyCounts[month],
+        }));
+        setProjectStats(stats);
       } catch (e) {
         console.error("Error loading stats:", e);
       } finally {

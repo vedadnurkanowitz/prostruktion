@@ -126,34 +126,6 @@ interface SubcontractorDetailProps {
   onBack: () => void;
 }
 
-// Helper to generate monthly stats
-const generateMonthlyStats = (role: string) => {
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  return months.map((month) => {
-    // If partner, numbers are sum of subs (simulated higher range)
-    const base = role === "partner" ? 50 : 5;
-    const range = role === "partner" ? 100 : 15;
-    return {
-      name: month,
-      // Random value between base and base+range
-      value: Math.floor(base + Math.random() * range),
-    };
-  });
-};
-
 export function SubcontractorDetail({
   subcontractor,
   onBack,
@@ -543,6 +515,12 @@ export function SubcontractorDetail({
     }
   };
 
+  // Project Stats State
+  const [projectStats, setProjectStats] = useState<
+    { name: string; value: number }[]
+  >([]);
+  const [loadingStats, setLoadingStats] = useState(false);
+
   // Documents State
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const isInitializedRef = useRef(false);
@@ -598,20 +576,19 @@ export function SubcontractorDetail({
           a1End: w.a1_end || "",
           a1Files: w.a1_files || [],
           certStatus: w.cert_status || "None",
-          certStart: w.cert_start || "",
-          certEnd: w.cert_end || "",
+          certStart: w.cert_start,
+          certEnd: w.cert_end,
           certFiles: w.cert_files || [],
           activeProjects: w.active_projects || 0,
           completedProjects: w.completed_projects || 0,
           complaints: w.complaints || 0,
           successRate: w.success_rate || 100,
-          joinedDate: w.joined_date || w.created_at || new Date().toISOString(),
+          joinedDate: w.joined_date || new Date().toISOString(),
           avatarSeed: w.avatar_seed || w.name,
           synced: true,
           supabaseId: w.id,
         }));
         setWorkers(loadedWorkers);
-        workersLoadedRef.current = true;
         console.log(
           "[SubcontractorDetail] Loaded",
           loadedWorkers.length,
@@ -621,6 +598,68 @@ export function SubcontractorDetail({
         // Fallback or empty state if needed
         setWorkers([]);
         workersLoadedRef.current = true;
+      }
+
+      // Load Project Stats
+      try {
+        setLoadingStats(true);
+        const filterColumn =
+          subcontractor.role?.toLowerCase() === "partner"
+            ? "partner_id"
+            : subcontractor.role?.toLowerCase() === "mediator"
+              ? "broker_id"
+              : "subcontractor_id";
+
+        let query = supabase
+          .from("projects")
+          .select("created_at, actual_start, status");
+
+        if (subcontractor.id) {
+          query = query.eq(filterColumn, subcontractor.id);
+        }
+
+        const { data: projects, error: projectsError } = await query;
+
+        if (projectsError) {
+          console.error("Error fetching project stats:", projectsError);
+        } else if (projects) {
+          const monthlyCounts: Record<string, number> = {};
+          const months = [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+          ];
+          months.forEach((m) => (monthlyCounts[m] = 0));
+
+          projects.forEach((p: any) => {
+            const dateStr = p.actual_start || p.created_at;
+            if (dateStr) {
+              const date = new Date(dateStr);
+              const monthIndex = date.getMonth();
+              const monthName = months[monthIndex];
+              monthlyCounts[monthName] = (monthlyCounts[monthName] || 0) + 1;
+            }
+          });
+
+          const stats = months.map((month) => ({
+            name: month,
+            value: monthlyCounts[month],
+          }));
+          setProjectStats(stats);
+        }
+      } catch (e) {
+        console.error("Error loading stats:", e);
+      } finally {
+        setLoadingStats(false);
       }
 
       // Load documents from documents table
@@ -965,33 +1004,44 @@ export function SubcontractorDetail({
             </CardHeader>
             <CardContent>
               <div className="h-[300px] w-full flex items-end justify-between gap-2 pt-10 px-4">
-                {generateMonthlyStats(subcontractor.role).map((item, i) => {
-                  const maxVal = subcontractor.role === "partner" ? 150 : 25; // Scale approximation
-                  const heightPercentage = Math.min(
-                    100,
-                    Math.max(5, (item.value / maxVal) * 100),
-                  );
-                  return (
-                    <div
-                      key={i}
-                      className="flex flex-col items-center gap-2 flex-1 group"
-                    >
-                      <div className="relative w-full bg-gray-100 dark:bg-gray-800 rounded-t-sm h-full flex items-end overflow-hidden">
-                        <div
-                          className="w-full bg-primary/80 group-hover:bg-primary transition-all duration-500 ease-in-out relative"
-                          style={{ height: `${heightPercentage}%` }}
-                        >
-                          <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded transition-opacity whitespace-nowrap z-10">
-                            {item.value} Jobs
+                {projectStats.length > 0 ? (
+                  projectStats.map((item, i) => {
+                    const maxVal = Math.max(
+                      ...projectStats.map((s) => s.value),
+                      10,
+                    ); // Dynamic max
+                    const heightPercentage = Math.min(
+                      100,
+                      Math.max(5, (item.value / maxVal) * 100),
+                    );
+                    return (
+                      <div
+                        key={i}
+                        className="flex flex-col items-center gap-2 flex-1 group"
+                      >
+                        <div className="relative w-full bg-gray-100 dark:bg-gray-800 rounded-t-sm h-full flex items-end overflow-hidden">
+                          <div
+                            className="w-full bg-primary/80 group-hover:bg-primary transition-all duration-500 ease-in-out relative"
+                            style={{ height: `${heightPercentage}%` }}
+                          >
+                            <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded transition-opacity whitespace-nowrap z-10">
+                              {item.value} Jobs
+                            </div>
                           </div>
                         </div>
+                        <span className="text-xs text-muted-foreground font-medium">
+                          {item.name}
+                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground font-medium">
-                        {item.name}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                    {loadingStats
+                      ? "Loading statistics..."
+                      : "No job data available."}
+                  </div>
+                )}
               </div>
               <div className="mt-4 text-sm text-muted-foreground text-center">
                 {subcontractor.role === "partner"

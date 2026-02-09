@@ -721,7 +721,14 @@ export function SubcontractorDetail({
                 );
                 // Archive projects are implicitly "Done", but check status if available
                 const dateStr =
-                  p.actualStart || p.start || p.created_at || p.date;
+                  p.actualStart ||
+                  p.start ||
+                  p.created_at ||
+                  p.date ||
+                  p.scheduledStart ||
+                  p.end ||
+                  p.abnahmeDate; // Added user suggestion
+
                 if (dateStr) {
                   const date = new Date(dateStr);
                   if (!isNaN(date.getTime())) {
@@ -729,7 +736,28 @@ export function SubcontractorDetail({
                     const monthName = months[monthIndex];
                     monthlyCounts[monthName] =
                       (monthlyCounts[monthName] || 0) + 1;
+                  } else {
+                    console.warn(
+                      "[PerformanceDebug] Invalid date for project:",
+                      p.project || p.title,
+                      dateStr,
+                    );
+                    // Fallback to current month if date is invalid but project exists?
+                    // Or just skip. Better to skip invalid dates to avoid skewing data too much.
                   }
+                } else {
+                  console.warn(
+                    "[PerformanceDebug] No date found for project:",
+                    p.project || p.title,
+                  );
+                  // Fallback: If no date, maybe use current date as "archived now"?
+                  // For now, let's log it. User suspects missing date is the issue.
+                  // Let's add it to the current month as a last resort fallback so it shows up SOMEWHERE.
+                  const now = new Date();
+                  const monthIndex = now.getMonth();
+                  const monthName = months[monthIndex];
+                  monthlyCounts[monthName] =
+                    (monthlyCounts[monthName] || 0) + 1;
                 }
               }
             });

@@ -1314,51 +1314,86 @@ export default function ProjectMap() {
 
                             try {
                               const supabase = createClient();
+                              const targetProjectId = project.id;
 
-                              // 1. Assign workers
-                              for (const workerId of workersToAssign) {
-                                if (project.id) {
-                                  await supabase.from("project_workers").upsert(
-                                    {
-                                      project_id: project.id,
-                                      worker_id: workerId,
-                                    },
-                                    { onConflict: "project_id,worker_id" },
+                              if (!targetProjectId) {
+                                alert(
+                                  "Target project ID is missing. Cannot assign team.",
+                                );
+                                setAssigningTeam(null);
+                                return;
+                              }
+
+                              // 1. Assign Workers (Batch Upsert)
+                              if (workersToAssign.length > 0) {
+                                const workerPayload = workersToAssign.map(
+                                  (workerId) => ({
+                                    project_id: targetProjectId,
+                                    worker_id: workerId,
+                                  }),
+                                );
+
+                                const { error: workerError } = await supabase
+                                  .from("project_workers")
+                                  .upsert(workerPayload, {
+                                    onConflict: "project_id,worker_id",
+                                    ignoreDuplicates: true,
+                                  });
+
+                                if (workerError) {
+                                  console.error(
+                                    "Worker assignment error:",
+                                    workerError,
+                                  );
+                                  // Continue to transfer sub/mediator even if some workers fail?
+                                  // Usually better to alert but we try best effort here.
+                                } else {
+                                  console.log(
+                                    `Assigned ${workersToAssign.length} workers to ${project.project}`,
                                   );
                                 }
                               }
 
                               // 2. Transfer Subcontractor and Mediator
-                              if (project.id && selectedProject.subId) {
-                                const payload: any = {
-                                  subcontractor_id: selectedProject.subId,
-                                };
-                                if (selectedProject.mediatorId) {
-                                  payload.broker_id =
-                                    selectedProject.mediatorId;
-                                }
+                              const updatePayload: any = {};
+                              let transferMsg = "";
 
+                              if (selectedProject.subId) {
+                                updatePayload.subcontractor_id =
+                                  selectedProject.subId;
+                                transferMsg += " Subcontractor";
+                              }
+
+                              if (selectedProject.mediatorId) {
+                                updatePayload.broker_id =
+                                  selectedProject.mediatorId;
+                                transferMsg +=
+                                  (transferMsg ? " &" : "") + " Mediator";
+                              }
+
+                              if (Object.keys(updatePayload).length > 0) {
                                 const { error: updateError } = await supabase
                                   .from("projects")
-                                  .update(payload)
-                                  .eq("id", project.id);
+                                  .update(updatePayload)
+                                  .eq("id", targetProjectId);
 
                                 if (updateError) {
                                   console.error(
-                                    "Error transferring sub/mediator:",
+                                    "Project update error:",
                                     updateError,
+                                  );
+                                  alert(
+                                    "Failed to transfer Subcontractor/Mediator details.",
                                   );
                                 } else {
                                   console.log(
-                                    "Transferred sub/mediator to:",
-                                    project.project,
+                                    `Transferred ${transferMsg} to ${project.project}`,
                                   );
-                                  // Optimistic UI update could go here but forcing reload easiest or relying on existing state
                                 }
                               }
 
                               alert(
-                                `Successfully assigned ${workersToAssign.length} worker(s) and transferred Subcontractor/Mediator to ${project.project}`,
+                                `Successfully assigned ${workersToAssign.length} worker(s)${transferMsg ? " and transferred" + transferMsg : ""} to ${project.project}`,
                               );
                               clearDeploymentLines();
                             } catch (error) {

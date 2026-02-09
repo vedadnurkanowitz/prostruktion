@@ -699,17 +699,20 @@ export default function AdminProjects() {
           if (workerIds.length > 0) {
             const { data: workersList } = await supabase
               .from("workers")
-              .select("id, name, cert_status, a1_status, success_rate")
+              .select(
+                "id, name, cert_status, a1_status, success_rate, cert_files",
+              )
               .in("id", workerIds);
 
             if (workersList) {
               tempWorkersMap = workersList.reduce(
-                (acc, w) => {
+                (acc: any, w: any) => {
                   acc[w.id] = {
                     name: w.name,
                     certStatus: w.cert_status,
                     a1Status: w.a1_status,
                     successRate: w.success_rate,
+                    certFiles: w.cert_files || [],
                   };
                   return acc;
                 },
@@ -2529,7 +2532,9 @@ export default function AdminProjects() {
                                           (workerId: string) => {
                                             const worker = workersMap[workerId];
                                             const certValid =
-                                              worker?.certStatus === "Valid";
+                                              worker?.certStatus === "Valid" &&
+                                              worker?.certFiles &&
+                                              worker.certFiles.length > 0;
                                             const a1Valid =
                                               worker?.a1Status === "Valid";
 
@@ -2564,8 +2569,11 @@ export default function AdminProjects() {
                                                   >
                                                     {certValid
                                                       ? "Yes"
-                                                      : worker?.certStatus ||
-                                                        "No"}
+                                                      : worker?.certStatus ===
+                                                          "Valid"
+                                                        ? "Missing"
+                                                        : worker?.certStatus ||
+                                                          "No"}
                                                   </span>
                                                 </TableCell>
                                                 <TableCell className="py-1 text-xs text-center">

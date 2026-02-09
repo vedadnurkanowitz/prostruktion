@@ -218,6 +218,7 @@ export default function AdminProjects() {
   const [subcontractors, setSubcontractors] = useState<any[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
   const [availableWorkers, setAvailableWorkers] = useState<any[]>([]); // Added availableWorkers state
+  const [workersMap, setWorkersMap] = useState<Record<string, any>>({}); // Map worker ID to Worker Details
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [archivedCount, setArchivedCount] = useState(0);
 
@@ -628,6 +629,15 @@ export default function AdminProjects() {
                 .filter(Boolean),
             ),
           );
+          const workerIds = Array.from(
+            new Set(
+              projectsData
+                .flatMap((p) =>
+                  p.project_workers?.map((pw: any) => pw.worker_id),
+                )
+                .filter(Boolean),
+            ),
+          );
 
           // Fetch Customers
           let customersMap: Record<string, any> = {};
@@ -681,6 +691,31 @@ export default function AdminProjects() {
                 },
                 {} as Record<string, any>,
               );
+            }
+          }
+
+          // Fetch Workers
+          let tempWorkersMap: Record<string, any> = {};
+          if (workerIds.length > 0) {
+            const { data: workersList } = await supabase
+              .from("workers")
+              .select("id, name, cert_status, a1_status, success_rate")
+              .in("id", workerIds);
+
+            if (workersList) {
+              tempWorkersMap = workersList.reduce(
+                (acc, w) => {
+                  acc[w.id] = {
+                    name: w.name,
+                    certStatus: w.cert_status,
+                    a1Status: w.a1_status,
+                    successRate: w.success_rate,
+                  };
+                  return acc;
+                },
+                {} as Record<string, any>,
+              );
+              setWorkersMap(tempWorkersMap);
             }
           }
 
@@ -1959,37 +1994,72 @@ export default function AdminProjects() {
                                         </TableHeader>
                                         <TableBody>
                                           {project.workers.map(
-                                            (workerId: string) => (
-                                              <TableRow
-                                                key={workerId}
-                                                className="h-8 hover:bg-transparent border-0"
-                                              >
-                                                <TableCell className="py-1">
-                                                  <div className="flex items-center gap-2">
-                                                    <Avatar className="h-5 w-5 border">
-                                                      <AvatarImage
-                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                      />
-                                                      <AvatarFallback className="text-[9px]">
-                                                        {workerId.charAt(0)}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                    <span className="text-xs font-medium truncate max-w-[100px]">
-                                                      Worker {workerId}
+                                            (workerId: string) => {
+                                              const worker =
+                                                workersMap[workerId];
+                                              const certValid =
+                                                worker?.certStatus === "Valid";
+                                              const a1Valid =
+                                                worker?.a1Status === "Valid";
+
+                                              return (
+                                                <TableRow
+                                                  key={workerId}
+                                                  className="h-8 hover:bg-transparent border-0"
+                                                >
+                                                  <TableCell className="py-1">
+                                                    <div className="flex items-center gap-2">
+                                                      <Avatar className="h-5 w-5 border">
+                                                        <AvatarImage
+                                                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
+                                                        />
+                                                        <AvatarFallback className="text-[9px]">
+                                                          {workerId.charAt(0)}
+                                                        </AvatarFallback>
+                                                      </Avatar>
+                                                      <span className="text-xs font-medium truncate max-w-[100px]">
+                                                        {worker?.name ||
+                                                          `Worker ${workerId}`}
+                                                      </span>
+                                                    </div>
+                                                  </TableCell>
+                                                  <TableCell className="py-1 text-xs text-center">
+                                                    <span
+                                                      className={
+                                                        certValid
+                                                          ? "text-green-600 font-medium"
+                                                          : "text-muted-foreground"
+                                                      }
+                                                    >
+                                                      {certValid
+                                                        ? "Yes"
+                                                        : worker?.certStatus ||
+                                                          "No"}
                                                     </span>
-                                                  </div>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-xs text-muted-foreground text-center">
-                                                  Yes
-                                                </TableCell>
-                                                <TableCell className="py-1 text-xs text-muted-foreground text-center">
-                                                  Yes
-                                                </TableCell>
-                                                <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
-                                                  100%
-                                                </TableCell>
-                                              </TableRow>
-                                            ),
+                                                  </TableCell>
+                                                  <TableCell className="py-1 text-xs text-center">
+                                                    <span
+                                                      className={
+                                                        a1Valid
+                                                          ? "text-green-600 font-medium"
+                                                          : "text-muted-foreground"
+                                                      }
+                                                    >
+                                                      {a1Valid
+                                                        ? "Yes"
+                                                        : worker?.a1Status ||
+                                                          "No"}
+                                                    </span>
+                                                  </TableCell>
+                                                  <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                    {worker?.successRate !==
+                                                    undefined
+                                                      ? `${worker.successRate}%`
+                                                      : "100%"}
+                                                  </TableCell>
+                                                </TableRow>
+                                              );
+                                            },
                                           )}
                                         </TableBody>
                                       </Table>
@@ -2456,37 +2526,71 @@ export default function AdminProjects() {
                                       </TableHeader>
                                       <TableBody>
                                         {item.workers.map(
-                                          (workerId: string) => (
-                                            <TableRow
-                                              key={workerId}
-                                              className="h-8 hover:bg-transparent border-0"
-                                            >
-                                              <TableCell className="py-1">
-                                                <div className="flex items-center gap-2">
-                                                  <Avatar className="h-5 w-5 border">
-                                                    <AvatarImage
-                                                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                    />
-                                                    <AvatarFallback className="text-[9px]">
-                                                      {workerId.charAt(0)}
-                                                    </AvatarFallback>
-                                                  </Avatar>
-                                                  <span className="text-xs font-medium truncate max-w-[100px]">
-                                                    Worker {workerId}
+                                          (workerId: string) => {
+                                            const worker = workersMap[workerId];
+                                            const certValid =
+                                              worker?.certStatus === "Valid";
+                                            const a1Valid =
+                                              worker?.a1Status === "Valid";
+
+                                            return (
+                                              <TableRow
+                                                key={workerId}
+                                                className="h-8 hover:bg-transparent border-0"
+                                              >
+                                                <TableCell className="py-1">
+                                                  <div className="flex items-center gap-2">
+                                                    <Avatar className="h-5 w-5 border">
+                                                      <AvatarImage
+                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
+                                                      />
+                                                      <AvatarFallback className="text-[9px]">
+                                                        {workerId.charAt(0)}
+                                                      </AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="text-xs font-medium truncate max-w-[100px]">
+                                                      {worker?.name ||
+                                                        `Worker ${workerId}`}
+                                                    </span>
+                                                  </div>
+                                                </TableCell>
+                                                <TableCell className="py-1 text-xs text-center">
+                                                  <span
+                                                    className={
+                                                      certValid
+                                                        ? "text-green-600 font-medium"
+                                                        : "text-muted-foreground"
+                                                    }
+                                                  >
+                                                    {certValid
+                                                      ? "Yes"
+                                                      : worker?.certStatus ||
+                                                        "No"}
                                                   </span>
-                                                </div>
-                                              </TableCell>
-                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">
-                                                Yes
-                                              </TableCell>
-                                              <TableCell className="py-1 text-xs text-muted-foreground text-center">
-                                                Yes
-                                              </TableCell>
-                                              <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
-                                                100%
-                                              </TableCell>
-                                            </TableRow>
-                                          ),
+                                                </TableCell>
+                                                <TableCell className="py-1 text-xs text-center">
+                                                  <span
+                                                    className={
+                                                      a1Valid
+                                                        ? "text-green-600 font-medium"
+                                                        : "text-muted-foreground"
+                                                    }
+                                                  >
+                                                    {a1Valid
+                                                      ? "Yes"
+                                                      : worker?.a1Status ||
+                                                        "No"}
+                                                  </span>
+                                                </TableCell>
+                                                <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                  {worker?.successRate !==
+                                                  undefined
+                                                    ? `${worker.successRate}%`
+                                                    : "100%"}
+                                                </TableCell>
+                                              </TableRow>
+                                            );
+                                          },
                                         )}
                                       </TableBody>
                                     </Table>

@@ -55,6 +55,7 @@ type Worker = {
   phone?: string;
   email?: string;
   joinedDate?: string;
+  certFiles?: string[];
 };
 
 type Company = {
@@ -90,6 +91,9 @@ type Project = {
   lng?: number;
   complaints?: number;
   isArchived?: boolean;
+  id?: string;
+  subId?: string;
+  mediatorId?: string;
 };
 
 const getRandomInRange = (from: number, to: number, fixed: number) => {
@@ -218,8 +222,9 @@ export default function ProjectMap() {
               avatarSeed: w.avatar_seed || w.name,
               successRate: w.success_rate || 98,
               completedProjects: w.completed_projects || 0,
-              a1Status: "Valid",
-              certStatus: "Valid",
+              a1Status: w.a1_status,
+              certStatus: w.cert_status,
+              certFiles: w.cert_files || [],
             })),
           );
         }
@@ -338,14 +343,17 @@ export default function ProjectMap() {
 
             return {
               project: p.title,
+              id: p.id,
               address: p.address || "",
               description: p.description,
               status: p.status || "Scheduled",
               statusColor: "",
               contractor: contractorName,
               sub: subName,
+              subId: p.subcontractor_id,
               partner: partnerName,
               mediator: mediatorName,
+              mediatorId: p.broker_id,
               amount: `€ ${p.contract_value?.toLocaleString("de-DE") || "0"}`,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
@@ -1154,22 +1162,27 @@ export default function ProjectMap() {
                                 className={`text-[10px] px-1 rounded border ${
                                   worker.a1Status === "Valid"
                                     ? "border-green-200 text-green-700 bg-green-50"
-                                    : "border-red-200 text-red-700 bg-red-50"
+                                    : "border-gray-200 text-gray-400 bg-gray-50"
                                 }`}
                               >
                                 A1: {worker.a1Status || "N/A"}
                               </span>
-                              {worker.certStatus && (
-                                <span
-                                  className={`text-[10px] px-1 rounded border ${
-                                    worker.certStatus === "Valid"
-                                      ? "border-green-200 text-green-700 bg-green-50"
-                                      : "border-yellow-200 text-yellow-700 bg-yellow-50"
-                                  }`}
-                                >
-                                  Cert: {worker.certStatus}
-                                </span>
-                              )}
+                              <span
+                                className={`text-[10px] px-1 rounded border ${
+                                  worker.certStatus === "Valid" &&
+                                  worker.certFiles &&
+                                  worker.certFiles.length > 0
+                                    ? "border-green-200 text-green-700 bg-green-50"
+                                    : "border-gray-200 text-gray-400 bg-gray-50"
+                                }`}
+                              >
+                                Cert:{" "}
+                                {worker.certStatus === "Valid" &&
+                                worker.certFiles &&
+                                worker.certFiles.length > 0
+                                  ? "Available"
+                                  : "Missing"}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1302,19 +1315,50 @@ export default function ProjectMap() {
                             try {
                               const supabase = createClient();
 
-                              // Add workers to target project
+                              // 1. Assign workers
                               for (const workerId of workersToAssign) {
-                                await supabase.from("project_workers").upsert(
-                                  {
-                                    project_id: project.project, // Using project name as ID for now
-                                    worker_id: workerId,
-                                  },
-                                  { onConflict: "project_id,worker_id" },
-                                );
+                                if (project.id) {
+                                  await supabase.from("project_workers").upsert(
+                                    {
+                                      project_id: project.id,
+                                      worker_id: workerId,
+                                    },
+                                    { onConflict: "project_id,worker_id" },
+                                  );
+                                }
+                              }
+
+                              // 2. Transfer Subcontractor and Mediator
+                              if (project.id && selectedProject.subId) {
+                                const payload: any = {
+                                  subcontractor_id: selectedProject.subId,
+                                };
+                                if (selectedProject.mediatorId) {
+                                  payload.broker_id =
+                                    selectedProject.mediatorId;
+                                }
+
+                                const { error: updateError } = await supabase
+                                  .from("projects")
+                                  .update(payload)
+                                  .eq("id", project.id);
+
+                                if (updateError) {
+                                  console.error(
+                                    "Error transferring sub/mediator:",
+                                    updateError,
+                                  );
+                                } else {
+                                  console.log(
+                                    "Transferred sub/mediator to:",
+                                    project.project,
+                                  );
+                                  // Optimistic UI update could go here but forcing reload easiest or relying on existing state
+                                }
                               }
 
                               alert(
-                                `Successfully assigned ${workersToAssign.length} worker(s) to ${project.project}`,
+                                `Successfully assigned ${workersToAssign.length} worker(s) and transferred Subcontractor/Mediator to ${project.project}`,
                               );
                               clearDeploymentLines();
                             } catch (error) {

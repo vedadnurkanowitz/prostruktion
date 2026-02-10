@@ -56,6 +56,7 @@ import {
   PlusCircle,
   Gift,
   X,
+  Settings2,
 } from "lucide-react";
 import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -283,6 +284,7 @@ export default function AdminProjects() {
   };
 
   // Additional Work State
+  const [showInvoicePreview, setShowInvoicePreview] = useState(false);
   const [additionalWorkInputs, setAdditionalWorkInputs] = useState<{
     [key: number]: { description: string; price: string };
   }>({});
@@ -301,15 +303,19 @@ export default function AdminProjects() {
     }));
   };
 
-  const handleAddAdditionalWorkItem = (index: number, project: any) => {
+  const handleAddAdditionalWorkItem = async (index: number, project: any) => {
     const input = additionalWorkInputs[index];
     if (!input || !input.description || !input.price) return;
 
-    const newWorkItem = {
+    const priceVal = parseFloat(input.price);
+
+    // Prepare new item for consistent local state
+    // We will update the ID if Supabase returns successfully
+    let newWorkItem = {
       id: Math.random().toString(36).substr(2, 9),
       description: input.description,
-      price: parseFloat(input.price),
-      receiptName: null as string | null, // Placeholder for file name
+      price: priceVal,
+      receiptName: null as string | null,
     };
 
     // Check for file input
@@ -321,28 +327,51 @@ export default function AdminProjects() {
       // Note: Actual file upload/storage logic would go here.
     }
 
-    const updatedProjects = [...projects];
-    // Find the actual project index in the main list if filtered, but here 'projects' is the source
-    // note: 'i' in the map loop corresponds to 'paginatedProjects' index usually, but here likely matches if no filter.
-    // Ideally we should find by ID, but existing logic uses 'i' from map.
-    // The map loop in render uses: `paginatedProjects...map((item, i) => ...)`
-    // And `handleStatusChange` uses `i`.
-    // However, `setProjects` updates the main `projects` array.
-    // We should use `handleProjectFieldChange` logic finding by object reference if possible, but simpler here:
+    // --- SUPABASE SAVE ---
+    if (project.id) {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("project_additional_works")
+          .insert({
+            project_id: project.id,
+            description: input.description,
+            price: priceVal
+          })
+          .select("id")
+          .single();
 
-    const mainIndex = updatedProjects.findIndex((p) => p === project);
-    if (mainIndex !== -1) {
-      if (!updatedProjects[mainIndex].additionalWorks) {
-        updatedProjects[mainIndex].additionalWorks = [];
+        if (error) {
+          console.error("Error saving additional work to Supabase:", error);
+          // We continue to update local state optimistically or show error?
+          // Let's continue but log it. Data might be lost on refresh if save failed.
+        } else if (data) {
+          // Update ID with the real one from DB
+          newWorkItem.id = data.id;
+        }
+      } catch (err) {
+        console.error("Unexpected error saving additional work:", err);
       }
-      updatedProjects[mainIndex].additionalWorks.push(newWorkItem);
-
-      setProjects(updatedProjects);
-      localStorage.setItem(
-        "prostruktion_projects_v1",
-        JSON.stringify(updatedProjects),
-      );
     }
+
+    // --- LOCAL STATE UPDATE ---
+    setProjects((prevProjects) => {
+      const updatedProjects = [...prevProjects];
+      const mainIndex = updatedProjects.findIndex((p) => p === project || p.id === project.id);
+
+      if (mainIndex !== -1) {
+        if (!updatedProjects[mainIndex].additionalWorks) {
+          updatedProjects[mainIndex].additionalWorks = [];
+        }
+        updatedProjects[mainIndex].additionalWorks.push(newWorkItem);
+
+        localStorage.setItem(
+          "prostruktion_projects_v1",
+          JSON.stringify(updatedProjects),
+        );
+      }
+      return updatedProjects;
+    });
 
     // Clear input
     setAdditionalWorkInputs((prev) => ({
@@ -636,7 +665,8 @@ export default function AdminProjects() {
             *,
             project_work_types(work_type_key, price),
             project_additional_services(service_id, price),
-            project_workers(worker_id)
+            project_workers(worker_id),
+            project_additional_works(id, description, price)
           `,
           )
           .order("created_at", { ascending: false });
@@ -800,9 +830,11 @@ export default function AdminProjects() {
 
             // Map Additional Works
             const additionalWorks =
-              p.additional_works?.map((w: any) => ({
+              p.project_additional_works?.map((w: any) => ({
+                id: w.id, // Keep the ID for updates!
                 description: w.description,
                 price: w.price,
+                receiptName: null, // Files not yet supported in DB fully but placeholder kept
               })) || [];
 
             // Determine status color
@@ -856,14 +888,14 @@ export default function AdminProjects() {
               selectedAdditionalServices,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })
                 : new Date(p.created_at || Date.now()).toLocaleDateString(
-                    "en-US",
-                    { year: "numeric", month: "short", day: "numeric" },
-                  ),
+                  "en-US",
+                  { year: "numeric", month: "short", day: "numeric" },
+                ),
               scheduledStart: p.scheduled_start
                 ? p.scheduled_start.split("T")[0]
                 : "",
@@ -880,13 +912,14 @@ export default function AdminProjects() {
                   : statusColor,
               abnahme:
                 p.status === "In Abnahme" ||
-                (p.status === "In Progress" && p.abnahme_confirmed)
+                  (p.status === "In Progress" && p.abnahme_confirmed)
                   ? "Yes"
                   : "No",
               invoiceHeader: "Create Invoice",
               invoiceStatus: "Ready",
               workers: p.project_workers?.map((pw: any) => pw.worker_id) || [],
               abnahme_confirmed: p.abnahme_confirmed, // Keep raw value
+              additionalWorks, // Add mapped additional works
             };
           });
 
@@ -1056,7 +1089,7 @@ export default function AdminProjects() {
             const units = newProject.indoorUnits || 0;
             const matrixPrice =
               PRICING_MATRIX.baseCosts[units]?.[
-                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
               ] || 0;
             const price =
               newProject.workTypePrices[type] !== undefined
@@ -1166,11 +1199,11 @@ export default function AdminProjects() {
         const updatedProjects = projects.map((p) =>
           p.id === editingId
             ? {
-                ...p,
-                ...projectData,
-                status: p.status,
-                statusColor: p.statusColor,
-              }
+              ...p,
+              ...projectData,
+              status: p.status,
+              statusColor: p.statusColor,
+            }
             : p,
         );
         setProjects(updatedProjects);
@@ -2058,7 +2091,7 @@ export default function AdminProjects() {
                                   </div>
 
                                   {project.workers &&
-                                  project.workers.length > 0 ? (
+                                    project.workers.length > 0 ? (
                                     <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
                                       <Table>
                                         <TableHeader className="bg-gray-50/50">
@@ -2134,7 +2167,7 @@ export default function AdminProjects() {
                                                   </TableCell>
                                                   <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
                                                     {worker?.successRate !==
-                                                    undefined
+                                                      undefined
                                                       ? `${worker.successRate}%`
                                                       : "100%"}
                                                   </TableCell>
@@ -2199,7 +2232,7 @@ export default function AdminProjects() {
                                             Base Installation
                                           </div>
                                           {project.selectedWorkTypes &&
-                                          project.selectedWorkTypes.length >
+                                            project.selectedWorkTypes.length >
                                             0 ? (
                                             <div className="grid gap-2">
                                               {project.selectedWorkTypes.map(
@@ -2209,7 +2242,7 @@ export default function AdminProjects() {
                                                     project.indoorUnits || 0;
                                                   const unitCosts =
                                                     PRICING_MATRIX.baseCosts[
-                                                      units
+                                                    units
                                                     ] || {};
                                                   const cost =
                                                     (unitCosts as any)[type] ||
@@ -2276,6 +2309,45 @@ export default function AdminProjects() {
                                               </div>
                                             </div>
                                           )}
+
+                                        {/* Additional Works (Custom) - NEW SECTION */}
+                                        {project.additionalWorks &&
+                                          project.additionalWorks.length > 0 && (
+                                            <div className="space-y-2 mt-4">
+                                              <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                                Additional Works (In Progress)
+                                              </div>
+                                              <div className="grid gap-2">
+                                                {project.additionalWorks.map(
+                                                  (work: any, idx: number) => {
+                                                    return (
+                                                      <div
+                                                        key={work.id || idx}
+                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                      >
+                                                        <div className="flex flex-col">
+                                                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                            {work.description}
+                                                          </span>
+                                                          {work.receiptName && (
+                                                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                              <FileText className="h-3 w-3" /> {work.receiptName}
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                          €{" "}
+                                                          {work.price || 0}
+                                                        </span>
+                                                      </div>
+                                                    );
+                                                  },
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+
+
                                       </div>
 
                                       <div className="pt-4 mt-4 border-t">
@@ -2648,10 +2720,10 @@ export default function AdminProjects() {
                                                     {certValid
                                                       ? "Yes"
                                                       : worker?.certStatus ===
-                                                          "Valid"
+                                                        "Valid"
                                                         ? "Missing"
                                                         : worker?.certStatus ||
-                                                          "No"}
+                                                        "No"}
                                                   </span>
                                                 </TableCell>
                                                 <TableCell className="py-1 text-xs text-center">
@@ -2665,12 +2737,12 @@ export default function AdminProjects() {
                                                     {a1Valid
                                                       ? "Yes"
                                                       : worker?.a1Status ||
-                                                        "No"}
+                                                      "No"}
                                                   </span>
                                                 </TableCell>
                                                 <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
                                                   {worker?.successRate !==
-                                                  undefined
+                                                    undefined
                                                     ? `${worker.successRate}%`
                                                     : "100%"}
                                                 </TableCell>
@@ -2746,7 +2818,7 @@ export default function AdminProjects() {
                                           Base Installation
                                         </div>
                                         {item.selectedWorkTypes &&
-                                        item.selectedWorkTypes.length > 0 ? (
+                                          item.selectedWorkTypes.length > 0 ? (
                                           <div className="grid gap-2">
                                             {item.selectedWorkTypes.map(
                                               (type: string) => {
@@ -2755,7 +2827,7 @@ export default function AdminProjects() {
                                                   item.indoorUnits || 0;
                                                 const unitCosts =
                                                   PRICING_MATRIX.baseCosts[
-                                                    units
+                                                  units
                                                   ] || {};
                                                 const cost =
                                                   (unitCosts as any)[type] || 0;
@@ -2787,7 +2859,7 @@ export default function AdminProjects() {
                                       {/* Additional Services */}
                                       {item.selectedAdditionalServices &&
                                         item.selectedAdditionalServices.length >
-                                          0 && (
+                                        0 && (
                                           <div className="space-y-2 mt-4">
                                             <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
                                               Extras
@@ -3074,1144 +3146,20 @@ export default function AdminProjects() {
           </DialogHeader>
 
           {currentInvoice && (
-            <Tabs defaultValue="partner" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-4">
-                <TabsTrigger value="partner">Partner Invoice</TabsTrigger>
-                <TabsTrigger value="subcontractor">Subcontractor</TabsTrigger>
-                <TabsTrigger value="company">
-                  {currentInvoice?.hasMediator ? "Mediator" : "Mediator (N/A)"}
-                </TabsTrigger>
-              </TabsList>
+            !showInvoicePreview ? (
+              <Tabs defaultValue="partner" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 mb-4">
+                  <TabsTrigger value="partner">Partner Invoice</TabsTrigger>
+                  <TabsTrigger value="subcontractor">Subcontractor</TabsTrigger>
+                  <TabsTrigger value="company">
+                    {currentInvoice?.hasMediator ? "Mediator" : "Mediator (N/A)"}
+                  </TabsTrigger>
+                </TabsList>
 
-              {/* PARTNER INVOICE TAB */}
-              <TabsContent value="partner" className="space-y-4">
-                <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
-                  {/* 1. Header Info (6 fields grid) */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Project Name
-                      </span>
-                      <span className="font-medium">
-                        {currentInvoice.project}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Project ID
-                      </span>
-                      <span className="font-medium">{currentInvoice.id}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Contractor
-                      </span>
-                      <span className="font-medium">
-                        {currentInvoice.contractor || "N/A"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Subcontractor
-                      </span>
-                      <span className="font-medium">
-                        {currentInvoice.projectData?.sub || "N/A"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Mediator
-                      </span>
-                      <span className="font-medium">
-                        {currentInvoice.projectData?.mediator || "N/A"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Invoice Number
-                      </span>
-                      <span className="font-bold text-blue-600">
-                        {nextInvoiceNumber}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Prostruktion
-                      </span>
-                      <span className="font-medium text-blue-600">
-                        PROSTRUKTION
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* 2. Scope of Work (With Bonuses at bottom) */}
-                  <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-3">
-                    <h4 className="font-semibold uppercase text-muted-foreground">
-                      Scope of Work
-                    </h4>
-
-                    {/* Existing Work List */}
-                    <div className="space-y-1">
-                      <span className="text-muted-foreground block font-semibold mb-1">
-                        Work Types (
-                        {currentInvoice.projectData?.indoorUnits || 0} Indoor
-                        Units):
-                      </span>
-                      {currentInvoice.projectData?.selectedWorkTypes?.length >
-                      0 ? (
-                        <ul className="space-y-1">
-                          {currentInvoice.projectData.selectedWorkTypes.map(
-                            (type: string) => {
-                              const units =
-                                currentInvoice.projectData?.indoorUnits || 0;
-                              const cost =
-                                PRICING_MATRIX.baseCosts[units]?.[
-                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
-                                ] || 0;
-
-                              return (
-                                <li
-                                  key={type}
-                                  className="flex items-start gap-2 justify-between"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
-                                    <span className="leading-tight text-xs">
-                                      {WORK_TYPE_LABELS[type] || type}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {cost}
-                                  </span>
-                                </li>
-                              );
-                            },
-                          )}
-                        </ul>
-                      ) : (
-                        <span className="text-muted-foreground italic">
-                          No specific work types selected.
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Additional Services */}
-                    {currentInvoice.projectData?.selectedAdditionalServices
-                      ?.length > 0 && (
-                      <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-                        <span className="text-muted-foreground block font-semibold mb-1">
-                          Additional Services:
-                        </span>
-                        <ul className="space-y-1">
-                          {currentInvoice.projectData.selectedAdditionalServices.map(
-                            (serviceId: string) => {
-                              const service = ADDITIONAL_SERVICES.find(
-                                (s) => s.id === serviceId,
-                              );
-                              const price =
-                                currentInvoice.projectData
-                                  .additionalServicePrices?.[serviceId] !==
-                                undefined
-                                  ? currentInvoice.projectData
-                                      .additionalServicePrices[serviceId]
-                                  : service?.price || 0;
-
-                              return (
-                                <li
-                                  key={serviceId}
-                                  className="flex items-start gap-2 justify-between"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
-                                    <span className="leading-tight text-xs">
-                                      {service?.label || serviceId}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {price}
-                                  </span>
-                                </li>
-                              );
-                            },
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Additional Works Section */}
-                    <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-                      <span className="text-muted-foreground block font-semibold mb-1">
-                        Additional Works (Material/Extra):
-                      </span>
-                      {currentInvoice.projectData?.additionalWorks &&
-                      currentInvoice.projectData.additionalWorks.length > 0 ? (
-                        <ul className="space-y-1">
-                          {currentInvoice.projectData.additionalWorks.map(
-                            (work: any, idx: number) => (
-                              <li
-                                key={idx}
-                                className="flex items-start gap-2 justify-between"
-                              >
-                                <div className="flex items-start gap-2">
-                                  <Plus className="h-3 w-3 text-blue-600 mt-0.5 shrink-0" />
-                                  <span className="leading-tight text-xs">
-                                    {work.description}
-                                  </span>
-                                </div>
-                                <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                  € {parseFloat(work.price || 0).toFixed(2)}
-                                </span>
-                              </li>
-                            ),
-                          )}
-                        </ul>
-                      ) : (
-                        <span className="text-muted-foreground italic text-xs">
-                          No additional works recorded.
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Bonuses Checkboxes Integrated Here */}
-                    <div className="pt-4 mt-4 border-t border-dashed space-y-3">
-                      <h5 className="font-semibold text-[10px] uppercase text-muted-foreground flex items-center gap-2">
-                        <Gift className="h-3 w-3" /> Bonuses & Performance
-                      </h5>
-
-                      {/* Quality Bonus Card */}
-                      <div
-                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
-                          invoiceEditState.qualityBonus.enabled
-                            ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
-                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              id="quality-bonus-chk"
-                              checked={invoiceEditState.qualityBonus.enabled}
-                              onCheckedChange={(checked) =>
-                                setInvoiceEditState({
-                                  ...invoiceEditState,
-                                  qualityBonus: {
-                                    ...invoiceEditState.qualityBonus,
-                                    enabled: !!checked,
-                                  },
-                                })
-                              }
-                              className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                            />
-                            <div>
-                              <label
-                                htmlFor="quality-bonus-chk"
-                                className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                              >
-                                Quality Bonus
-                              </label>
-                              <div className="mt-0.5">
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${
-                                    invoiceEditState.qualityBonus.enabled
-                                      ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
-                                      : "text-gray-500 border-gray-300"
-                                  }`}
-                                >
-                                  {invoiceEditState.qualityBonus.label ||
-                                    "Indoor Units"}
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-sm font-medium ${
-                                invoiceEditState.qualityBonus.enabled
-                                  ? "text-blue-600 dark:text-blue-400"
-                                  : "text-gray-400"
-                              }`}
-                            >
-                              + €
-                            </span>
-                            <Input
-                              type="number"
-                              disabled={!invoiceEditState.qualityBonus.enabled}
-                              value={invoiceEditState.qualityBonus.amount || 0}
-                              onChange={(e) =>
-                                setInvoiceEditState({
-                                  ...invoiceEditState,
-                                  qualityBonus: {
-                                    ...invoiceEditState.qualityBonus,
-                                    amount:
-                                      parseGermanFloat(e.target.value) || 0,
-                                  },
-                                })
-                              }
-                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${
-                                invoiceEditState.qualityBonus.enabled
-                                  ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                              }`}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quantity Bonus Card */}
-                      <div
-                        className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
-                          invoiceEditState.quantityBonus.enabled
-                            ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              id="quantity-bonus-chk"
-                              checked={invoiceEditState.quantityBonus.enabled}
-                              onCheckedChange={(checked) =>
-                                setInvoiceEditState({
-                                  ...invoiceEditState,
-                                  quantityBonus: {
-                                    ...invoiceEditState.quantityBonus,
-                                    enabled: !!checked,
-                                  },
-                                })
-                              }
-                              className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                            />
-                            <div>
-                              <label
-                                htmlFor="quantity-bonus-chk"
-                                className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                              >
-                                Quantity Bonus
-                              </label>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${
-                                    invoiceEditState.quantityBonus.enabled
-                                      ? "bg-white/50 text-green-700 border-green-300 dark:border-green-700 dark:text-green-400"
-                                      : "text-gray-500 border-gray-300"
-                                  }`}
-                                >
-                                  {invoiceEditState.quantityBonus.label ||
-                                    "Volume Tier"}
-                                </Badge>
-                                {invoiceEditState.quantityCount !== undefined &&
-                                  invoiceEditState.quantityCount > 0 && (
-                                    <span className="text-[10px] text-gray-500">
-                                      ({invoiceEditState.quantityCount} projects
-                                      this month)
-                                    </span>
-                                  )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              disabled={!invoiceEditState.quantityBonus.enabled}
-                              value={String(
-                                invoiceEditState.quantityBonus.amount || 0,
-                              )}
-                              onValueChange={(val) =>
-                                setInvoiceEditState({
-                                  ...invoiceEditState,
-                                  quantityBonus: {
-                                    ...invoiceEditState.quantityBonus,
-                                    amount: parseFloat(val) || 0,
-                                    label:
-                                      val === "150"
-                                        ? "0-12 Projects"
-                                        : val === "330"
-                                          ? "12-36 Projects"
-                                          : val === "600"
-                                            ? "36+ Projects"
-                                            : "No Tier",
-                                  },
-                                })
-                              }
-                            >
-                              <SelectTrigger
-                                className={`h-7 w-40 text-right font-mono font-bold text-sm ${
-                                  invoiceEditState.quantityBonus.enabled
-                                    ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                    : "bg-transparent border-transparent"
-                                }`}
-                              >
-                                <SelectValue placeholder="Select Tier" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="0">No Bonus</SelectItem>
-                                <SelectItem value="150">
-                                  0-12 Projects: € 150
-                                </SelectItem>
-                                <SelectItem value="330">
-                                  12-36 Projects: € 330
-                                </SelectItem>
-                                <SelectItem value="600">
-                                  36+ Projects: € 600
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* 3. Payment Distribution (New Component) */}
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-sm uppercase text-gray-900 dark:text-gray-100">
-                      Payment Distribution
-                    </h4>
-                    <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border overflow-hidden">
-                      {/* Contractor (Total) */}
-                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800 bg-gray-100/50 dark:bg-gray-800/50">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-sm">
-                            Contractor: {currentInvoice.contractor || "Unknown"}
-                          </span>
-                          <span className="text-[10px] text-gray-500 font-normal">
-                            Base + Bonuses
-                          </span>
-                        </div>
-                        <span className="font-mono font-bold">
-                          €{" "}
-                          {(
-                            invoiceEditState.projectValue +
-                            (invoiceEditState.quantityBonus.enabled
-                              ? invoiceEditState.quantityBonus.amount
-                              : 0) +
-                            (invoiceEditState.qualityBonus.enabled
-                              ? invoiceEditState.qualityBonus.amount
-                              : 0)
-                          ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-
-                      {/* Mediator (10% or -) */}
-                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Mediator: {currentInvoice.mediator || "N/A"} (
-                          {currentInvoice.hasMediator ? "10%" : "N/A"})
-                        </span>
-                        <span className="font-mono font-medium">
-                          {currentInvoice.hasMediator
-                            ? `€ ${(
-                                (invoiceEditState.projectValue +
-                                  (invoiceEditState.quantityBonus.enabled
-                                    ? invoiceEditState.quantityBonus.amount
-                                    : 0) +
-                                  (invoiceEditState.qualityBonus.enabled
-                                    ? invoiceEditState.qualityBonus.amount
-                                    : 0)) *
-                                0.1
-                              ).toLocaleString("de-DE", {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              })}`
-                            : "-"}
-                        </span>
-                      </div>
-
-                      {/* Prostruktion (10% or 15%) */}
-                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Prostruktion (
-                          {currentInvoice.hasMediator ? "10%" : "15%"})
-                        </span>
-                        <span className="font-mono font-medium">
-                          €{" "}
-                          {(
-                            (invoiceEditState.projectValue +
-                              (invoiceEditState.quantityBonus.enabled
-                                ? invoiceEditState.quantityBonus.amount
-                                : 0) +
-                              (invoiceEditState.qualityBonus.enabled
-                                ? invoiceEditState.qualityBonus.amount
-                                : 0)) *
-                            (currentInvoice.hasMediator ? 0.1 : 0.15)
-                          ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-
-                      {/* Partner (10% or 15% + Bonuses) */}
-                      <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
-                        <div className="flex flex-col">
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            Partner: {currentInvoice.partner || "Unknown"} (
-                            {currentInvoice.hasMediator ? "10%" : "15%"})
-                          </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-500">
-                            Based on Total + Bonuses
-                          </span>
-                        </div>
-                        <span className="font-mono font-medium">
-                          €{" "}
-                          {(
-                            (invoiceEditState.projectValue +
-                              (invoiceEditState.quantityBonus.enabled
-                                ? invoiceEditState.quantityBonus.amount
-                                : 0) +
-                              (invoiceEditState.qualityBonus.enabled
-                                ? invoiceEditState.qualityBonus.amount
-                                : 0)) *
-                            (currentInvoice.hasMediator ? 0.1 : 0.15)
-                          ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 4. Subcontractor Settlement (Separate Comp) */}
-                  <div className="space-y-3 pt-2">
-                    <h4 className="font-semibold text-sm uppercase text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                      <HardHat className="h-4 w-4" /> Subcontractor Settlement
-                    </h4>
-                    <div className="bg-orange-50/50 dark:bg-orange-900/10 rounded-lg border border-orange-100 dark:border-orange-900/20 overflow-hidden">
-                      {/* Sub Base (70% of Base) */}
-                      <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20">
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
-                          Base Amount (70% of Project Value)
-                        </span>
-                        <span className="font-mono font-medium">
-                          €{" "}
-                          {(invoiceEditState.projectValue * 0.7).toLocaleString(
-                            undefined,
-                            {
-                              minimumFractionDigits: 2,
-                            },
-                          )}
-                        </span>
-                      </div>
-
-                      {/* Sub Quality Bonus Toggle */}
-                      <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20 bg-white/50 dark:bg-gray-900/20">
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            id="sub-qual-bonus-chk"
-                            checked={invoiceEditState.subQualityBonus?.enabled}
-                            onCheckedChange={(checked) =>
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQualityBonus: {
-                                  ...invoiceEditState.subQualityBonus,
-                                  enabled: !!checked,
-                                },
-                              })
-                            }
-                            className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600 branch-checkbox"
-                          />
-                          <div>
-                            <label
-                              htmlFor="sub-qual-bonus-chk"
-                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                            >
-                              Quality Bonus (70%)
-                            </label>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] h-4 px-1.5 font-normal ${
-                                  invoiceEditState.subQualityBonus?.enabled
-                                    ? "bg-orange-100 text-orange-700 border-orange-300"
-                                    : "text-gray-500 border-gray-300"
-                                }`}
-                              >
-                                {invoiceEditState.subQualityBonus?.label ||
-                                  "Indoor Units"}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-sm font-medium ${
-                              invoiceEditState.subQualityBonus?.enabled
-                                ? "text-orange-600"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            + €
-                          </span>
-                          <Input
-                            type="number"
-                            disabled={
-                              !invoiceEditState.subQualityBonus?.enabled
-                            }
-                            value={
-                              invoiceEditState.subQualityBonus?.amount
-                                ? (
-                                    invoiceEditState.subQualityBonus.amount *
-                                    0.7
-                                  ).toFixed(2)
-                                : 0
-                            }
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQualityBonus: {
-                                  ...invoiceEditState.subQualityBonus,
-                                  amount: val / 0.7,
-                                },
-                              });
-                            }}
-                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
-                              invoiceEditState.subQualityBonus?.enabled
-                                ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
-                                : "bg-transparent border-transparent"
-                            }`}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Sub Quantity Bonus Toggle */}
-                      <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20 bg-white/50 dark:bg-gray-900/20">
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            id="sub-qty-bonus-chk"
-                            checked={invoiceEditState.subQuantityBonus?.enabled}
-                            onCheckedChange={(checked) =>
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQuantityBonus: {
-                                  ...invoiceEditState.subQuantityBonus,
-                                  enabled: !!checked,
-                                },
-                              })
-                            }
-                            className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600 branch-checkbox"
-                          />
-                          <div>
-                            <label
-                              htmlFor="sub-qty-bonus-chk"
-                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                            >
-                              Quantity Bonus (70%)
-                            </label>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] h-4 px-1.5 font-normal ${
-                                  invoiceEditState.subQuantityBonus?.enabled
-                                    ? "bg-orange-100 text-orange-700 border-orange-300"
-                                    : "text-gray-500 border-gray-300"
-                                }`}
-                              >
-                                {invoiceEditState.subQuantityBonus?.label ||
-                                  "Sub Tier"}
-                              </Badge>
-                              {invoiceEditState.subQuantityCount > 0 && (
-                                <span className="text-[10px] text-gray-500">
-                                  ({invoiceEditState.subQuantityCount} projects)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-sm font-medium ${
-                              invoiceEditState.subQuantityBonus?.enabled
-                                ? "text-orange-600"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            + €
-                          </span>
-                          <Select
-                            disabled={
-                              !invoiceEditState.subQuantityBonus?.enabled
-                            }
-                            value={String(
-                              invoiceEditState.subQuantityBonus?.amount || 0,
-                            )}
-                            onValueChange={(val) =>
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQuantityBonus: {
-                                  ...invoiceEditState.subQuantityBonus,
-                                  amount: parseFloat(val) || 0,
-                                  label:
-                                    val === "150"
-                                      ? "0-12 Projects"
-                                      : val === "330"
-                                        ? "12-36 Projects"
-                                        : val === "600"
-                                          ? "36+ Projects"
-                                          : "No Bonus",
-                                },
-                              })
-                            }
-                          >
-                            <SelectTrigger
-                              className={`h-7 w-[200px] text-right font-mono font-bold text-sm ${
-                                invoiceEditState.subQuantityBonus?.enabled
-                                  ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                              }`}
-                            >
-                              <SelectValue placeholder="Select Tier" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0">No Bonus</SelectItem>
-                              <SelectItem value="150">
-                                0-12 Projects: € 105
-                              </SelectItem>
-                              <SelectItem value="330">
-                                12-36 Projects: € 231
-                              </SelectItem>
-                              <SelectItem value="600">
-                                36+ Projects: € 420
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Sub Total */}
-                      <div className="flex justify-between items-center p-3 bg-orange-100/50 dark:bg-orange-900/30">
-                        <span className="font-semibold text-sm text-orange-900 dark:text-orange-100">
-                          Total Subcontractor Payout
-                        </span>
-                        <span className="font-mono font-bold text-lg text-orange-700 dark:text-orange-300">
-                          €{" "}
-                          {(
-                            invoiceEditState.projectValue * 0.7 +
-                            (invoiceEditState.subQuantityBonus?.enabled
-                              ? invoiceEditState.subQuantityBonus.amount * 0.7
-                              : 0) +
-                            (invoiceEditState.subQualityBonus?.enabled
-                              ? invoiceEditState.subQualityBonus.amount * 0.7
-                              : 0)
-                          ).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Review Checkbox */}
-                {/* Review Checkbox removed */}
-              </TabsContent>
-
-              {/* SUBCONTRACTOR TAB */}
-              <TabsContent value="subcontractor" className="space-y-4">
-                <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
-                  {/* Header Info */}
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Project Name
-                      </span>
-                      <span className="font-medium">
-                        {currentInvoice.project}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                        Project ID
-                      </span>
-                      <span className="font-medium">{currentInvoice.id}</span>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Scope of Work (Subcontractor View - 70%) */}
-                  <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-3">
-                    <h4 className="font-semibold uppercase text-muted-foreground">
-                      Scope of Work (Subcontractor Share - 70%)
-                    </h4>
-
-                    {/* Work List */}
-                    <div className="space-y-1">
-                      <span className="text-muted-foreground block font-semibold mb-1">
-                        Work Types:
-                      </span>
-                      {currentInvoice.projectData?.selectedWorkTypes?.length >
-                      0 ? (
-                        <ul className="space-y-1">
-                          {currentInvoice.projectData.selectedWorkTypes.map(
-                            (type: string) => {
-                              const units =
-                                currentInvoice.projectData?.indoorUnits || 0;
-                              const baseCost =
-                                PRICING_MATRIX.baseCosts[units]?.[
-                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
-                                ] || 0;
-                              const subCost = baseCost * 0.7; // 70% share
-
-                              return (
-                                <li
-                                  key={type}
-                                  className="flex items-start gap-2 justify-between"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
-                                    <span className="leading-tight text-xs">
-                                      {WORK_TYPE_LABELS[type] || type}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {subCost.toFixed(2)}
-                                  </span>
-                                </li>
-                              );
-                            },
-                          )}
-                        </ul>
-                      ) : (
-                        <span className="text-muted-foreground italic">
-                          No specific work types selected.
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Additional Services */}
-                    {currentInvoice.projectData?.selectedAdditionalServices
-                      ?.length > 0 && (
-                      <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-                        <span className="text-muted-foreground block font-semibold mb-1">
-                          Additional Services:
-                        </span>
-                        <ul className="space-y-1">
-                          {currentInvoice.projectData.selectedAdditionalServices.map(
-                            (serviceId: string) => {
-                              const service = ADDITIONAL_SERVICES.find(
-                                (s) => s.id === serviceId,
-                              );
-                              const baseCost =
-                                currentInvoice.projectData
-                                  .additionalServicePrices?.[serviceId] !==
-                                undefined
-                                  ? currentInvoice.projectData
-                                      .additionalServicePrices[serviceId]
-                                  : service?.price || 0;
-                              const subCost = baseCost * 0.7;
-
-                              return (
-                                <li
-                                  key={serviceId}
-                                  className="flex items-start gap-2 justify-between"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
-                                    <span className="leading-tight text-xs">
-                                      {service?.label || serviceId}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {subCost.toFixed(2)}
-                                  </span>
-                                </li>
-                              );
-                            },
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Additional Works Section (Sub) */}
-                    <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-                      <span className="text-muted-foreground block font-semibold mb-1">
-                        Additional Works (Material/Extra):
-                      </span>
-                      {currentInvoice.projectData?.additionalWorks &&
-                      currentInvoice.projectData.additionalWorks.length > 0 ? (
-                        <ul className="space-y-1">
-                          {currentInvoice.projectData.additionalWorks.map(
-                            (work: any, idx: number) => {
-                              const basePrice = parseFloat(work.price || 0);
-                              const subPrice = basePrice; // 100% for passing costs
-                              return (
-                                <li
-                                  key={idx}
-                                  className="flex items-start gap-2 justify-between"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
-                                    <span className="leading-tight text-xs">
-                                      {work.description}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                    € {subPrice.toFixed(2)}
-                                  </span>
-                                </li>
-                              );
-                            },
-                          )}
-                        </ul>
-                      ) : (
-                        <span className="text-muted-foreground italic text-xs">
-                          No additional works recorded.
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Subcontractor Bonuses */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Quality Bonus */}
-                    <div
-                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
-                        invoiceEditState.subQualityBonus.enabled
-                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            id="sub-quality-bonus-chk"
-                            checked={invoiceEditState.subQualityBonus.enabled}
-                            onCheckedChange={(checked) =>
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQualityBonus: {
-                                  ...invoiceEditState.subQualityBonus,
-                                  enabled: !!checked,
-                                },
-                              })
-                            }
-                            className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                          />
-                          <div>
-                            <label
-                              htmlFor="sub-quality-bonus-chk"
-                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                            >
-                              Quality Bonus
-                            </label>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-sm font-medium ${
-                              invoiceEditState.subQualityBonus.enabled
-                                ? "text-green-600 dark:text-green-400"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            + €
-                          </span>
-                          <Input
-                            type="number"
-                            disabled={!invoiceEditState.subQualityBonus.enabled}
-                            value={
-                              invoiceEditState.subQualityBonus.amount
-                                ? (
-                                    invoiceEditState.subQualityBonus.amount *
-                                    0.7
-                                  ).toFixed(2)
-                                : 0
-                            }
-                            onChange={(e) => {
-                              const val = parseGermanFloat(e.target.value) || 0;
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQualityBonus: {
-                                  ...invoiceEditState.subQualityBonus,
-                                  amount: val / 0.7,
-                                },
-                              });
-                            }}
-                            className={`h-7 w-20 text-right font-mono font-bold text-sm ${
-                              invoiceEditState.subQualityBonus.enabled
-                                ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                : "bg-transparent border-transparent"
-                            }`}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quantity Bonus */}
-                    <div
-                      className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
-                        invoiceEditState.subQuantityBonus.enabled
-                          ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                          : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            id="sub-quantity-bonus-chk"
-                            checked={invoiceEditState.subQuantityBonus.enabled}
-                            onCheckedChange={(checked) =>
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQuantityBonus: {
-                                  ...invoiceEditState.subQuantityBonus,
-                                  enabled: !!checked,
-                                },
-                              })
-                            }
-                            className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                          />
-                          <div>
-                            <label
-                              htmlFor="sub-quantity-bonus-chk"
-                              className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
-                            >
-                              Quantity Bonus
-                            </label>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            disabled={
-                              !invoiceEditState.subQuantityBonus.enabled
-                            }
-                            value={String(
-                              invoiceEditState.subQuantityBonus.amount || 0,
-                            )}
-                            onValueChange={(val) =>
-                              setInvoiceEditState({
-                                ...invoiceEditState,
-                                subQuantityBonus: {
-                                  ...invoiceEditState.subQuantityBonus,
-                                  amount: parseFloat(val) || 0,
-                                  label:
-                                    val === "150"
-                                      ? "0-12 Projects"
-                                      : val === "330"
-                                        ? "12-36 Projects"
-                                        : val === "600"
-                                          ? "36+ Projects"
-                                          : "No Bonus",
-                                },
-                              })
-                            }
-                          >
-                            <SelectTrigger
-                              className={`h-7 w-28 text-right font-mono font-bold text-sm ${
-                                invoiceEditState.subQuantityBonus.enabled
-                                  ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                              }`}
-                            >
-                              <SelectValue placeholder="Tier" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0">No Bonus</SelectItem>
-                              <SelectItem value="150">
-                                0-12 Projects: € 105
-                              </SelectItem>
-                              <SelectItem value="330">
-                                12-36 Projects: € 231
-                              </SelectItem>
-                              <SelectItem value="600">
-                                36+ Projects: € 420
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Total Calculation */}
-                  <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                    <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
-                      Total Payable to Subcontractor
-                    </span>
-                    <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
-                      €{" "}
-                      {(
-                        (currentInvoice.projectData?.selectedWorkTypes?.reduce(
-                          (acc: number, type: string) => {
-                            const units =
-                              currentInvoice.projectData?.indoorUnits || 0;
-                            const matrixPrice =
-                              PRICING_MATRIX.baseCosts[units]?.[
-                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
-                              ] || 0;
-                            const base =
-                              currentInvoice.projectData?.workTypePrices?.[
-                                type
-                              ] !== undefined
-                                ? currentInvoice.projectData.workTypePrices[
-                                    type
-                                  ]
-                                : matrixPrice;
-                            return acc + base * 0.7;
-                          },
-                          0,
-                        ) || 0) +
-                        (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
-                          (acc: number, s: string) => {
-                            const service = ADDITIONAL_SERVICES.find(
-                              (as) => as.id === s,
-                            );
-                            const base =
-                              currentInvoice.projectData
-                                ?.additionalServicePrices?.[s] !== undefined
-                                ? currentInvoice.projectData
-                                    .additionalServicePrices[s]
-                                : service?.price || 0;
-                            return acc + base * 0.7;
-                          },
-                          0,
-                        ) || 0) +
-                        (currentInvoice.projectData?.additionalWorks?.reduce(
-                          (acc: number, work: any) =>
-                            acc + parseFloat(work.price || 0),
-                          0,
-                        ) || 0) +
-                        (invoiceEditState.subQualityBonus.enabled
-                          ? invoiceEditState.subQualityBonus.amount * 0.7
-                          : 0) +
-                        (invoiceEditState.subQuantityBonus.enabled
-                          ? invoiceEditState.subQuantityBonus.amount * 0.7
-                          : 0)
-                      ).toLocaleString("de-DE", {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-
-                  <div className="border-t border-dashed my-2"></div>
-
-                  {/* Review Checkbox */}
-                  {/* Review Checkbox removed */}
-                </div>
-              </TabsContent>
-
-              {/* MEDIATOR TAB */}
-              <TabsContent value="company" className="space-y-4">
-                {currentInvoice.hasMediator ? (
+                {/* PARTNER INVOICE TAB */}
+                <TabsContent value="partner" className="space-y-4">
                   <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
-                    {/* Header Info */}
+                    {/* 1. Header Info (6 fields grid) */}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="text-muted-foreground block text-xs uppercase font-semibold">
@@ -4229,13 +3177,10 @@ export default function AdminProjects() {
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                          Project Address
+                          Contractor
                         </span>
-                        <span
-                          className="font-medium truncate block"
-                          title={currentInvoice.address}
-                        >
-                          {currentInvoice.address || "N/A"}
+                        <span className="font-medium">
+                          {currentInvoice.contractor || "N/A"}
                         </span>
                       </div>
                       <div>
@@ -4248,445 +3193,1643 @@ export default function AdminProjects() {
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                          Partner
+                          Mediator
                         </span>
                         <span className="font-medium">
-                          {currentInvoice.projectData?.partner || "N/A"}
+                          {currentInvoice.projectData?.mediator || "N/A"}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-xs uppercase font-semibold">
-                          Mediator
+                          Invoice Number
                         </span>
-                        <span className="font-medium">
-                          {currentInvoice.projectData?.mediator}
+                        <span className="font-bold text-blue-600">
+                          {nextInvoiceNumber}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                          Prostruktion
+                        </span>
+                        <span className="font-medium text-blue-600">
+                          PROSTRUKTION
                         </span>
                       </div>
                     </div>
 
                     <div className="border-t border-dashed my-2"></div>
 
-                    <div className="space-y-4">
-                      {/* Base Value */}
-                      <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          Base Project Value
+                    {/* 2. Scope of Work (With Bonuses at bottom) */}
+                    <div className="bg-gray-50 dark:bg-gray-900/10 p-3 rounded text-xs space-y-3">
+                      <h4 className="font-semibold uppercase text-muted-foreground">
+                        Scope of Work
+                      </h4>
+
+                      {/* Existing Work List */}
+                      <div className="space-y-1">
+                        <span className="text-muted-foreground block font-semibold mb-1">
+                          Work Types (
+                          {currentInvoice.projectData?.indoorUnits || 0} Indoor
+                          Units):
                         </span>
-                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
-                          €{" "}
-                          {invoiceEditState.projectValue.toLocaleString(
-                            "de-DE",
-                            {
+                        {currentInvoice.projectData?.selectedWorkTypes?.length >
+                          0 ? (
+                          <ul className="space-y-1">
+                            {currentInvoice.projectData.selectedWorkTypes.map(
+                              (type: string) => {
+                                const units =
+                                  currentInvoice.projectData?.indoorUnits || 0;
+                                const cost =
+                                  PRICING_MATRIX.baseCosts[units]?.[
+                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  ] || 0;
+
+                                return (
+                                  <li
+                                    key={type}
+                                    className="flex items-start gap-2 justify-between"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <CheckCircle2 className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
+                                      <span className="leading-tight text-xs">
+                                        {WORK_TYPE_LABELS[type] || type}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                      € {cost}
+                                    </span>
+                                  </li>
+                                );
+                              },
+                            )}
+                          </ul>
+                        ) : (
+                          <span className="text-muted-foreground italic">
+                            No specific work types selected.
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Additional Services */}
+                      {currentInvoice.projectData?.selectedAdditionalServices
+                        ?.length > 0 && (
+                          <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+                            <span className="text-muted-foreground block font-semibold mb-1">
+                              Additional Services:
+                            </span>
+                            <ul className="space-y-1">
+                              {currentInvoice.projectData.selectedAdditionalServices.map(
+                                (serviceId: string) => {
+                                  const service = ADDITIONAL_SERVICES.find(
+                                    (s) => s.id === serviceId,
+                                  );
+                                  const price =
+                                    currentInvoice.projectData
+                                      .additionalServicePrices?.[serviceId] !==
+                                      undefined
+                                      ? currentInvoice.projectData
+                                        .additionalServicePrices[serviceId]
+                                      : service?.price || 0;
+
+                                  return (
+                                    <li
+                                      key={serviceId}
+                                      className="flex items-start gap-2 justify-between"
+                                    >
+                                      <div className="flex items-start gap-2">
+                                        <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
+                                        <span className="leading-tight text-xs">
+                                          {service?.label || serviceId}
+                                        </span>
+                                      </div>
+                                      <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                        € {price}
+                                      </span>
+                                    </li>
+                                  );
+                                },
+                              )}
+                            </ul>
+                          </div>
+                        )}
+
+                      {/* Additional Works Section */}
+                      <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+                        <span className="text-muted-foreground block font-semibold mb-1">
+                          Additional Works (Material/Extra):
+                        </span>
+                        {currentInvoice.projectData?.additionalWorks &&
+                          currentInvoice.projectData.additionalWorks.length > 0 ? (
+                          <ul className="space-y-1">
+                            {currentInvoice.projectData.additionalWorks.map(
+                              (work: any, idx: number) => (
+                                <li
+                                  key={idx}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Plus className="h-3 w-3 text-blue-600 mt-0.5 shrink-0" />
+                                    <span className="leading-tight text-xs">
+                                      {work.description}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {parseFloat(work.price || 0).toFixed(2)}
+                                  </span>
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        ) : (
+                          <span className="text-muted-foreground italic text-xs">
+                            No additional works recorded.
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Bonuses Checkboxes Integrated Here */}
+                      <div className="pt-4 mt-4 border-t border-dashed space-y-3">
+                        <h5 className="font-semibold text-[10px] uppercase text-muted-foreground flex items-center gap-2">
+                          <Gift className="h-3 w-3" /> Bonuses & Performance
+                        </h5>
+
+                        {/* Quality Bonus Card */}
+                        <div
+                          className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.qualityBonus.enabled
+                            ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
+                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                            }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                id="quality-bonus-chk"
+                                checked={invoiceEditState.qualityBonus.enabled}
+                                onCheckedChange={(checked) =>
+                                  setInvoiceEditState({
+                                    ...invoiceEditState,
+                                    qualityBonus: {
+                                      ...invoiceEditState.qualityBonus,
+                                      enabled: !!checked,
+                                    },
+                                  })
+                                }
+                                className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                              />
+                              <div>
+                                <label
+                                  htmlFor="quality-bonus-chk"
+                                  className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                                >
+                                  Quality Bonus
+                                </label>
+                                <div className="mt-0.5">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.qualityBonus.enabled
+                                      ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
+                                      : "text-gray-500 border-gray-300"
+                                      }`}
+                                  >
+                                    {invoiceEditState.qualityBonus.label ||
+                                      "Indoor Units"}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-sm font-medium ${invoiceEditState.qualityBonus.enabled
+                                  ? "text-blue-600 dark:text-blue-400"
+                                  : "text-gray-400"
+                                  }`}
+                              >
+                                + €
+                              </span>
+                              <Input
+                                type="number"
+                                disabled={!invoiceEditState.qualityBonus.enabled}
+                                value={invoiceEditState.qualityBonus.amount || 0}
+                                onChange={(e) =>
+                                  setInvoiceEditState({
+                                    ...invoiceEditState,
+                                    qualityBonus: {
+                                      ...invoiceEditState.qualityBonus,
+                                      amount:
+                                        parseGermanFloat(e.target.value) || 0,
+                                    },
+                                  })
+                                }
+                                className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.qualityBonus.enabled
+                                  ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                                  }`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quantity Bonus Card */}
+                        <div
+                          className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.quantityBonus.enabled
+                            ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                            }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                id="quantity-bonus-chk"
+                                checked={invoiceEditState.quantityBonus.enabled}
+                                onCheckedChange={(checked) =>
+                                  setInvoiceEditState({
+                                    ...invoiceEditState,
+                                    quantityBonus: {
+                                      ...invoiceEditState.quantityBonus,
+                                      enabled: !!checked,
+                                    },
+                                  })
+                                }
+                                className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                              />
+                              <div>
+                                <label
+                                  htmlFor="quantity-bonus-chk"
+                                  className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                                >
+                                  Quantity Bonus
+                                </label>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.quantityBonus.enabled
+                                      ? "bg-white/50 text-green-700 border-green-300 dark:border-green-700 dark:text-green-400"
+                                      : "text-gray-500 border-gray-300"
+                                      }`}
+                                  >
+                                    {invoiceEditState.quantityBonus.label ||
+                                      "Volume Tier"}
+                                  </Badge>
+                                  {invoiceEditState.quantityCount !== undefined &&
+                                    invoiceEditState.quantityCount > 0 && (
+                                      <span className="text-[10px] text-gray-500">
+                                        ({invoiceEditState.quantityCount} projects
+                                        this month)
+                                      </span>
+                                    )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                disabled={!invoiceEditState.quantityBonus.enabled}
+                                value={String(
+                                  invoiceEditState.quantityBonus.amount || 0,
+                                )}
+                                onValueChange={(val) =>
+                                  setInvoiceEditState({
+                                    ...invoiceEditState,
+                                    quantityBonus: {
+                                      ...invoiceEditState.quantityBonus,
+                                      amount: parseFloat(val) || 0,
+                                      label:
+                                        val === "150"
+                                          ? "0-12 Projects"
+                                          : val === "330"
+                                            ? "12-36 Projects"
+                                            : val === "600"
+                                              ? "36+ Projects"
+                                              : "No Tier",
+                                    },
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={`h-7 w-40 text-right font-mono font-bold text-sm ${invoiceEditState.quantityBonus.enabled
+                                    ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                    : "bg-transparent border-transparent"
+                                    }`}
+                                >
+                                  <SelectValue placeholder="Select Tier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">No Bonus</SelectItem>
+                                  <SelectItem value="150">
+                                    0-12 Projects: € 150
+                                  </SelectItem>
+                                  <SelectItem value="330">
+                                    12-36 Projects: € 330
+                                  </SelectItem>
+                                  <SelectItem value="600">
+                                    36+ Projects: € 600
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-dashed my-2"></div>
+
+                    {/* 3. Payment Distribution (New Component) */}
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm uppercase text-gray-900 dark:text-gray-100">
+                        Payment Distribution
+                      </h4>
+                      <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border overflow-hidden">
+                        {/* Contractor (Total) */}
+                        <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800 bg-gray-100/50 dark:bg-gray-800/50">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-sm">
+                              Contractor: {currentInvoice.contractor || "Unknown"}
+                            </span>
+                            <span className="text-[10px] text-gray-500 font-normal">
+                              Base + Bonuses
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold">
+                            €{" "}
+                            {(
+                              invoiceEditState.projectValue +
+                              (invoiceEditState.quantityBonus.enabled
+                                ? invoiceEditState.quantityBonus.amount
+                                : 0) +
+                              (invoiceEditState.qualityBonus.enabled
+                                ? invoiceEditState.qualityBonus.amount
+                                : 0)
+                            ).toLocaleString("de-DE", {
                               minimumFractionDigits: 0,
                               maximumFractionDigits: 2,
-                            },
-                          )}
-                        </span>
-                      </div>
-
-                      {/* Total with Bonuses */}
-                      <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            Total Value (with Bonuses)
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            Base + Quality Bonus + Quantity Bonus
+                            })}
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
-                          €{" "}
-                          {(
-                            invoiceEditState.projectValue +
-                            (invoiceEditState.qualityBonus.enabled
-                              ? invoiceEditState.qualityBonus.amount
-                              : 0) +
-                            (invoiceEditState.quantityBonus.enabled
-                              ? invoiceEditState.quantityBonus.amount
-                              : 0)
-                          ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
 
-                      {/* Mediator Share */}
-                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
-                            Total Payable to Mediator
+                        {/* Mediator (10% or -) */}
+                        <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            Mediator: {currentInvoice.mediator || "N/A"} (
+                            {currentInvoice.hasMediator ? "10%" : "N/A"})
                           </span>
-                          <span className="text-xs text-blue-600 dark:text-blue-400">
-                            (10% of Base Value)
+                          <span className="font-mono font-medium">
+                            {currentInvoice.hasMediator
+                              ? `€ ${(
+                                (invoiceEditState.projectValue +
+                                  (invoiceEditState.quantityBonus.enabled
+                                    ? invoiceEditState.quantityBonus.amount
+                                    : 0) +
+                                  (invoiceEditState.qualityBonus.enabled
+                                    ? invoiceEditState.qualityBonus.amount
+                                    : 0)) *
+                                0.1
+                              ).toLocaleString("de-DE", {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              })}`
+                              : "-"}
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
-                          €{" "}
-                          {(
-                            invoiceEditState.projectValue *
-                            (invoiceEditState.mediatorSharePercent / 100)
-                          ).toLocaleString("de-DE", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
+
+                        {/* Prostruktion (10% or 15%) */}
+                        <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            Prostruktion (
+                            {currentInvoice.hasMediator ? "10%" : "15%"})
+                          </span>
+                          <span className="font-mono font-medium">
+                            €{" "}
+                            {(
+                              (invoiceEditState.projectValue +
+                                (invoiceEditState.quantityBonus.enabled
+                                  ? invoiceEditState.quantityBonus.amount
+                                  : 0) +
+                                (invoiceEditState.qualityBonus.enabled
+                                  ? invoiceEditState.qualityBonus.amount
+                                  : 0)) *
+                              (currentInvoice.hasMediator ? 0.1 : 0.15)
+                            ).toLocaleString("de-DE", {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+
+                        {/* Partner (10% or 15% + Bonuses) */}
+                        <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                          <div className="flex flex-col">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                              Partner: {currentInvoice.partner || "Unknown"} (
+                              {currentInvoice.hasMediator ? "10%" : "15%"})
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-500">
+                              Based on Total + Bonuses
+                            </span>
+                          </div>
+                          <span className="font-mono font-medium">
+                            €{" "}
+                            {(
+                              (invoiceEditState.projectValue +
+                                (invoiceEditState.quantityBonus.enabled
+                                  ? invoiceEditState.quantityBonus.amount
+                                  : 0) +
+                                (invoiceEditState.qualityBonus.enabled
+                                  ? invoiceEditState.qualityBonus.amount
+                                  : 0)) *
+                              (currentInvoice.hasMediator ? 0.1 : 0.15)
+                            ).toLocaleString("de-DE", {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="border-t border-dashed my-2"></div>
+                    {/* 4. Subcontractor Settlement (Separate Comp) */}
+                    <div className="space-y-3 pt-2">
+                      <h4 className="font-semibold text-sm uppercase text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <HardHat className="h-4 w-4" /> Subcontractor Settlement
+                      </h4>
+                      <div className="bg-orange-50/50 dark:bg-orange-900/10 rounded-lg border border-orange-100 dark:border-orange-900/20 overflow-hidden">
+                        {/* Sub Base (70% of Base) */}
+                        <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20">
+                          <span className="text-sm text-gray-700 dark:text-gray-300">
+                            Base Amount (70% of Project Value)
+                          </span>
+                          <span className="font-mono font-medium">
+                            €{" "}
+                            {(invoiceEditState.projectValue * 0.7).toLocaleString(
+                              undefined,
+                              {
+                                minimumFractionDigits: 2,
+                              },
+                            )}
+                          </span>
+                        </div>
 
-                    {/* Review Checkbox */}
-                    {/* Review Checkbox removed */}
+                        {/* Sub Quality Bonus Toggle */}
+                        <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20 bg-white/50 dark:bg-gray-900/20">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="sub-qual-bonus-chk"
+                              checked={invoiceEditState.subQualityBonus?.enabled}
+                              onCheckedChange={(checked) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQualityBonus: {
+                                    ...invoiceEditState.subQualityBonus,
+                                    enabled: !!checked,
+                                  },
+                                })
+                              }
+                              className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600 branch-checkbox"
+                            />
+                            <div>
+                              <label
+                                htmlFor="sub-qual-bonus-chk"
+                                className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                              >
+                                Quality Bonus (70%)
+                              </label>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.subQualityBonus?.enabled
+                                    ? "bg-orange-100 text-orange-700 border-orange-300"
+                                    : "text-gray-500 border-gray-300"
+                                    }`}
+                                >
+                                  {invoiceEditState.subQualityBonus?.label ||
+                                    "Indoor Units"}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-sm font-medium ${invoiceEditState.subQualityBonus?.enabled
+                                ? "text-orange-600"
+                                : "text-gray-400"
+                                }`}
+                            >
+                              + €
+                            </span>
+                            <Input
+                              type="number"
+                              disabled={
+                                !invoiceEditState.subQualityBonus?.enabled
+                              }
+                              value={
+                                invoiceEditState.subQualityBonus?.amount
+                                  ? (
+                                    invoiceEditState.subQualityBonus.amount *
+                                    0.7
+                                  ).toFixed(2)
+                                  : 0
+                              }
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQualityBonus: {
+                                    ...invoiceEditState.subQualityBonus,
+                                    amount: val / 0.7,
+                                  },
+                                });
+                              }}
+                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.subQualityBonus?.enabled
+                                ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                : "bg-transparent border-transparent"
+                                }`}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Sub Quantity Bonus Toggle */}
+                        <div className="flex justify-between items-center p-3 border-b border-orange-100 dark:border-orange-900/20 bg-white/50 dark:bg-gray-900/20">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="sub-qty-bonus-chk"
+                              checked={invoiceEditState.subQuantityBonus?.enabled}
+                              onCheckedChange={(checked) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQuantityBonus: {
+                                    ...invoiceEditState.subQuantityBonus,
+                                    enabled: !!checked,
+                                  },
+                                })
+                              }
+                              className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600 branch-checkbox"
+                            />
+                            <div>
+                              <label
+                                htmlFor="sub-qty-bonus-chk"
+                                className="font-medium text-sm text-gray-900 dark:text-gray-100 cursor-pointer"
+                              >
+                                Quantity Bonus (70%)
+                              </label>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.subQuantityBonus?.enabled
+                                    ? "bg-orange-100 text-orange-700 border-orange-300"
+                                    : "text-gray-500 border-gray-300"
+                                    }`}
+                                >
+                                  {invoiceEditState.subQuantityBonus?.label ||
+                                    "Sub Tier"}
+                                </Badge>
+                                {invoiceEditState.subQuantityCount > 0 && (
+                                  <span className="text-[10px] text-gray-500">
+                                    ({invoiceEditState.subQuantityCount} projects)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-sm font-medium ${invoiceEditState.subQuantityBonus?.enabled
+                                ? "text-orange-600"
+                                : "text-gray-400"
+                                }`}
+                            >
+                              + €
+                            </span>
+                            <Select
+                              disabled={
+                                !invoiceEditState.subQuantityBonus?.enabled
+                              }
+                              value={String(
+                                invoiceEditState.subQuantityBonus?.amount || 0,
+                              )}
+                              onValueChange={(val) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQuantityBonus: {
+                                    ...invoiceEditState.subQuantityBonus,
+                                    amount: parseFloat(val) || 0,
+                                    label:
+                                      val === "150"
+                                        ? "0-12 Projects"
+                                        : val === "330"
+                                          ? "12-36 Projects"
+                                          : val === "600"
+                                            ? "36+ Projects"
+                                            : "No Bonus",
+                                  },
+                                })
+                              }
+                            >
+                              <SelectTrigger
+                                className={`h-7 w-[200px] text-right font-mono font-bold text-sm ${invoiceEditState.subQuantityBonus?.enabled
+                                  ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                                  }`}
+                              >
+                                <SelectValue placeholder="Select Tier" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">No Bonus</SelectItem>
+                                <SelectItem value="150">
+                                  0-12 Projects: € 105
+                                </SelectItem>
+                                <SelectItem value="330">
+                                  12-36 Projects: € 231
+                                </SelectItem>
+                                <SelectItem value="600">
+                                  36+ Projects: € 420
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {/* Sub Total */}
+                        <div className="flex justify-between items-center p-3 bg-orange-100/50 dark:bg-orange-900/30">
+                          <span className="font-semibold text-sm text-orange-900 dark:text-orange-100">
+                            Total Subcontractor Payout
+                          </span>
+                          <span className="font-mono font-bold text-lg text-orange-700 dark:text-orange-300">
+                            €{" "}
+                            {(
+                              invoiceEditState.projectValue * 0.7 +
+                              (invoiceEditState.subQuantityBonus?.enabled
+                                ? invoiceEditState.subQuantityBonus.amount * 0.7
+                                : 0) +
+                              (invoiceEditState.subQualityBonus?.enabled
+                                ? invoiceEditState.subQualityBonus.amount * 0.7
+                                : 0)
+                            ).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <div className="p-10 text-center text-muted-foreground border rounded bg-gray-50 flex flex-col items-center justify-center gap-2">
-                    <AlertCircle className="h-8 w-8 text-gray-300" />
-                    <p>No Mediator assigned to this project.</p>
+
+                  {/* Review Checkbox */}
+                  {/* Review Checkbox removed */}
+                </TabsContent>
+
+                {/* SUBCONTRACTOR TAB */}
+                <TabsContent value="subcontractor" className="space-y-4">
+                  <div className="flex flex-col gap-6">
+                    {/* CONFIGURATION SECTION (Bonuses) */}
+                    <div className="bg-muted/30 border rounded-lg p-4 space-y-4">
+                      <h4 className="font-semibold text-xs uppercase text-muted-foreground flex items-center gap-2">
+                        <Settings2 className="h-4 w-4" /> Invoice Configuration
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Quality Bonus Config */}
+                        <div className="flex items-center justify-between bg-white dark:bg-gray-950 p-3 rounded border">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="sub-qual-bonus-chk"
+                              checked={invoiceEditState.subQualityBonus?.enabled}
+                              onCheckedChange={(checked) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQualityBonus: {
+                                    ...invoiceEditState.subQualityBonus,
+                                    enabled: !!checked,
+                                  },
+                                })
+                              }
+                              className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                            />
+                            <div className="flex flex-col">
+                              <label htmlFor="sub-qual-bonus-chk" className="font-medium text-sm cursor-pointer">
+                                Quality Bonus
+                              </label>
+                              <span className="text-[10px] text-muted-foreground">Base Amount (100%)</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              disabled={!invoiceEditState.subQualityBonus?.enabled}
+                              value={invoiceEditState.subQualityBonus?.amount || 0}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQualityBonus: {
+                                    ...invoiceEditState.subQualityBonus,
+                                    amount: val, // Store as Base 100%
+                                  },
+                                });
+                              }}
+                              className="h-8 w-24 text-right font-mono text-sm"
+                            />
+                            <span className="text-xs text-muted-foreground">€</span>
+                          </div>
+                        </div>
+
+                        {/* Quantity Bonus Config */}
+                        <div className="flex items-center justify-between bg-white dark:bg-gray-950 p-3 rounded border">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="sub-qty-bonus-chk"
+                              checked={invoiceEditState.subQuantityBonus?.enabled}
+                              onCheckedChange={(checked) =>
+                                setInvoiceEditState({
+                                  ...invoiceEditState,
+                                  subQuantityBonus: {
+                                    ...invoiceEditState.subQuantityBonus,
+                                    enabled: !!checked,
+                                  },
+                                })
+                              }
+                              className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                            />
+                            <div className="flex flex-col">
+                              <label htmlFor="sub-qty-bonus-chk" className="font-medium text-sm cursor-pointer">
+                                Quantity Bonus
+                              </label>
+                              <span className="text-[10px] text-muted-foreground">Base Amount (100%)</span>
+                            </div>
+                          </div>
+                          <Select
+                            disabled={!invoiceEditState.subQuantityBonus?.enabled}
+                            value={String(invoiceEditState.subQuantityBonus?.amount || 0)}
+                            onValueChange={(val) =>
+                              setInvoiceEditState({
+                                ...invoiceEditState,
+                                subQuantityBonus: {
+                                  ...invoiceEditState.subQuantityBonus,
+                                  amount: parseFloat(val) || 0,
+                                  label: val === "150" ? "0-12 Projects" : val === "330" ? "12-36 Projects" : val === "600" ? "36+ Projects" : "No Bonus",
+                                },
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-[140px] text-xs">
+                              <SelectValue placeholder="Select Tier" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">No Bonus</SelectItem>
+                              <SelectItem value="150">0-12: € 150</SelectItem>
+                              <SelectItem value="330">12-36: € 330</SelectItem>
+                              <SelectItem value="600">36+: € 600</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* INVOICE PREVIEW SECTION */}
+                    <div className="bg-white text-gray-900 border rounded-lg shadow-sm overflow-hidden flex flex-col font-sans">
+                      {/* Invoice Header */}
+                      <div className="p-8 border-b bg-gray-50/50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h1 className="text-2xl font-bold uppercase tracking-widest text-gray-800">Invoice</h1>
+                            <div className="mt-4 text-sm text-gray-500 space-y-1">
+                              <p className="font-semibold text-gray-900">Prostruktion GmbH</p>
+                              <p>Musterstraße 123</p>
+                              <p>12345 Berlin, Germany</p>
+                              <p>VAT ID: DE123456789</p>
+                            </div>
+                          </div>
+                          <div className="text-right text-sm space-y-2">
+                            <div>
+                              <span className="block text-gray-500 text-xs uppercase font-semibold">Date</span>
+                              <span className="font-medium">{new Date().toLocaleDateString("de-DE")}</span>
+                            </div>
+                            <div>
+                              <span className="block text-gray-500 text-xs uppercase font-semibold">Invoice No.</span>
+                              <span className="font-medium">#{currentInvoice.id?.slice(0, 8).toUpperCase()}</span>
+                            </div>
+                            <div>
+                              <span className="block text-gray-500 text-xs uppercase font-semibold">Project</span>
+                              <span className="font-medium">{currentInvoice.project}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bill To */}
+                      <div className="p-8 pb-4">
+                        <span className="block text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Bill To</span>
+                        <h2 className="text-xl font-medium text-gray-900">{currentInvoice.sub || "Subcontractor Name"}</h2>
+                        <p className="text-sm text-gray-500 mt-1">Partner ID: {currentInvoice.subId || "N/A"}</p>
+                      </div>
+
+                      {/* Line Items Table */}
+                      <div className="p-8 pt-0">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b-2 border-gray-900 text-gray-600">
+                              <th className="text-left py-3 font-semibold uppercase text-xs tracking-wider">Description</th>
+                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Base</th>
+                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[100px]">Share %</th>
+                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {/* WORK TYPES */}
+                            {currentInvoice.projectData?.selectedWorkTypes?.map((type: string) => {
+                              const units = currentInvoice.projectData?.indoorUnits || 0;
+                              const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
+                              const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
+                              return (
+                                <tr key={type}>
+                                  <td className="py-3 text-gray-800">{WORK_TYPE_LABELS[type] || type}</td>
+                                  <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                  <td className="py-3 text-right text-gray-500">70%</td>
+                                  <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* ADDITIONAL SERVICES */}
+                            {currentInvoice.projectData?.selectedAdditionalServices?.map((s: string) => {
+                              const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
+                              const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
+                              return (
+                                <tr key={s}>
+                                  <td className="py-3 text-gray-800">{service?.label || s}</td>
+                                  <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                  <td className="py-3 text-right text-gray-500">70%</td>
+                                  <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* BONUSES */}
+                            {invoiceEditState.subQualityBonus?.enabled && (
+                              <tr>
+                                <td className="py-3 text-gray-800">Quality Bonus</td>
+                                <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQualityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td className="py-3 text-right text-gray-500">70%</td>
+                                <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQualityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                            )}
+                            {invoiceEditState.subQuantityBonus?.enabled && (
+                              <tr>
+                                <td className="py-3 text-gray-800">Quantity Bonus ({invoiceEditState.subQuantityBonus.label})</td>
+                                <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQuantityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td className="py-3 text-right text-gray-500">70%</td>
+                                <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQuantityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Subtotal & Additional Works */}
+                      <div className="bg-gray-50 p-8 border-t">
+                        <div className="flex flex-col gap-3 max-w-[400px] ml-auto">
+                          {/* Subtotal */}
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Subtotal (Sharing Model):</span>
+                            <span className="font-medium">
+                              € {((
+                                (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
+                                  const units = currentInvoice.projectData?.indoorUnits || 0;
+                                  const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
+                                  const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
+                                  return acc + base * 0.7;
+                                }, 0) || 0) +
+                                (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
+                                  const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
+                                  const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
+                                  return acc + base * 0.7;
+                                }, 0) || 0) +
+                                (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
+                                (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0)
+                              ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                            </span>
+                          </div>
+
+                          {/* Additional Works (100%) */}
+                          {currentInvoice.projectData?.additionalWorks && currentInvoice.projectData.additionalWorks.length > 0 && (
+                            <>
+                              <div className="my-1 border-t border-dashed border-gray-300"></div>
+                              <div className="text-xs font-semibold uppercase text-gray-400 mt-1">Reimbursements / Extras (100%)</div>
+                              {currentInvoice.projectData.additionalWorks.map((work: any, idx: number) => (
+                                <div key={idx} className="flex justify-between text-sm text-gray-600">
+                                  <span>{work.description}:</span>
+                                  <span>+ € {parseFloat(work.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              ))}
+                            </>
+                          )}
+
+                          {/* Grand Total */}
+                          <div className="flex justify-between items-center pt-3 mt-2 border-t border-gray-900">
+                            <span className="text-base font-bold text-gray-900">Total Payable:</span>
+                            <span className="text-xl font-bold text-gray-900 font-mono">
+                              € {((
+                                (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
+                                  const units = currentInvoice.projectData?.indoorUnits || 0;
+                                  const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
+                                  const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
+                                  return acc + base * 0.7;
+                                }, 0) || 0) +
+                                (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
+                                  const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
+                                  const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
+                                  return acc + base * 0.7;
+                                }, 0) || 0) +
+                                (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
+                                (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0) +
+                                (currentInvoice.projectData?.additionalWorks?.reduce((acc: number, work: any) => acc + parseFloat(work.price || 0), 0) || 0)
+                              ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          )}
+                </TabsContent>
+
+                {/* MEDIATOR TAB */}
+                <TabsContent value="company" className="space-y-4">
+                  {currentInvoice.hasMediator ? (
+                    <div className="bg-white dark:bg-gray-950 border rounded-lg p-5 space-y-6">
+                      {/* Header Info */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                            Project Name
+                          </span>
+                          <span className="font-medium">
+                            {currentInvoice.project}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                            Project ID
+                          </span>
+                          <span className="font-medium">{currentInvoice.id}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                            Project Address
+                          </span>
+                          <span
+                            className="font-medium truncate block"
+                            title={currentInvoice.address}
+                          >
+                            {currentInvoice.address || "N/A"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                            Subcontractor
+                          </span>
+                          <span className="font-medium">
+                            {currentInvoice.projectData?.sub || "N/A"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                            Partner
+                          </span>
+                          <span className="font-medium">
+                            {currentInvoice.projectData?.partner || "N/A"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                            Mediator
+                          </span>
+                          <span className="font-medium">
+                            {currentInvoice.projectData?.mediator}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-dashed my-2"></div>
+
+                      <div className="space-y-4">
+                        {/* Base Value */}
+                        <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            Base Project Value
+                          </span>
+                          <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                            €{" "}
+                            {invoiceEditState.projectValue.toLocaleString(
+                              "de-DE",
+                              {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              },
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Total with Bonuses */}
+                        <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/10 p-3 rounded">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                              Total Value (with Bonuses)
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              Base + Quality Bonus + Quantity Bonus
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                            €{" "}
+                            {(
+                              invoiceEditState.projectValue +
+                              (invoiceEditState.qualityBonus.enabled
+                                ? invoiceEditState.qualityBonus.amount
+                                : 0) +
+                              (invoiceEditState.quantityBonus.enabled
+                                ? invoiceEditState.quantityBonus.amount
+                                : 0)
+                            ).toLocaleString("de-DE", {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+
+                        {/* Mediator Share */}
+                        <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-blue-900 dark:text-blue-100 text-sm">
+                              Total Payable to Mediator
+                            </span>
+                            <span className="text-xs text-blue-600 dark:text-blue-400">
+                              (10% of Base Value)
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-xl text-blue-700 dark:text-blue-300">
+                            €{" "}
+                            {(
+                              invoiceEditState.projectValue *
+                              (invoiceEditState.mediatorSharePercent / 100)
+                            ).toLocaleString("de-DE", {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-dashed my-2"></div>
+
+                      {/* Review Checkbox */}
+                      {/* Review Checkbox removed */}
+                    </div>
+                  ) : (
+                    <div className="p-10 text-center text-muted-foreground border rounded bg-gray-50 flex flex-col items-center justify-center gap-2">
+                      <AlertCircle className="h-8 w-8 text-gray-300" />
+                      <p>No Mediator assigned to this project.</p>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            ) : (
+              /* FINAL REVIEW MODE (All Invoices Preview) */
+              <div className="flex flex-col gap-6 max-h-[70vh] overflow-y-auto pr-2">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-blue-900">Review Invoices</h4>
+                    <p className="text-xs text-blue-700 mt-1">Please review the invoices below. Click "Confirm & Register" to finalize and save them to the system.</p>
+                  </div>
+                </div>
+
+                {/* Subcontractor Invoice Preview (Re-used for Final Check) */}
+                <div className="bg-white text-gray-900 border rounded-lg shadow-sm overflow-hidden flex flex-col font-sans">
+                  <div className="p-4 bg-gray-100 border-b flex justify-between items-center">
+                    <h3 className="font-bold text-sm uppercase text-gray-700">Subcontractor Invoice Preview</h3>
+                    <Badge variant="outline" className="bg-white">Draft</Badge>
+                  </div>
+
+                  {/* Invoice Header */}
+                  <div className="p-8 border-b bg-gray-50/50">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h1 className="text-2xl font-bold uppercase tracking-widest text-gray-800">Invoice</h1>
+                        <div className="mt-4 text-sm text-gray-500 space-y-1">
+                          <p className="font-semibold text-gray-900">Prostruktion GmbH</p>
+                          <p>Musterstraße 123</p>
+                          <p>12345 Berlin, Germany</p>
+                          <p>VAT ID: DE123456789</p>
+                        </div>
+                      </div>
+                      <div className="text-right text-sm space-y-2">
+                        <div>
+                          <span className="block text-gray-500 text-xs uppercase font-semibold">Date</span>
+                          <span className="font-medium">{new Date().toLocaleDateString("de-DE")}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-500 text-xs uppercase font-semibold">Invoice No.</span>
+                          <span className="font-medium">#{currentInvoice.id?.slice(0, 8).toUpperCase()}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-500 text-xs uppercase font-semibold">Project</span>
+                          <span className="font-medium">{currentInvoice.project}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bill To */}
+                  <div className="p-8 pb-4">
+                    <span className="block text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Bill To</span>
+                    <h2 className="text-xl font-medium text-gray-900">{currentInvoice.sub || "Subcontractor Name"}</h2>
+                    <p className="text-sm text-gray-500 mt-1">Partner ID: {currentInvoice.subId || "N/A"}</p>
+                  </div>
+
+                  {/* Line Items Table */}
+                  <div className="p-8 pt-0">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b-2 border-gray-900 text-gray-600">
+                          <th className="text-left py-3 font-semibold uppercase text-xs tracking-wider">Description</th>
+                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Base</th>
+                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[100px]">Share %</th>
+                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {/* WORK TYPES */}
+                        {currentInvoice.projectData?.selectedWorkTypes?.map((type: string) => {
+                          const units = currentInvoice.projectData?.indoorUnits || 0;
+                          const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
+                          const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
+                          return (
+                            <tr key={type}>
+                              <td className="py-3 text-gray-800">{WORK_TYPE_LABELS[type] || type}</td>
+                              <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td className="py-3 text-right text-gray-500">70%</td>
+                              <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            </tr>
+                          );
+                        })}
+
+                        {/* ADDITIONAL SERVICES */}
+                        {currentInvoice.projectData?.selectedAdditionalServices?.map((s: string) => {
+                          const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
+                          const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
+                          return (
+                            <tr key={s}>
+                              <td className="py-3 text-gray-800">{service?.label || s}</td>
+                              <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td className="py-3 text-right text-gray-500">70%</td>
+                              <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            </tr>
+                          );
+                        })}
+
+                        {/* BONUSES */}
+                        {invoiceEditState.subQualityBonus?.enabled && (
+                          <tr>
+                            <td className="py-3 text-gray-800">Quality Bonus</td>
+                            <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQualityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td className="py-3 text-right text-gray-500">70%</td>
+                            <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQualityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          </tr>
+                        )}
+                        {invoiceEditState.subQuantityBonus?.enabled && (
+                          <tr>
+                            <td className="py-3 text-gray-800">Quantity Bonus ({invoiceEditState.subQuantityBonus.label})</td>
+                            <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQuantityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td className="py-3 text-right text-gray-500">70%</td>
+                            <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQuantityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Subtotal & Additional Works */}
+                  <div className="bg-gray-50 p-8 border-t">
+                    <div className="flex flex-col gap-3 max-w-[400px] ml-auto">
+                      {/* Subtotal */}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Subtotal (Sharing Model):</span>
+                        <span className="font-medium">
+                          € {((
+                            (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
+                              const units = currentInvoice.projectData?.indoorUnits || 0;
+                              const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
+                              const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
+                              return acc + base * 0.7;
+                            }, 0) || 0) +
+                            (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
+                              const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
+                              const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
+                              return acc + base * 0.7;
+                            }, 0) || 0) +
+                            (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
+                            (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0)
+                          ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                        </span>
+                      </div>
+
+                      {/* Additional Works (100%) */}
+                      {currentInvoice.projectData?.additionalWorks && currentInvoice.projectData.additionalWorks.length > 0 && (
+                        <>
+                          <div className="my-1 border-t border-dashed border-gray-300"></div>
+                          <div className="text-xs font-semibold uppercase text-gray-400 mt-1">Reimbursements / Extras (100%)</div>
+                          {currentInvoice.projectData.additionalWorks.map((work: any, idx: number) => (
+                            <div key={idx} className="flex justify-between text-sm text-gray-600">
+                              <span>{work.description}:</span>
+                              <span>+ € {parseFloat(work.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {/* Grand Total */}
+                      <div className="flex justify-between items-center pt-3 mt-2 border-t border-gray-900">
+                        <span className="text-base font-bold text-gray-900">Total Payable:</span>
+                        <span className="text-xl font-bold text-gray-900 font-mono">
+                          € {((
+                            (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
+                              const units = currentInvoice.projectData?.indoorUnits || 0;
+                              const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
+                              const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
+                              return acc + base * 0.7;
+                            }, 0) || 0) +
+                            (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
+                              const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
+                              const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
+                              return acc + base * 0.7;
+                            }, 0) || 0) +
+                            (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
+                            (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0) +
+                            (currentInvoice.projectData?.additionalWorks?.reduce((acc: number, work: any) => acc + parseFloat(work.price || 0), 0) || 0)
+                          ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
 
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setSuccessModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-blue-600 text-white"
-              disabled={false}
-              onClick={async () => {
-                // Calculate Subcontractor Total Fee dynamically
-                const subBaseFee =
-                  (currentInvoice.projectData?.selectedWorkTypes?.reduce(
-                    (acc: number, type: string) => {
-                      const units =
-                        currentInvoice.projectData?.indoorUnits || 0;
-                      const matrixPrice =
-                        PRICING_MATRIX.baseCosts[units]?.[
-                          type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
-                        ] || 0;
-                      const base =
-                        currentInvoice.projectData?.workTypePrices?.[type] !==
-                        undefined
-                          ? currentInvoice.projectData.workTypePrices[type]
-                          : matrixPrice;
-                      return acc + base * 0.7;
-                    },
-                    0,
-                  ) || 0) +
-                  (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
-                    (acc: number, s: string) => {
-                      const service = ADDITIONAL_SERVICES.find(
-                        (as) => as.id === s,
-                      );
-                      const base =
-                        currentInvoice.projectData?.additionalServicePrices?.[
-                          s
-                        ] !== undefined
-                          ? currentInvoice.projectData.additionalServicePrices[
+            {!showInvoicePreview ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setSuccessModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-blue-600 text-white"
+                  onClick={() => setShowInvoicePreview(true)}
+                >
+                  Review & Register Invoices
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowInvoicePreview(false)}
+                >
+                  Back to Edit
+                </Button>
+                <Button
+                  className="bg-green-600 text-white"
+                  disabled={false}
+                  onClick={async () => {
+                    // Calculate Subcontractor Total Fee dynamically
+                    const subBaseFee =
+                      (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                        (acc: number, type: string) => {
+                          const units =
+                            currentInvoice.projectData?.indoorUnits || 0;
+                          const matrixPrice =
+                            PRICING_MATRIX.baseCosts[units]?.[
+                            type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                            ] || 0;
+                          const base =
+                            currentInvoice.projectData?.workTypePrices?.[type] !==
+                              undefined
+                              ? currentInvoice.projectData.workTypePrices[type]
+                              : matrixPrice;
+                          return acc + base * 0.7;
+                        },
+                        0,
+                      ) || 0) +
+                      (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                        (acc: number, s: string) => {
+                          const service = ADDITIONAL_SERVICES.find(
+                            (as) => as.id === s,
+                          );
+                          const base =
+                            currentInvoice.projectData?.additionalServicePrices?.[
                               s
-                            ]
-                          : service?.price || 0;
-                      return acc + base * 0.7;
-                    },
-                    0,
-                  ) || 0) +
-                  (currentInvoice.projectData?.additionalWorks?.reduce(
-                    (acc: number, work: any) =>
-                      acc + parseFloat(work.price || 0),
-                    0,
-                  ) || 0);
+                            ] !== undefined
+                              ? currentInvoice.projectData.additionalServicePrices[
+                              s
+                              ]
+                              : service?.price || 0;
+                          return acc + base * 0.7;
+                        },
+                        0,
+                      ) || 0) +
+                      (currentInvoice.projectData?.additionalWorks?.reduce(
+                        (acc: number, work: any) =>
+                          acc + parseFloat(work.price || 0),
+                        0,
+                      ) || 0);
 
-                const subBonusFee =
-                  (invoiceEditState.subQualityBonus.enabled
-                    ? invoiceEditState.subQualityBonus.amount * 0.7
-                    : 0) +
-                  (invoiceEditState.subQuantityBonus.enabled
-                    ? invoiceEditState.subQuantityBonus.amount * 0.7
-                    : 0);
+                    const subBonusFee =
+                      (invoiceEditState.subQualityBonus.enabled
+                        ? invoiceEditState.subQualityBonus.amount * 0.7
+                        : 0) +
+                      (invoiceEditState.subQuantityBonus.enabled
+                        ? invoiceEditState.subQuantityBonus.amount * 0.7
+                        : 0);
 
-                const totalSubFee = subBaseFee + subBonusFee;
+                    const totalSubFee = subBaseFee + subBonusFee;
 
-                // Email sending removed as per request
-                // Logic continues to register invoice locally
+                    // Email sending removed as per request
+                    // Logic continues to register invoice locally
 
-                // 1. Update Project Status locally
-                const updatedProjects = [...projects];
-                // Try to find by ID (currentInvoice.projectData.id) or fallback to reference/index if ID missing
-                let realIndex = -1;
-                if (currentInvoice.projectData?.id) {
-                  realIndex = updatedProjects.findIndex(
-                    (p) => p.id === currentInvoice.projectData.id,
-                  );
-                }
-
-                // Fallback: match by title/partner if ID not found (unlikely)
-                if (realIndex === -1) {
-                  realIndex = updatedProjects.findIndex(
-                    (p) => p === currentInvoice.projectData,
-                  );
-                }
-
-                if (realIndex !== -1) {
-                  updatedProjects[realIndex].status = "Invoiced";
-                  updatedProjects[realIndex].statusColor =
-                    "bg-gray-500 text-white";
-                  updatedProjects[realIndex].invoiceStatus = "Sent";
-                  // Update abnahme? Usually Invoiced implies Abnahme done.
-                  setProjects(updatedProjects);
-                  localStorage.setItem(
-                    "prostruktion_projects_v1",
-                    JSON.stringify(updatedProjects),
-                  );
-                }
-
-                // 2. Generate Financial Records (Invoices)
-                // 2. Generate Financial Records (Invoices)
-                // Filter out any existing pending invoices for this project to avoid duplicates
-                const rawExistingInvoices = JSON.parse(
-                  localStorage.getItem("prostruktion_invoices") || "[]",
-                );
-
-                const existingInvoices = rawExistingInvoices.filter(
-                  (inv: any) => {
-                    // Keep invoice if:
-                    // 1. Project ID doesn't match current project (different project)
-                    // 2. OR status is not "For Invoice" or "Ready" (e.g. "Sent", "Paid" - keep history)
-                    const isSameProject =
-                      (inv.projectId &&
-                        inv.projectId === currentInvoice.projectData.id) ||
-                      inv.project === currentInvoice.project;
-
-                    const isPending =
-                      inv.status === "For Invoice" || inv.status === "Ready";
-
-                    return !(isSameProject && isPending);
-                  },
-                );
-                const newInvoices = [];
-                const nowStr = new Date().toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                });
-                const supabase = createClient();
-
-                // PARTNER Invoice
-                const partnerAmount =
-                  invoiceEditState.projectValue *
-                    (invoiceEditState.partnerSharePercent / 100) +
-                  (invoiceEditState.qualityBonus.enabled
-                    ? invoiceEditState.qualityBonus.amount
-                    : 0) +
-                  (invoiceEditState.quantityBonus.enabled
-                    ? invoiceEditState.quantityBonus.amount
-                    : 0);
-
-                const partnerInvoiceId = Date.now();
-                newInvoices.push({
-                  id: partnerInvoiceId,
-                  projectId: currentInvoice.projectData.id,
-                  project: currentInvoice.project,
-                  partner: currentInvoice.projectData.partner,
-                  mediator: currentInvoice.hasMediator
-                    ? currentInvoice.mediator
-                    : "-",
-                  emp: currentInvoice.projectData.contractor, // Employer/Contractor
-                  date: nowStr,
-                  amount: partnerAmount,
-                  type: "Partner Invoice", // Custom field not in original schema but useful, or put in action
-                  action: "Partner Invoice",
-                  status: "For Invoice", // Correct status for Financials Staging
-                  days: "Now",
-                });
-
-                // MEDIATOR Invoice
-                if (currentInvoice.hasMediator) {
-                  const mediatorAmount =
-                    invoiceEditState.projectValue *
-                    (invoiceEditState.mediatorSharePercent / 100);
-                  newInvoices.push({
-                    id: partnerInvoiceId + 1,
-                    projectId: currentInvoice.projectData.id,
-                    project: currentInvoice.project,
-                    partner: currentInvoice.projectData.partner, // Context
-                    mediator: currentInvoice.mediator, // Recipient
-                    emp: currentInvoice.projectData.contractor,
-                    date: nowStr,
-                    amount: mediatorAmount,
-                    action: "Mediator Invoice",
-                    status: "For Invoice",
-                    days: "Now",
-                  });
-                }
-
-                // SUBCONTRACTOR Invoice
-                if (totalSubFee > 0 || currentInvoice.projectData.sub) {
-                  newInvoices.push({
-                    id: partnerInvoiceId + 2,
-                    projectId: currentInvoice.projectData.id,
-                    project: currentInvoice.project,
-                    partner: currentInvoice.projectData.partner,
-                    mediator: "-",
-                    // Using 'emp' or 'partner' field to store Subcontractor Name for display
-                    emp: currentInvoice.projectData.sub || "Subcontractor",
-                    date: nowStr,
-                    amount: totalSubFee,
-                    action: "Subcontractor Invoice",
-                    status: "For Invoice",
-                    days: "Now",
-                  });
-                }
-
-                localStorage.setItem(
-                  "prostruktion_invoices",
-                  JSON.stringify([...existingInvoices, ...newInvoices]),
-                );
-
-                // SYNC TO SUPABASE
-                try {
-                  const supabase = createClient();
-                  let currentSequentialNumber = nextInvoiceNumber;
-
-                  for (const inv of newInvoices) {
-                    let recipientRole = "";
-                    let recipientName = "";
-
-                    if (inv.action === "Partner Invoice") {
-                      recipientRole = "Partner";
-                      recipientName = inv.partner;
-                    } else if (inv.action === "Mediator Invoice") {
-                      recipientRole = "Mediator";
-                      recipientName = inv.mediator; // Corrected: Use inv.mediator for mediator name
-                    } else if (inv.action === "Subcontractor Invoice") {
-                      recipientRole = "Subcontractor";
-                      recipientName = inv.emp; // reused field
-                    }
-
-                    // Construct Scope of Work Description
-                    const workTypesStr = (
-                      currentInvoice.projectData?.selectedWorkTypes || []
-                    )
-                      .map((t: string) => WORK_TYPE_LABELS[t] || t)
-                      .join(", ");
-                    const addServicesStr = (
-                      currentInvoice.projectData?.selectedAdditionalServices ||
-                      []
-                    )
-                      .map((s: string) => {
-                        const service = ADDITIONAL_SERVICES.find(
-                          (as) => as.id === s,
-                        );
-                        return service?.label || s;
-                      })
-                      .join(", ");
-
-                    const addWorksStr = (
-                      currentInvoice.projectData?.additionalWorks || []
-                    )
-                      .map((w: any) => w.description)
-                      .join(", ");
-
-                    const scopeDesc = `Indoor Units: ${
-                      currentInvoice.projectData?.indoorUnits || 0
-                    }. Work: ${workTypesStr}. Additional: ${addServicesStr}. Extra Works: ${addWorksStr}.`;
-
-                    const payload = {
-                      project_id: currentInvoice.projectData?.id || null,
-                      project_name: inv.project,
-                      recipient_name: recipientName,
-                      recipient_role: recipientRole,
-                      amount: inv.amount,
-                      status: "For Invoice",
-                      date: new Date().toISOString().split("T")[0],
-                      invoice_type: inv.action,
-                      description: scopeDesc,
-                      invoice_number: currentSequentialNumber, // Assign current next number
-                    };
-
-                    const { error } = await supabase
-                      .from("invoices")
-                      .insert(payload);
-
-                    if (error) {
-                      console.error(
-                        "Failed to sync invoice to Supabase:",
-                        error,
-                      );
-                      throw error;
-                    }
-
-                    // Increment for next record in this batch
-                    const parts = currentSequentialNumber.split("/");
-                    if (parts.length === 2) {
-                      const nextNum = (parseInt(parts[0], 10) + 1)
-                        .toString()
-                        .padStart(2, "0");
-                      currentSequentialNumber = `${nextNum}/${parts[1]}`;
-                    }
-                  }
-
-                  // Refresh state after all done
-                  refreshInvoiceNumber();
-
-                  // Archive the project
-                  if (currentInvoice.projectData?.id) {
-                    const projectId = currentInvoice.projectData.id;
-
-                    let finalAbnahme = currentInvoice.projectData.abnahme;
-                    if (
-                      !finalAbnahme ||
-                      finalAbnahme === "No" ||
-                      finalAbnahme === "Yes"
-                    ) {
-                      finalAbnahme = new Date().toISOString();
-                    }
-
-                    const { error: updateError } = await supabase
-                      .from("projects")
-                      .update({
-                        status: "Archived",
-                        abnahme: finalAbnahme,
-                      })
-                      .eq("id", projectId);
-
-                    if (updateError) {
-                      console.error("Failed to archive project:", updateError);
-                    } else {
-                      // Update local state
-                      setProjects((prev) =>
-                        prev.map((p) =>
-                          p.id === projectId
-                            ? {
-                                ...p,
-                                status: "Archived",
-                                statusColor: "bg-gray-500 text-white",
-                              }
-                            : p,
-                        ),
+                    // 1. Update Project Status locally
+                    const updatedProjects = [...projects];
+                    // Try to find by ID (currentInvoice.projectData.id) or fallback to reference/index if ID missing
+                    let realIndex = -1;
+                    if (currentInvoice.projectData?.id) {
+                      realIndex = updatedProjects.findIndex(
+                        (p) => p.id === currentInvoice.projectData.id,
                       );
                     }
-                  }
 
-                  console.log("Invoices synced to Supabase successfully.");
-                } catch (err: any) {
-                  console.error("Supabase sync error:", err);
-                  alert(
-                    `Invoices saved locally but failed to sync to Supabase: ${err.message}. Please check if 'invoices' table exists.`,
-                  );
-                }
+                    // Fallback: match by title/partner if ID not found (unlikely)
+                    if (realIndex === -1) {
+                      realIndex = updatedProjects.findIndex(
+                        (p) => p === currentInvoice.projectData,
+                      );
+                    }
 
-                // Close
-                setSuccessModalOpen(false);
-              }}
-            >
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Register Invoices
-            </Button>
+                    if (realIndex !== -1) {
+                      updatedProjects[realIndex].status = "Invoiced";
+                      updatedProjects[realIndex].statusColor =
+                        "bg-gray-500 text-white";
+                      updatedProjects[realIndex].invoiceStatus = "Sent";
+                      // Update abnahme? Usually Invoiced implies Abnahme done.
+                      setProjects(updatedProjects);
+                      localStorage.setItem(
+                        "prostruktion_projects_v1",
+                        JSON.stringify(updatedProjects),
+                      );
+                    }
+
+                    // 2. Generate Financial Records (Invoices)
+                    // 2. Generate Financial Records (Invoices)
+                    // Filter out any existing pending invoices for this project to avoid duplicates
+                    const rawExistingInvoices = JSON.parse(
+                      localStorage.getItem("prostruktion_invoices") || "[]",
+                    );
+
+                    const existingInvoices = rawExistingInvoices.filter(
+                      (inv: any) => {
+                        // Keep invoice if:
+                        // 1. Project ID doesn't match current project (different project)
+                        // 2. OR status is not "For Invoice" or "Ready" (e.g. "Sent", "Paid" - keep history)
+                        const isSameProject =
+                          (inv.projectId &&
+                            inv.projectId === currentInvoice.projectData.id) ||
+                          inv.project === currentInvoice.project;
+
+                        const isPending =
+                          inv.status === "For Invoice" || inv.status === "Ready";
+
+                        return !(isSameProject && isPending);
+                      },
+                    );
+                    const newInvoices = [];
+                    const nowStr = new Date().toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    });
+                    const supabase = createClient();
+
+                    // PARTNER Invoice
+                    const partnerAmount =
+                      invoiceEditState.projectValue *
+                      (invoiceEditState.partnerSharePercent / 100) +
+                      (invoiceEditState.qualityBonus.enabled
+                        ? invoiceEditState.qualityBonus.amount
+                        : 0) +
+                      (invoiceEditState.quantityBonus.enabled
+                        ? invoiceEditState.quantityBonus.amount
+                        : 0);
+
+                    const partnerInvoiceId = Date.now();
+                    newInvoices.push({
+                      id: partnerInvoiceId,
+                      projectId: currentInvoice.projectData.id,
+                      project: currentInvoice.project,
+                      partner: currentInvoice.projectData.partner,
+                      mediator: currentInvoice.hasMediator
+                        ? currentInvoice.mediator
+                        : "-",
+                      emp: currentInvoice.projectData.contractor, // Employer/Contractor
+                      date: nowStr,
+                      amount: partnerAmount,
+                      type: "Partner Invoice", // Custom field not in original schema but useful, or put in action
+                      action: "Partner Invoice",
+                      status: "For Invoice", // Correct status for Financials Staging
+                      days: "Now",
+                    });
+
+                    // MEDIATOR Invoice
+                    if (currentInvoice.hasMediator) {
+                      const mediatorAmount =
+                        invoiceEditState.projectValue *
+                        (invoiceEditState.mediatorSharePercent / 100);
+                      newInvoices.push({
+                        id: partnerInvoiceId + 1,
+                        projectId: currentInvoice.projectData.id,
+                        project: currentInvoice.project,
+                        partner: currentInvoice.projectData.partner, // Context
+                        mediator: currentInvoice.mediator, // Recipient
+                        emp: currentInvoice.projectData.contractor,
+                        date: nowStr,
+                        amount: mediatorAmount,
+                        action: "Mediator Invoice",
+                        status: "For Invoice",
+                        days: "Now",
+                      });
+                    }
+
+                    // SUBCONTRACTOR Invoice
+                    if (totalSubFee > 0 || currentInvoice.projectData.sub) {
+                      newInvoices.push({
+                        id: partnerInvoiceId + 2,
+                        projectId: currentInvoice.projectData.id,
+                        project: currentInvoice.project,
+                        partner: currentInvoice.projectData.partner,
+                        mediator: "-",
+                        // Using 'emp' or 'partner' field to store Subcontractor Name for display
+                        emp: currentInvoice.projectData.sub || "Subcontractor",
+                        date: nowStr,
+                        amount: totalSubFee,
+                        action: "Subcontractor Invoice",
+                        status: "For Invoice",
+                        days: "Now",
+                      });
+                    }
+
+                    localStorage.setItem(
+                      "prostruktion_invoices",
+                      JSON.stringify([...existingInvoices, ...newInvoices]),
+                    );
+
+                    // SYNC TO SUPABASE
+                    try {
+                      const supabase = createClient();
+                      let currentSequentialNumber = nextInvoiceNumber;
+
+                      for (const inv of newInvoices) {
+                        let recipientRole = "";
+                        let recipientName = "";
+
+                        if (inv.action === "Partner Invoice") {
+                          recipientRole = "Partner";
+                          recipientName = inv.partner;
+                        } else if (inv.action === "Mediator Invoice") {
+                          recipientRole = "Mediator";
+                          recipientName = inv.mediator; // Corrected: Use inv.mediator for mediator name
+                        } else if (inv.action === "Subcontractor Invoice") {
+                          recipientRole = "Subcontractor";
+                          recipientName = inv.emp; // reused field
+                        }
+
+                        // Construct Scope of Work Description
+                        const workTypesStr = (
+                          currentInvoice.projectData?.selectedWorkTypes || []
+                        )
+                          .map((t: string) => WORK_TYPE_LABELS[t] || t)
+                          .join(", ");
+                        const addServicesStr = (
+                          currentInvoice.projectData?.selectedAdditionalServices ||
+                          []
+                        )
+                          .map((s: string) => {
+                            const service = ADDITIONAL_SERVICES.find(
+                              (as) => as.id === s,
+                            );
+                            return service?.label || s;
+                          })
+                          .join(", ");
+
+                        const addWorksStr = (
+                          currentInvoice.projectData?.additionalWorks || []
+                        )
+                          .map((w: any) => w.description)
+                          .join(", ");
+
+                        const scopeDesc = `Indoor Units: ${currentInvoice.projectData?.indoorUnits || 0
+                          }. Work: ${workTypesStr}. Additional: ${addServicesStr}. Extra Works: ${addWorksStr}.`;
+
+                        const payload = {
+                          project_id: currentInvoice.projectData?.id || null,
+                          project_name: inv.project,
+                          recipient_name: recipientName,
+                          recipient_role: recipientRole,
+                          amount: inv.amount,
+                          status: "For Invoice",
+                          date: new Date().toISOString().split("T")[0],
+                          invoice_type: inv.action,
+                          description: scopeDesc,
+                          invoice_number: currentSequentialNumber, // Assign current next number
+                        };
+
+                        const { error } = await supabase
+                          .from("invoices")
+                          .insert(payload);
+
+                        if (error) {
+                          console.error(
+                            "Failed to sync invoice to Supabase:",
+                            error,
+                          );
+                          throw error;
+                        }
+
+                        // Increment for next record in this batch
+                        const parts = currentSequentialNumber.split("/");
+                        if (parts.length === 2) {
+                          const nextNum = (parseInt(parts[0], 10) + 1)
+                            .toString()
+                            .padStart(2, "0");
+                          currentSequentialNumber = `${nextNum}/${parts[1]}`;
+                        }
+                      }
+
+                      // Refresh state after all done
+                      refreshInvoiceNumber();
+
+                      // Archive the project
+                      if (currentInvoice.projectData?.id) {
+                        const projectId = currentInvoice.projectData.id;
+
+                        let finalAbnahme = currentInvoice.projectData.abnahme;
+                        if (
+                          !finalAbnahme ||
+                          finalAbnahme === "No" ||
+                          finalAbnahme === "Yes"
+                        ) {
+                          finalAbnahme = new Date().toISOString();
+                        }
+
+                        const { error: updateError } = await supabase
+                          .from("projects")
+                          .update({
+                            status: "Archived",
+                            abnahme: finalAbnahme,
+                          })
+                          .eq("id", projectId);
+
+                        if (updateError) {
+                          console.error("Failed to archive project:", updateError);
+                        } else {
+                          // Update local state
+                          setProjects((prev) =>
+                            prev.map((p) =>
+                              p.id === projectId
+                                ? {
+                                  ...p,
+                                  status: "Archived",
+                                  statusColor: "bg-gray-500 text-white",
+                                }
+                                : p,
+                            ),
+                          );
+                        }
+                      }
+
+                      console.log("Invoices synced to Supabase successfully.");
+                    } catch (err: any) {
+                      console.error("Supabase sync error:", err);
+                      alert(
+                        `Invoices saved locally but failed to sync to Supabase: ${err.message}. Please check if 'invoices' table exists.`,
+                      );
+                    }
+
+                    // Close
+                    setShowInvoicePreview(false);
+                    setSuccessModalOpen(false);
+                  }}
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> Confirm & Register
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -5142,7 +5285,7 @@ export default function AdminProjects() {
                         );
                         const p =
                           newProject.additionalServicePrices[serviceId] !==
-                          undefined
+                            undefined
                             ? newProject.additionalServicePrices[serviceId]
                             : s?.price || 0;
                         servicesPrice += p;
@@ -5221,7 +5364,7 @@ export default function AdminProjects() {
                               // Recalculate
                               const currentCosts =
                                 PRICING_MATRIX.baseCosts[
-                                  newProject.indoorUnits
+                                newProject.indoorUnits
                                 ] || {};
                               let basePrice = 0;
                               newTypes.forEach((type) => {
@@ -5243,8 +5386,8 @@ export default function AdminProjects() {
                                       serviceId
                                     ] !== undefined
                                       ? newProject.additionalServicePrices[
-                                          serviceId
-                                        ]
+                                      serviceId
+                                      ]
                                       : s?.price || 0;
                                   servicesPrice += p;
                                 },
@@ -5294,7 +5437,7 @@ export default function AdminProjects() {
                                     // Use newPrices
                                     const currentCosts =
                                       PRICING_MATRIX.baseCosts[
-                                        newProject.indoorUnits
+                                      newProject.indoorUnits
                                       ] || {};
                                     let basePrice = 0;
                                     newProject.selectedWorkTypes.forEach(
@@ -5319,9 +5462,9 @@ export default function AdminProjects() {
                                             serviceId
                                           ] !== undefined
                                             ? newProject
-                                                .additionalServicePrices[
-                                                serviceId
-                                              ]
+                                              .additionalServicePrices[
+                                            serviceId
+                                            ]
                                             : s?.price || 0;
                                         servicesPrice += p;
                                       },
@@ -5384,13 +5527,13 @@ export default function AdminProjects() {
                                 // 1. Base
                                 const currentCosts =
                                   PRICING_MATRIX.baseCosts[
-                                    newProject.indoorUnits
+                                  newProject.indoorUnits
                                   ] || {};
                                 let basePrice = 0;
                                 newProject.selectedWorkTypes.forEach((type) => {
                                   const p =
                                     newProject.workTypePrices[type] !==
-                                    undefined
+                                      undefined
                                       ? newProject.workTypePrices[type]
                                       : (currentCosts as any)[type] || 0;
                                   basePrice += p;
@@ -5408,8 +5551,8 @@ export default function AdminProjects() {
                                         serviceId
                                       ] !== undefined
                                         ? newProject.additionalServicePrices[
-                                            serviceId
-                                          ]
+                                        serviceId
+                                        ]
                                         : s?.price || 0;
                                     servicesPrice += p;
                                   },
@@ -5506,8 +5649,8 @@ export default function AdminProjects() {
                                   serviceId
                                 ] !== undefined
                                   ? newProject.additionalServicePrices[
-                                      serviceId
-                                    ]
+                                  serviceId
+                                  ]
                                   : s?.price || 0;
                               servicesPrice += p;
                             },
@@ -5544,7 +5687,7 @@ export default function AdminProjects() {
                     {ADDITIONAL_SERVICES.map((service) => {
                       const currentPrice =
                         newProject.additionalServicePrices[service.id] !==
-                        undefined
+                          undefined
                           ? newProject.additionalServicePrices[service.id]
                           : service.price;
 
@@ -5584,7 +5727,7 @@ export default function AdminProjects() {
                               // Recalculate
                               const currentCosts =
                                 PRICING_MATRIX.baseCosts[
-                                  newProject.indoorUnits
+                                newProject.indoorUnits
                                 ] || {};
                               let basePrice = 0;
                               newProject.selectedWorkTypes.forEach((type) => {
@@ -5650,14 +5793,14 @@ export default function AdminProjects() {
                                     // Recalculate
                                     const currentCosts =
                                       PRICING_MATRIX.baseCosts[
-                                        newProject.indoorUnits
+                                      newProject.indoorUnits
                                       ] || {};
                                     let basePrice = 0;
                                     newProject.selectedWorkTypes.forEach(
                                       (type) => {
                                         const p =
                                           newProject.workTypePrices[type] !==
-                                          undefined
+                                            undefined
                                             ? newProject.workTypePrices[type]
                                             : (currentCosts as any)[type] || 0;
                                         basePrice += p;

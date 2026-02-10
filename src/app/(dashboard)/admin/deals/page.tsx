@@ -163,10 +163,10 @@ export default function FinancialDashboardPage() {
           amount: parseGermanFloat(inv.amount),
           date: inv.date
             ? new Date(inv.date).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-              })
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
             : "",
           status: inv.status,
           action: inv.invoice_type, // "Invoice", "Partner Invoice", "Batch", "Side Project"
@@ -238,10 +238,10 @@ export default function FinancialDashboardPage() {
             ...e,
             date: e.date
               ? new Date(e.date).toLocaleDateString("en-US", {
-                  year: "2-digit",
-                  month: "short",
-                  day: "numeric",
-                })
+                year: "2-digit",
+                month: "short",
+                day: "numeric",
+              })
               : "",
             numericAmount: val,
           };
@@ -858,7 +858,7 @@ export default function FinancialDashboardPage() {
                       <TableCell>{row.partner}</TableCell>
                       <TableCell>{row.date}</TableCell>
                       <TableCell className="text-xs font-medium text-blue-600">
-                        {row.invoiceNumber}
+                        {row.invoiceNumber || <span className="text-gray-300">-</span>}
                       </TableCell>
                       <TableCell>
                         <div
@@ -1305,11 +1305,10 @@ export default function FinancialDashboardPage() {
                         }
                       >
                         <SelectTrigger
-                          className={`w-[110px] h-8 text-xs font-medium border-0 ring-1 ring-inset ring-gray-200 ${
-                            row.status === "Paid"
+                          className={`w-[110px] h-8 text-xs font-medium border-0 ring-1 ring-inset ring-gray-200 ${row.status === "Paid"
                               ? "bg-green-50 text-green-700 ring-green-200"
                               : "bg-orange-50 text-orange-700 ring-orange-200"
-                          }`}
+                            }`}
                         >
                           <SelectValue />
                         </SelectTrigger>

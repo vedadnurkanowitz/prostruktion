@@ -151,7 +151,9 @@ export default function ArchivePage() {
       if (allWorkerIds.length > 0) {
         const { data: workersList } = await supabase
           .from("workers")
-          .select("id, name, cert_status, a1_status, success_rate, cert_files")
+          .select(
+            "id, name, cert_status, a1_status, success_rate, cert_files, a1_files",
+          )
           .in("id", allWorkerIds);
 
         if (workersList) {
@@ -163,6 +165,7 @@ export default function ArchivePage() {
                 a1Status: w.a1_status,
                 successRate: w.success_rate,
                 certFiles: w.cert_files || [],
+                a1Files: w.a1_files || [],
               };
               return acc;
             },
@@ -693,11 +696,9 @@ export default function ArchivePage() {
                                       {item.workerDetails?.map(
                                         (worker: any) => {
                                           const certValid =
-                                            worker.certStatus === "Valid" &&
-                                            worker.certFiles &&
-                                            worker.certFiles.length > 0;
+                                            (worker.certFiles || []).length > 0;
                                           const a1Valid =
-                                            worker.a1Status === "Valid";
+                                            (worker.a1Files || []).length > 0;
 
                                           return (
                                             <TableRow
@@ -728,9 +729,7 @@ export default function ArchivePage() {
                                                       : "text-muted-foreground"
                                                   }
                                                 >
-                                                  {certValid
-                                                    ? "Yes"
-                                                    : worker.certStatus || "No"}
+                                                  {certValid ? "Yes" : "No"}
                                                 </span>
                                               </TableCell>
                                               <TableCell className="py-1 text-xs text-center">
@@ -741,9 +740,7 @@ export default function ArchivePage() {
                                                       : "text-muted-foreground"
                                                   }
                                                 >
-                                                  {a1Valid
-                                                    ? "Yes"
-                                                    : worker.a1Status || "No"}
+                                                  {a1Valid ? "Yes" : "No"}
                                                 </span>
                                               </TableCell>
                                               <TableCell className="py-1 text-center text-xs text-green-600 font-medium">

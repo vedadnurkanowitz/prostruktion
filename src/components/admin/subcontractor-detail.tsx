@@ -168,11 +168,11 @@ export function SubcontractorDetail({
       a1_start: newWorker.a1Start || null,
       a1_end: newWorker.a1End || null,
       a1_files: a1Files.map((f) => f.name),
-      a1_status: a1Na ? "Valid" : "Pending", // Simple logic
+      a1_status: a1Na ? "Valid" : a1Files.length > 0 ? "Valid" : "Pending", // If file uploaded -> Valid, else Pending
       cert_start: newWorker.certStart || null,
       cert_end: newWorker.certEnd || null,
       cert_files: certFiles.map((f) => f.name),
-      cert_status: certNa ? "None" : "Valid", // Simple logic
+      cert_status: certNa ? "None" : certFiles.length > 0 ? "Valid" : "None", // If file uploaded -> Valid, else None (or maybe Pending if desired, but None is safer default)
       avatar_seed: newWorker.name,
     };
 
@@ -1134,111 +1134,35 @@ export function SubcontractorDetail({
               {/* Optional: Add toggle if we implement Pie Chart later, for now just Title */}
             </CardHeader>
             <CardContent>
-              <div className="relative h-[300px] w-full pt-6 pb-2">
+              <div className="h-[300px] w-full pt-10 pb-2 px-4 flex items-end justify-between gap-4">
                 {projectStats.length > 0 ? (
-                  <>
-                    {/* SVG Chart */}
-                    <svg
-                      className="absolute inset-0 h-full w-full overflow-visible text-primary translate-y-4"
-                      viewBox="0 0 100 100"
-                      preserveAspectRatio="none"
-                    >
-                      <defs>
-                        <linearGradient
-                          id="line-gradient"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="0%"
-                            stopColor="currentColor"
-                            stopOpacity="0.2"
-                          />
-                          <stop
-                            offset="100%"
-                            stopColor="currentColor"
-                            stopOpacity="0"
-                          />
-                        </linearGradient>
-                      </defs>
-                      <path
-                        d={`${(() => {
-                          const data = projectStats.map((s) => s.value);
-                          const max = Math.max(...data, 5); // Minimum height of 5
-                          const points = data.map((val, i) => {
-                            const x = (i / (data.length - 1)) * 100;
-                            const y = 100 - (val / max) * 100 * 0.8;
-                            return `${x},${y}`;
-                          });
-                          const linePath = `M${points.join(" L")}`;
-                          return `${linePath} L100,100 L0,100 Z`;
-                        })()}`}
-                        fill="url(#line-gradient)"
-                      />
-                      <path
-                        d={`${(() => {
-                          const data = projectStats.map((s) => s.value);
-                          const max = Math.max(...data, 5);
-                          const points = data.map((val, i) => {
-                            const x = (i / (data.length - 1)) * 100;
-                            const y = 100 - (val / max) * 100 * 0.8;
-                            return `${x},${y}`;
-                          });
-                          return `M${points.join(" L")}`;
-                        })()}`}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
+                  projectStats.map((item, i) => {
+                    const max = Math.max(
+                      ...projectStats.map((s) => s.value),
+                      5,
+                    );
+                    const heightPercent = (item.value / max) * 100;
 
-                    {/* Interactive Overlay & Tooltips */}
-                    <div className="absolute inset-0 flex justify-between items-end translate-y-4">
-                      {projectStats.map((item, i) => {
-                        const data = projectStats.map((s) => s.value);
-                        const max = Math.max(...data, 5);
-                        const heightPercent = (item.value / max) * 100 * 0.8;
+                    return (
+                      <div
+                        key={i}
+                        className="flex-1 flex flex-col items-center justify-end h-full gap-2 group"
+                      >
+                        <div className="text-sm font-bold text-foreground mb-1 transition-all group-hover:scale-110">
+                          {item.value}
+                        </div>
 
-                        return (
-                          <div
-                            key={i}
-                            className="relative flex-1 h-full hover:bg-gray-100/5 dark:hover:bg-white/5 group bg-transparent z-10 cursor-pointer transition-colors flex flex-col justify-end items-center"
-                          >
-                            {/* Dot */}
-                            <div
-                              className="absolute w-3 h-3 bg-primary rounded-full ring-4 ring-white dark:ring-gray-950 transition-all scale-0 group-hover:scale-100 z-20"
-                              style={{
-                                bottom: `${heightPercent}%`,
-                              }}
-                            />
+                        <div
+                          className="w-full max-w-[40px] bg-primary/80 group-hover:bg-primary rounded-t-sm transition-all duration-500 relative shadow-sm"
+                          style={{ height: `${heightPercent || 1}%` }}
+                        ></div>
 
-                            {/* Tooltip */}
-                            <div
-                              className="opacity-0 group-hover:opacity-100 absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow whitespace-nowrap z-30 transition-opacity pointer-events-none mb-2"
-                              style={{
-                                bottom: `${heightPercent}%`,
-                              }}
-                            >
-                              {item.value} Jobs
-                            </div>
-
-                            {/* Hover Line */}
-                            <div className="h-full w-px bg-primary/20 opacity-0 group-hover:opacity-100 absolute bottom-0 z-0 transition-opacity" />
-
-                            {/* Label */}
-                            <div className="mt-2 text-xs text-muted-foreground font-medium opacity-60 group-hover:opacity-100 absolute -bottom-6">
-                              {item.name}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
+                        <span className="text-xs text-muted-foreground font-medium mt-2">
+                          {item.name}
+                        </span>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                     {loadingStats
@@ -1249,8 +1173,8 @@ export function SubcontractorDetail({
               </div>
               <div className="mt-8 text-sm text-muted-foreground text-center">
                 {subcontractor.role === "partner"
-                  ? "Line graph showing the trend of projects completed by linked subcontractors over the last 12 months."
-                  : "Monthly project completion trend."}
+                  ? "Bar chart showing the number of projects completed by linked subcontractors over the last 12 months."
+                  : "Monthly project completion count."}
               </div>
             </CardContent>
           </Card>

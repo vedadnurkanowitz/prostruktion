@@ -700,7 +700,7 @@ export default function AdminProjects() {
             const { data: workersList } = await supabase
               .from("workers")
               .select(
-                "id, name, cert_status, a1_status, success_rate, cert_files",
+                "id, name, cert_status, a1_status, success_rate, cert_files, a1_files",
               )
               .in("id", workerIds);
 
@@ -713,6 +713,7 @@ export default function AdminProjects() {
                     a1Status: w.a1_status,
                     successRate: w.success_rate,
                     certFiles: w.cert_files || [],
+                    a1Files: w.a1_files || [],
                   };
                   return acc;
                 },
@@ -2001,9 +2002,11 @@ export default function AdminProjects() {
                                               const worker =
                                                 workersMap[workerId];
                                               const certValid =
-                                                worker?.certStatus === "Valid";
+                                                (worker?.certFiles || [])
+                                                  .length > 0;
                                               const a1Valid =
-                                                worker?.a1Status === "Valid";
+                                                (worker?.a1Files || []).length >
+                                                0;
 
                                               return (
                                                 <TableRow
@@ -2034,10 +2037,7 @@ export default function AdminProjects() {
                                                           : "text-muted-foreground"
                                                       }
                                                     >
-                                                      {certValid
-                                                        ? "Yes"
-                                                        : worker?.certStatus ||
-                                                          "No"}
+                                                      {certValid ? "Yes" : "No"}
                                                     </span>
                                                   </TableCell>
                                                   <TableCell className="py-1 text-xs text-center">
@@ -2048,10 +2048,7 @@ export default function AdminProjects() {
                                                           : "text-muted-foreground"
                                                       }
                                                     >
-                                                      {a1Valid
-                                                        ? "Yes"
-                                                        : worker?.a1Status ||
-                                                          "No"}
+                                                      {a1Valid ? "Yes" : "No"}
                                                     </span>
                                                   </TableCell>
                                                   <TableCell className="py-1 text-center text-xs text-green-600 font-medium">

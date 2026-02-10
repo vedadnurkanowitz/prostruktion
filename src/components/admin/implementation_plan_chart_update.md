@@ -1,30 +1,28 @@
-# Implementation Plan - Enhance Monthly Jobs Overview with Graph
+# Chart Implementation Plan
 
-The user requested to change the "Monthly Jobs Overview" in the subcontractor detail view from a simple bar chart to a "graph or pie chart".
+## Goal
 
-## Changes Implemented
+Update the "Monthly Jobs Overview" chart in the subcontractor detail view.
+Original: Area Chart with SVG.
+New: Candle-style Bar Chart with numerical labels on top.
 
-### 1. `src/components/admin/subcontractor-detail.tsx`
+## Changes
 
-- **Removed**: The manual `div`-based bar chart.
-- **Added**: An SVG-based **Area Chart (Graph)**.
-  - Used an SVG `<path>` with a `d` attribute calculated from the data points.
-  - Added a linear gradient fill for a modern look.
-  - Added an interactive overlay with tooltips that appear on hover.
-  - Added a vertical hover line (`w-px`) for precise data inspection.
-- **Why**: An Area/Line Chart is the most appropriate visualization for time-series data like "Monthly Jobs Overview". It clearly shows the trend over time, which was the previous chart's goal but executed more simply.
+1.  **Component**: `src/components/admin/subcontractor-detail.tsx`
+2.  **Visualization**:
+    - Removed SVG Area Grapg.
+    - Implemented a mapped `div` approach for "candles" or bars.
+    - Each bar has a height proportional to the value relative to the max value (min 5).
+    - Displayed the numerical value directly above each bar for clarity.
+    - Added hover effects (scale, color change) for better interactivity.
+3.  **Data**: Uses the existing `projectStats` state which aggregates monthly job counts.
 
-## Specific Implementation Details
+## Implementation Details
 
-- **Data Source**: Uses existing `projectStats` state (monthly data).
-- **Visualization**:
-  - X-Axis: Time (Months).
-  - Y-Axis: specific values (Job Count).
-  - Styling: Matches the application's primary color scheme with transparency gradients.
-- **Interactivity**: Hover effects show the exact number of jobs for each month.
-
-## Verification
-
-- Verified that the new SVG chart replaces the old implementation correctly.
-- Ensure linting compliance (fixed `w-[1px]` to `w-px`).
-- The chart handles empty data states gracefully.
+- Loop through `projectStats`.
+- Calculate `max` value for scaling.
+- Render a flex container with items aligned to bottom (`items-end`).
+- Each item contains:
+  - Value Label (Top)
+  - Bar Div (Middle, height %)
+  - Month Name (Bottom)

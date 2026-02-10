@@ -49,6 +49,25 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useEffect } from "react";
 
+const parseGermanFloat = (str: string | number | undefined | null) => {
+  if (typeof str === "number") return str;
+  if (!str) return 0;
+
+  const val = str.toString();
+
+  // 1. Remove all non-numeric characters except '.' and ',' and '-'
+  // This removes € symbols, spaces, etc.
+  const clean = val.replace(/[^0-9.,-]/g, "");
+
+  // 2. Remove dots (thousands separators)
+  const noDots = clean.replace(/\./g, "");
+
+  // 3. Replace comma with dot (decimal separator)
+  const withDecimal = noDots.replace(",", ".");
+
+  return parseFloat(withDecimal) || 0;
+};
+
 export default function FinancialDashboardPage() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [currentInvoice, setCurrentInvoice] = useState<any>(null);
@@ -90,7 +109,12 @@ export default function FinancialDashboardPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      // Load Invoices from Supabase
+      // 1. Fetch ALL Invoices from Supabase
+      // This includes:
+      // - Pending Itemized Invoices (status: "For Invoice", "Ready") -> linked to Projects
+      // - Generated Batch Invoices (status: "Sent", "Unpaid", "Received") -> type: "Batch"
+      // - Side Projects (status: "Unpaid", "Received") -> type: "Side Project"
+
       const { data: dbInvoices, error } = await supabase
         .from("invoices")
         .select("*")
@@ -100,19 +124,16 @@ export default function FinancialDashboardPage() {
         console.error("Failed to fetch invoices:", error);
       }
 
-      let fetchedInvoices: any[] = [];
+      let allInvoices: any[] = [];
       if (dbInvoices) {
-        fetchedInvoices = dbInvoices.map((inv) => ({
+        allInvoices = dbInvoices.map((inv) => ({
           id: inv.id,
+          // Support both older individual items and new batch/side structures
           projectId: inv.project_id,
-          project: inv.project_name,
-          partner: inv.recipient_name, // Map recipient_name to partner for grouping
+          project: inv.project_name || inv.description || "Utility/Other", // Fallback
+          partner: inv.partner_name || inv.recipient_name || "Unknown",
           role: inv.recipient_role,
-          amount: inv.amount, // Maintain as is (number or string?) DB is likely numeric? Need to handle "€ " prefix if UI expects it.
-          // Looking at DB insert: 'amount' is inserted as is from local state.
-          // Local state had 'amount' as number (partnerAmount).
-          // But sometimes string "€ ...".
-          // Let's assume numeric from DB.
+          amount: parseGermanFloat(inv.amount),
           date: inv.date
             ? new Date(inv.date).toLocaleDateString("en-US", {
                 year: "numeric",
@@ -121,98 +142,92 @@ export default function FinancialDashboardPage() {
               })
             : "",
           status: inv.status,
-          action: inv.invoice_type,
-          // Legacy/UI fields
+          action: inv.invoice_type, // "Invoice", "Partner Invoice", "Batch", "Side Project"
           type: inv.invoice_type,
+          items: inv.items, // JSONB items for Batch/Side
+          isSideProject: inv.is_side_project,
+          invoiceNumber: inv.invoice_number,
+          rawAmount: inv.amount, // Keep original string/number for UI display if needed, or format later
         }));
       }
 
-      // 2. Separate "For Invoice" items (Only Main/Partner Invoices)
-      const forInvoice = fetchedInvoices.filter(
+      // 2. Separate "For Invoice" (Pending Individual Items)
+      const forInvoice = allInvoices.filter(
         (p) =>
           p.status === "For Invoice" &&
-          (!p.action ||
-            p.action === "Invoice" ||
-            p.action === "Partner Invoice"),
+          p.type !== "Batch" &&
+          p.type !== "Side Project",
       );
       setForInvoiceProjects(forInvoice);
 
-      // 3. Separate "Ready" items (waiting for batch invoice)
-      const ready = fetchedInvoices.filter(
+      // 3. Separate "Ready" (Batched / Waiting for Approval)
+      const ready = allInvoices.filter(
         (p) =>
           p.status === "Ready" &&
-          (!p.action ||
-            p.action === "Invoice" ||
-            p.action === "Partner Invoice"),
+          p.type !== "Batch" &&
+          p.type !== "Side Project",
       );
       setReadyToInvoiceProjects(ready);
 
-      // We handle "Sent" invoices separately via "generated invoices" storage for now,
-      // OR we can map them from Supabase too if they are marked as "Sent".
-      // The current UI for "Awaited Payments" / "Overdue" uses 'invoicedProjects'.
-      // These are "Generated Invoices" (Aggregated).
-      // The Supabase 'invoices' table stores individual items.
-      // If we want to fully replace localStorage, we should also store "Generated Invoices" in Supabase,
-      // possibly in a separate table 'generated_invoices' or similar.
-      // For now, the user asked to fix "For Invoice" projects.
-      // I will leave 'invoicedProjects' reading from localStorage as it deals with "Sent" (Generated) invoices which might not be in the item-level DB yet as aggregates.
-      // However, the requested fix "remove local storage, only show from supabase" strictly applies to "for invoice projects".
-
-      // Load Generated Invoices (Keep localStorage for Aggregates for now unless schema allows)
-      let totalRec = 0;
-      const storedGenerated = localStorage.getItem(
-        "prostruktion_generated_invoices",
+      // 4. "Invoiced" (Sent/Unpaid Batch or Side Projects)
+      // These are the "Generated Invoices"
+      const sentOrUnpaid = allInvoices.filter(
+        (p) =>
+          (p.type === "Batch" ||
+            p.type === "Side Project" ||
+            p.status === "Sent" ||
+            p.status === "Unpaid") &&
+          p.status !== "Received" &&
+          p.status !== "For Invoice" &&
+          p.status !== "Ready",
       );
-      if (storedGenerated) {
-        try {
-          const parsedInv = JSON.parse(storedGenerated);
-          if (Array.isArray(parsedInv)) {
-            setInvoicedProjects(
-              parsedInv.filter((i: any) => i.status === "Unpaid"),
-            );
-            const received = parsedInv.filter(
-              (i: any) => i.status === "Received",
-            );
-            setReceivedProjects(received);
+      setInvoicedProjects(sentOrUnpaid);
 
-            // Calc Total Received
-            totalRec = received.reduce(
-              (acc: number, curr: any) =>
-                acc +
-                (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
-                  0),
-              0,
-            );
-          }
-        } catch (e) {
-          console.error("Failed to parse generated invoices", e);
-        }
-      }
+      // 5. "Received" (Paid Batch or Side Projects)
+      const received = allInvoices.filter((p) => p.status === "Received");
+      setReceivedProjects(received);
 
-      // Load Expenses
-      const storedExpenses = localStorage.getItem("prostruktion_expenses");
+      // Calculate Total Received
+      // Use parsed numeric amount
+      const totalRec = received.reduce(
+        (acc, curr) => acc + (curr.amount || 0),
+        0,
+      );
+
+      // 6. Fetch Expenses from Supabase
+      const { data: dbExpenses, error: expError } = await supabase
+        .from("expenses")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      let parsedExpenses: any[] = [];
       let totalExp = 0;
 
-      if (storedExpenses) {
-        const parsedExpenses = JSON.parse(storedExpenses);
-        if (Array.isArray(parsedExpenses) && parsedExpenses.length > 0) {
-          setExpenses(parsedExpenses);
-          totalExp = parsedExpenses.reduce(
-            (acc: number, curr: any) =>
-              acc +
-              (parseFloat(curr.amount.toString().replace(/[^0-9.-]+/g, "")) ||
-                0),
-            0,
-          );
-        } else {
-          setExpenses([]);
-          totalExp = 0;
-        }
-      } else {
-        setExpenses([]);
-        totalExp = 0;
+      if (dbExpenses) {
+        parsedExpenses = dbExpenses.map((e) => {
+          const val = parseGermanFloat(e.amount);
+
+          return {
+            ...e,
+            date: e.date
+              ? new Date(e.date).toLocaleDateString("en-US", {
+                  year: "2-digit",
+                  month: "short",
+                  day: "numeric",
+                })
+              : "",
+            numericAmount: val,
+          };
+        });
+        totalExp = parsedExpenses.reduce(
+          (acc, curr) => acc + curr.numericAmount,
+          0,
+        );
       }
 
+      if (expError) console.error("Failed to fetch expenses:", expError);
+
+      setExpenses(parsedExpenses);
       setCashOnHand(totalRec - totalExp);
     };
 
@@ -274,7 +289,7 @@ export default function FinancialDashboardPage() {
     updateSupabase();
   };
 
-  const handleBatchInvoice = (partnerName: string) => {
+  const handleBatchInvoice = async (partnerName: string) => {
     // Find all projects for this partner in Ready state
     const batchProjects = readyToInvoiceProjects.filter(
       (p) => p.partner === partnerName,
@@ -286,82 +301,80 @@ export default function FinancialDashboardPage() {
       (sum, p) => sum + (p.amount || 0),
       0,
     );
-    // Note: p.amount in storage IS the share (company share), as per admin/projects logic.
-    // If we want total project value we should have stored it.
-    // Looking at admin/projects, 'amount' saved to 'prostruktion_invoices' IS the Calculated Company Share.
-    // So summing them is correct for the Invoice Amount.
 
-    const totalCommission = (totalAmount / 0.1) * 0.3; // Reverse calc for demo or just use sum.
-    // Actually, let's just sum the stored values for simplicity in this demo.
+    const newInvoiceInv = `INV-${1050 + Math.floor(Math.random() * 1000)}`;
 
-    // Create Invoice Data for Modal (Aggregated)
-    const invoiceData = {
-      project: `Batch Invoice: ${batchProjects.length} Projects`,
-      partner: partnerName,
-      amount: totalAmount,
-      totalCommission: batchProjects.reduce(
-        (sum, p) => sum + p.projectTotal * 0.3,
-        0,
-      ), // Assuming projectTotal exists
-      companyShare: totalAmount,
-      partnerShare: batchProjects.reduce(
-        (sum, p) => sum + p.projectTotal * 0.15,
-        0,
-      ), // Approx
-      hasMediator: false,
-      mediatorShare: 0,
-      items: batchProjects, // Included to detail individual projects in modal
-    };
-    setCurrentInvoice(invoiceData);
+    // 1. Create the Batch Invoice in Supabase
+    const { data: insertedBatch, error: insertError } = await supabase
+      .from("invoices")
+      .insert({
+        invoice_number: newInvoiceInv,
+        partner_name: partnerName,
+        recipient_name: partnerName, // duplicate for redundancy
+        amount: totalAmount,
+        status: "Unpaid",
+        date: new Date().toISOString(),
+        invoice_type: "Batch",
+        items: batchProjects, // Store the details
+        project_name: `Batch Invoice: ${batchProjects.length} Projects`,
+      })
+      .select()
+      .single();
 
-    // Update Local States
+    if (insertError) {
+      console.error("Failed to create batch invoice in Supabase", insertError);
+      return;
+    }
+
+    // 2. Update status of individual items to "Sent" (so they leave the Ready list)
+    const projectIds = batchProjects.map((p) => p.projectId);
+    if (projectIds.length > 0) {
+      const { error: updateError } = await supabase
+        .from("invoices")
+        .update({ status: "Sent" })
+        .in("project_id", projectIds)
+        .eq("invoice_type", "Invoice"); // Safety check
+
+      if (updateError)
+        console.error("Failed to update status in Supabase", updateError);
+    }
+
+    // 3. Update Local State
     setReadyToInvoiceProjects((prev) =>
       prev.filter((p) => p.partner !== partnerName),
     );
 
-    // Create Single Invoice Entry
-    const newInvoice = {
-      status: "Unpaid",
-      id: `INV-${1050 + Math.floor(Math.random() * 100)}`, // Add explicit ID for keying
-      color: "bg-blue-300",
-      date: new Date().toLocaleDateString("en-US", {
-        year: "2-digit",
+    // Add new batch invoice to the lists
+    // We map it to the UI shape
+    const newUiInvoice = {
+      id: insertedBatch.id,
+      projectId: null,
+      project: insertedBatch.project_name,
+      partner: insertedBatch.partner_name,
+      role: null,
+      amount: insertedBatch.amount,
+      date: new Date(insertedBatch.date).toLocaleDateString("en-US", {
+        year: "numeric",
         month: "short",
         day: "numeric",
       }),
-      inv: `INV-${1050 + Math.floor(Math.random() * 100)}`,
+      status: "Unpaid",
+      action: "Batch",
+      type: "Batch",
+      items: batchProjects,
+      invoiceNumber: insertedBatch.invoice_number,
+    };
+
+    setInvoicedProjects((prev) => [newUiInvoice, ...prev]);
+
+    // Set Current Invoice for Modal
+    setCurrentInvoice({
+      project: `Batch Invoice: ${batchProjects.length} Projects`,
       partner: partnerName,
-      amount: `€ ${totalAmount.toLocaleString()}`,
-      overdue: false,
-      items: batchProjects, // Store detailed items
-    };
-    // Update Status in Supabase via Loop or IN query
-    const updateSupabase = async () => {
-      const projectIds = batchProjects.map((p) => p.projectId);
-      if (projectIds.length > 0) {
-        const { error } = await supabase
-          .from("invoices")
-          .update({ status: "Sent" })
-          .in("project_id", projectIds);
-
-        if (error) console.error("Failed to update status in Supabase", error);
-      }
-    };
-    updateSupabase();
-
-    // Save New Invoice to Storage
-    const storedGenerated = JSON.parse(
-      localStorage.getItem("prostruktion_generated_invoices") || "[]",
-    );
-    const invoiceWithId = { ...newInvoice, id: Date.now() };
-    // Update state with ID
-    setInvoicedProjects((prev) => [{ ...invoiceWithId }, ...prev]);
-
-    localStorage.setItem(
-      "prostruktion_generated_invoices",
-      JSON.stringify([invoiceWithId, ...storedGenerated]),
-    );
-
+      amount: totalAmount,
+      invoiceNumber: newInvoiceInv,
+      items: batchProjects,
+    });
     setSuccessModalOpen(true);
   };
 
@@ -401,45 +414,64 @@ export default function FinancialDashboardPage() {
     return diffDays;
   };
 
-  const handleAddSideProject = () => {
+  const handleAddSideProject = async () => {
     if (!sideProjectForm.projectName || !sideProjectForm.amount) return;
 
-    const newInvoice = {
-      id: `side-${Date.now()}`,
-      status: "Unpaid",
-      color: "bg-purple-300",
-      date: new Date().toLocaleDateString("en-US", {
-        year: "2-digit",
+    const amountVal = parseFloat(sideProjectForm.amount);
+    const newInvoiceInv = `SIDE-${1000 + Math.floor(Math.random() * 1000)}`;
+
+    // 1. Create Side Project Invoice in Supabase
+    const { data: insertedSide, error } = await supabase
+      .from("invoices")
+      .insert({
+        invoice_number: newInvoiceInv,
+        partner_name: sideProjectForm.partnerName || "Side Project",
+        recipient_name: sideProjectForm.partnerName,
+        project_name: sideProjectForm.projectName,
+        amount: amountVal,
+        status: "Unpaid",
+        date: new Date().toISOString(),
+        invoice_type: "Side Project",
+        is_side_project: true,
+        description: sideProjectForm.address,
+        items: [
+          {
+            project: sideProjectForm.projectName,
+            address: sideProjectForm.address || "External Project",
+            partner: sideProjectForm.partnerName || "External",
+            amount: amountVal,
+            hasMediator: false,
+          },
+        ],
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to create side project in Supabase", error);
+      return;
+    }
+
+    const newUiInvoice = {
+      id: insertedSide.id,
+      projectId: null,
+      project: insertedSide.project_name,
+      partner: insertedSide.partner_name,
+      amount: insertedSide.amount,
+      date: new Date(insertedSide.date).toLocaleDateString("en-US", {
+        year: "numeric",
         month: "short",
         day: "numeric",
       }),
-      inv: `SIDE-${1000 + Math.floor(Math.random() * 100)}`,
-      partner: sideProjectForm.partnerName || "Side Project",
-      amount: `€ ${parseFloat(sideProjectForm.amount).toLocaleString()}`,
-      overdue: false,
+      status: "Unpaid",
+      action: "Side Project",
+      type: "Side Project",
+      items: insertedSide.items,
       isSideProject: true,
-      items: [
-        {
-          project: sideProjectForm.projectName,
-          address: sideProjectForm.address || "External Project",
-          partner: sideProjectForm.partnerName || "External",
-          amount: parseFloat(sideProjectForm.amount),
-          hasMediator: false,
-        },
-      ],
+      invoiceNumber: insertedSide.invoice_number,
     };
 
-    // Update state
-    setInvoicedProjects((prev) => [newInvoice, ...prev]);
-
-    // Save to localStorage
-    const storedGenerated = JSON.parse(
-      localStorage.getItem("prostruktion_generated_invoices") || "[]",
-    );
-    localStorage.setItem(
-      "prostruktion_generated_invoices",
-      JSON.stringify([newInvoice, ...storedGenerated]),
-    );
+    setInvoicedProjects((prev) => [newUiInvoice, ...prev]);
 
     // Reset form and close modal
     setSideProjectForm({
@@ -451,59 +483,93 @@ export default function FinancialDashboardPage() {
     setSideProjectModalOpen(false);
   };
 
-  const handleMarkAsReceived = (invoice: any) => {
+  const handleMarkAsReceived = async (invoice: any) => {
     const updatedInvoice = {
       ...invoice,
       status: "Received",
       color: "bg-green-500", // Green for received/paid
     };
 
+    // Update Supabase
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "Received" })
+      .eq("id", invoice.id);
+
+    if (error) {
+      console.error("Failed to update status in Supabase", error);
+    }
+
     // Update State
     setInvoicedProjects((prev) => prev.filter((i) => i.id !== invoice.id));
     setReceivedProjects((prev) => [updatedInvoice, ...prev]);
 
-    // Update LocalStorage
-    const storedGenerated = JSON.parse(
-      localStorage.getItem("prostruktion_generated_invoices") || "[]",
+    // Update Cash Balance Locally for instant feedback
+    const amountVal = parseFloat(
+      invoice.amount?.toString().replace(/[^0-9.-]+/g, "") || "0",
     );
-    const updatedStorage = storedGenerated.map((i: any) =>
-      i.id === invoice.id ? updatedInvoice : i,
-    );
-    localStorage.setItem(
-      "prostruktion_generated_invoices",
-      JSON.stringify(updatedStorage),
-    );
+    setCashOnHand((prev) => prev + amountVal);
   };
 
-  const handleUpdateExpense = (index: number, field: string, value: string) => {
+  const handleUpdateExpense = async (
+    index: number,
+    field: string,
+    value: string,
+  ) => {
+    const expense = expenses[index];
+    if (!expense) return;
+
+    // Update Supabase
+    const { error } = await supabase
+      .from("expenses")
+      .update({ [field]: value })
+      .eq("id", expense.id);
+
+    if (error) {
+      console.error("Failed to update expense", error);
+    }
+
     const newExpenses = [...expenses];
     newExpenses[index] = { ...newExpenses[index], [field]: value };
     setExpenses(newExpenses);
-    localStorage.setItem("prostruktion_expenses", JSON.stringify(newExpenses));
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!newExpenseForm.amount || !newExpenseForm.date || !newExpenseForm.name)
       return;
 
+    const amountVal = parseFloat(newExpenseForm.amount);
+
+    // Insert into Supabase
+    const { data: insertedExpense, error } = await supabase
+      .from("expenses")
+      .insert({
+        name: newExpenseForm.name,
+        status: newExpenseForm.status,
+        date: newExpenseForm.date, // ISO string or date
+        type: newExpenseForm.type,
+        amount: amountVal,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to add expense", error);
+      return;
+    }
+
     const newExpense = {
-      name: newExpenseForm.name,
-      status: newExpenseForm.status,
-      date: new Date(newExpenseForm.date).toLocaleDateString("en-US", {
-        year: "2-digit",
-        month: "short",
-        day: "numeric",
-      }),
-      type: newExpenseForm.type,
-      amount: `€ ${parseFloat(newExpenseForm.amount).toLocaleString()}`,
+      ...insertedExpense,
+      numericAmount: amountVal,
+      // ensure display format matches UI expectation if needed, or rely on raw amount
+      // The UI uses 'amount' which we fetched as raw number/string in loadData
+      // Let's ensure consistency
+      amount: `€ ${amountVal.toLocaleString()}`,
     };
 
-    const updatedExpenses = [newExpense, ...expenses];
-    setExpenses(updatedExpenses);
-    localStorage.setItem(
-      "prostruktion_expenses",
-      JSON.stringify(updatedExpenses),
-    );
+    setExpenses((prev) => [newExpense, ...prev]);
+    // update cash on hand
+    setCashOnHand((prev) => prev - amountVal);
 
     setNewExpenseForm({
       name: "",
@@ -526,11 +592,6 @@ export default function FinancialDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">
-          Financial Dashboard
-        </h2>
-      </div>
 
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
@@ -926,7 +987,10 @@ export default function FinancialDashboardPage() {
                       <TableCell
                         className={`text-right font-bold text-sm ${row.overdue ? "text-red-600" : ""}`}
                       >
-                        {row.amount}
+                        {row.amount?.toLocaleString("de-DE", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -1068,7 +1132,10 @@ export default function FinancialDashboardPage() {
                     <TableCell
                       className={`text-right font-bold text-sm ${row.overdue ? "text-red-600" : ""}`}
                     >
-                      {row.amount}
+                      {row.amount?.toLocaleString("de-DE", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1086,10 +1153,7 @@ export default function FinancialDashboardPage() {
                   €{" "}
                   {receivedProjects
                     .reduce(
-                      (acc, curr) =>
-                        acc +
-                        (parseFloat(curr.amount.replace(/[^0-9.-]+/g, "")) ||
-                          0),
+                      (acc, curr) => acc + (parseGermanFloat(curr.amount) || 0),
                       0,
                     )
                     .toLocaleString()}
@@ -1213,11 +1277,7 @@ export default function FinancialDashboardPage() {
                   €{" "}
                   {filteredExpenses
                     .reduce(
-                      (acc, curr) =>
-                        acc +
-                        (parseFloat(
-                          curr.amount.toString().replace(/[^0-9.-]+/g, ""),
-                        ) || 0),
+                      (acc, curr) => acc + (parseGermanFloat(curr.amount) || 0),
                       0,
                     )
                     .toLocaleString()}

@@ -525,14 +525,16 @@ export default function ContactsPage() {
 
       if (projectsData) {
         projectsData.forEach((p) => {
+          const s = (p.status || "").toLowerCase();
           const isActive =
-            p.status === "In Progress" ||
-            p.status === "active" ||
-            p.status === "Scheduled";
+            s === "in progress" || s === "active" || s === "scheduled";
+
           const isCompleted =
-            p.status === "Finished" ||
-            p.status === "In Abnahme" ||
-            p.status === "In Warranty";
+            s === "finished" ||
+            s === "in abnahme" ||
+            s === "in warranty" ||
+            s === "archived"; // archived implies completed? Adjust if needed.
+
           const hasComplaints = p.complaints && p.complaints > 0;
 
           // Helper to update for all roles in this project
@@ -568,8 +570,10 @@ export default function ContactsPage() {
             completed: 0,
             complaints: 0,
           };
-          const workerCount =
-            workersCountMap[p.company_name || p.full_name] || 0;
+
+          // Robust worker count lookup
+          const compName = (p.company_name || p.full_name || "").trim();
+          const workerCount = workersCountMap[compName] || 0;
 
           const totalProj = stats.active + stats.completed;
           let successRate = 100;
@@ -631,10 +635,13 @@ export default function ContactsPage() {
             completed: 0,
             complaints: 0,
           };
+
+          // Robust worker count lookup (try company_name then name)
+          const cNameKey = (c.company_name || "").trim();
+          const nameKey = (c.name || "").trim();
+
           const workerCount =
-            workersCountMap[c.company_name || c.name] ||
-            workersCountMap[c.name] ||
-            0;
+            workersCountMap[cNameKey] || workersCountMap[nameKey] || 0;
 
           const totalProj = stats.active + stats.completed;
           let successRate = 100;

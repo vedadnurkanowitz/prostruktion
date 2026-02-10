@@ -190,6 +190,7 @@ export default function AdminProjects() {
     customWorkTypes: [] as { label: string; price: number }[],
     workTypePrices: {} as Record<string, number>,
     additionalServicePrices: {} as Record<string, number>,
+    additionalWorks: [] as { description: string; price: string | number }[],
   });
 
   const WORK_TYPE_LABELS: Record<string, string> = {
@@ -346,6 +347,7 @@ export default function AdminProjects() {
       customWorkTypes: [],
       workTypePrices: {},
       additionalServicePrices: {},
+      additionalWorks: [],
       selectedWorkTypes: [
         "montage",
         "hydraulik",
@@ -760,6 +762,13 @@ export default function AdminProjects() {
               }
             });
 
+            // Map Additional Works
+            const additionalWorks =
+              p.additional_works?.map((w: any) => ({
+                description: w.description,
+                price: w.price,
+              })) || [];
+
             // Determine status color
             let statusColor = "bg-purple-600 text-white";
             if (p.status === "In Progress" || p.status === "active")
@@ -985,6 +994,10 @@ export default function AdminProjects() {
           .from("project_workers")
           .delete()
           .eq("project_id", editingId);
+        await supabase
+          .from("project_additional_works")
+          .delete()
+          .eq("project_id", editingId);
       } else {
         // INSERT
         const { data: insertedProject, error: projectError } = await supabase
@@ -1074,6 +1087,25 @@ export default function AdminProjects() {
             await supabase.from("project_workers").insert(workerInserts);
           } catch (err) {
             console.warn("Could not save workers", err);
+          }
+        }
+
+        // 6. Insert Additional Works
+        if (
+          newProject.additionalWorks &&
+          newProject.additionalWorks.length > 0
+        ) {
+          const worksInserts = newProject.additionalWorks.map((work: any) => ({
+            project_id: supabaseProjectId,
+            description: work.description,
+            price: parseFloat(work.price || 0),
+          }));
+          try {
+            await supabase
+              .from("project_additional_works")
+              .insert(worksInserts);
+          } catch (err) {
+            console.warn("Could not save additional works", err);
           }
         }
       }
@@ -1172,6 +1204,7 @@ export default function AdminProjects() {
       workTypePrices: project.workTypePrices || {},
       additionalServicePrices: project.additionalServicePrices || {},
       workers: project.workers || [],
+      additionalWorks: project.additionalWorks || [],
     });
     setAddProjectOpen(true);
   };
@@ -1310,10 +1343,20 @@ export default function AdminProjects() {
 
       let dbStatus = newStatus;
       let dbAbnahmeConfirmed = false;
+      let dbAbnahmeDate = project.abnahme;
+
+      // Filter out invalid "Yes" / "No" strings for the timestamp column
+      if (dbAbnahmeDate === "Yes" || dbAbnahmeDate === "No") {
+        dbAbnahmeDate = null;
+      }
 
       if (newStatus === "In Abnahme") {
         dbStatus = "In Progress";
         dbAbnahmeConfirmed = true;
+        // set abnahme date if not set
+        if (!dbAbnahmeDate) {
+          dbAbnahmeDate = new Date().toISOString();
+        }
       }
 
       // Update in Supabase
@@ -1322,6 +1365,7 @@ export default function AdminProjects() {
         .update({
           status: dbStatus,
           abnahme_confirmed: dbAbnahmeConfirmed,
+          abnahme: dbAbnahmeDate,
         })
         .eq("id", project.id);
 
@@ -3151,6 +3195,40 @@ export default function AdminProjects() {
                       </div>
                     )}
 
+                    {/* Additional Works Section */}
+                    <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+                      <span className="text-muted-foreground block font-semibold mb-1">
+                        Additional Works (Material/Extra):
+                      </span>
+                      {currentInvoice.projectData?.additionalWorks &&
+                      currentInvoice.projectData.additionalWorks.length > 0 ? (
+                        <ul className="space-y-1">
+                          {currentInvoice.projectData.additionalWorks.map(
+                            (work: any, idx: number) => (
+                              <li
+                                key={idx}
+                                className="flex items-start gap-2 justify-between"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <Plus className="h-3 w-3 text-blue-600 mt-0.5 shrink-0" />
+                                  <span className="leading-tight text-xs">
+                                    {work.description}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                  € {parseFloat(work.price || 0).toFixed(2)}
+                                </span>
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <span className="text-muted-foreground italic text-xs">
+                          No additional works recorded.
+                        </span>
+                      )}
+                    </div>
+
                     {/* Bonuses Checkboxes Integrated Here */}
                     <div className="pt-4 mt-4 border-t border-dashed space-y-3">
                       <h5 className="font-semibold text-[10px] uppercase text-muted-foreground flex items-center gap-2">
@@ -3810,6 +3888,44 @@ export default function AdminProjects() {
                         </ul>
                       </div>
                     )}
+
+                    {/* Additional Works Section (Sub) */}
+                    <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+                      <span className="text-muted-foreground block font-semibold mb-1">
+                        Additional Works (Material/Extra):
+                      </span>
+                      {currentInvoice.projectData?.additionalWorks &&
+                      currentInvoice.projectData.additionalWorks.length > 0 ? (
+                        <ul className="space-y-1">
+                          {currentInvoice.projectData.additionalWorks.map(
+                            (work: any, idx: number) => {
+                              const basePrice = parseFloat(work.price || 0);
+                              const subPrice = basePrice; // 100% for passing costs
+                              return (
+                                <li
+                                  key={idx}
+                                  className="flex items-start gap-2 justify-between"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
+                                    <span className="leading-tight text-xs">
+                                      {work.description}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                    € {subPrice.toFixed(2)}
+                                  </span>
+                                </li>
+                              );
+                            },
+                          )}
+                        </ul>
+                      ) : (
+                        <span className="text-muted-foreground italic text-xs">
+                          No additional works recorded.
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="border-t border-dashed my-2"></div>
@@ -4021,6 +4137,11 @@ export default function AdminProjects() {
                           },
                           0,
                         ) || 0) +
+                        (currentInvoice.projectData?.additionalWorks?.reduce(
+                          (acc: number, work: any) =>
+                            acc + parseFloat(work.price || 0),
+                          0,
+                        ) || 0) +
                         (invoiceEditState.subQualityBonus.enabled
                           ? invoiceEditState.subQualityBonus.amount * 0.7
                           : 0) +
@@ -4229,6 +4350,11 @@ export default function AdminProjects() {
                       return acc + base * 0.7;
                     },
                     0,
+                  ) || 0) +
+                  (currentInvoice.projectData?.additionalWorks?.reduce(
+                    (acc: number, work: any) =>
+                      acc + parseFloat(work.price || 0),
+                    0,
                   ) || 0);
 
                 const subBonusFee =
@@ -4407,9 +4533,16 @@ export default function AdminProjects() {
                         return service?.label || s;
                       })
                       .join(", ");
+
+                    const addWorksStr = (
+                      currentInvoice.projectData?.additionalWorks || []
+                    )
+                      .map((w: any) => w.description)
+                      .join(", ");
+
                     const scopeDesc = `Indoor Units: ${
                       currentInvoice.projectData?.indoorUnits || 0
-                    }. Work: ${workTypesStr}. Additional: ${addServicesStr}.`;
+                    }. Work: ${workTypesStr}. Additional: ${addServicesStr}. Extra Works: ${addWorksStr}.`;
 
                     const payload = {
                       project_id: currentInvoice.projectData?.id || null,
@@ -4438,9 +4571,22 @@ export default function AdminProjects() {
                   // Archive the project
                   if (currentInvoice.projectData?.id) {
                     const projectId = currentInvoice.projectData.id;
+
+                    let finalAbnahme = currentInvoice.projectData.abnahme;
+                    if (
+                      !finalAbnahme ||
+                      finalAbnahme === "No" ||
+                      finalAbnahme === "Yes"
+                    ) {
+                      finalAbnahme = new Date().toISOString();
+                    }
+
                     const { error: updateError } = await supabase
                       .from("projects")
-                      .update({ status: "Archived" })
+                      .update({
+                        status: "Archived",
+                        abnahme: finalAbnahme,
+                      })
                       .eq("id", projectId);
 
                     if (updateError) {

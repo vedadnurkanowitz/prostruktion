@@ -136,6 +136,8 @@ export function SubcontractorDetail({
 
   // Managers State
   const [managers, setManagers] = useState<Manager[]>([]);
+  // Archived Projects State
+  const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
 
   const [isAddWorkerOpen, setIsAddWorkerOpen] = useState(false);
   const [isAddManagerOpen, setIsAddManagerOpen] = useState(false);
@@ -623,10 +625,21 @@ export function SubcontractorDetail({
         if (isValidUUID) {
           const { data, error } = await supabase
             .from("projects")
-            .select("created_at, actual_start, status")
-            .eq(filterColumn, subcontractor.id);
+            .select(
+              "*, project_work_types(price), project_additional_services(price)",
+            )
+            .eq(filterColumn, subcontractor.id)
+            .order("created_at", { ascending: false });
           projects = data;
           projectsError = error;
+
+          if (data) {
+            // Set archived projects for the list view
+            // Assuming "pulled from archive" means status is 'Archived'
+            setArchivedProjects(
+              data.filter((p: any) => p.status === "Archived"),
+            );
+          }
         } else {
           console.warn(
             "[PerformanceDebug] Invalid or missing UUID for subcontractor, skipping DB stats fetch:",
@@ -1116,42 +1129,116 @@ export function SubcontractorDetail({
         {/* Performance Tab */}
         <TabsContent value="performance" className="space-y-6 mt-6">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Monthly Jobs Overview</CardTitle>
+              {/* Optional: Add toggle if we implement Pie Chart later, for now just Title */}
             </CardHeader>
             <CardContent>
-              <div className="h-[300px] w-full flex items-end justify-between gap-2 pt-10 px-4">
+              <div className="relative h-[300px] w-full pt-6 pb-2">
                 {projectStats.length > 0 ? (
-                  projectStats.map((item, i) => {
-                    const maxVal = Math.max(
-                      ...projectStats.map((s) => s.value),
-                      10,
-                    ); // Dynamic max
-                    const heightPercentage = Math.min(
-                      100,
-                      Math.max(5, (item.value / maxVal) * 100),
-                    );
-                    return (
-                      <div
-                        key={i}
-                        className="flex flex-col items-center gap-2 flex-1 group"
-                      >
-                        <div className="relative w-full bg-gray-100 dark:bg-gray-800 rounded-t-sm h-full flex items-end overflow-hidden">
+                  <>
+                    {/* SVG Chart */}
+                    <svg
+                      className="absolute inset-0 h-full w-full overflow-visible text-primary translate-y-4"
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                    >
+                      <defs>
+                        <linearGradient
+                          id="line-gradient"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="currentColor"
+                            stopOpacity="0.2"
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="currentColor"
+                            stopOpacity="0"
+                          />
+                        </linearGradient>
+                      </defs>
+                      <path
+                        d={`${(() => {
+                          const data = projectStats.map((s) => s.value);
+                          const max = Math.max(...data, 5); // Minimum height of 5
+                          const points = data.map((val, i) => {
+                            const x = (i / (data.length - 1)) * 100;
+                            const y = 100 - (val / max) * 100 * 0.8;
+                            return `${x},${y}`;
+                          });
+                          const linePath = `M${points.join(" L")}`;
+                          return `${linePath} L100,100 L0,100 Z`;
+                        })()}`}
+                        fill="url(#line-gradient)"
+                      />
+                      <path
+                        d={`${(() => {
+                          const data = projectStats.map((s) => s.value);
+                          const max = Math.max(...data, 5);
+                          const points = data.map((val, i) => {
+                            const x = (i / (data.length - 1)) * 100;
+                            const y = 100 - (val / max) * 100 * 0.8;
+                            return `${x},${y}`;
+                          });
+                          return `M${points.join(" L")}`;
+                        })()}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+
+                    {/* Interactive Overlay & Tooltips */}
+                    <div className="absolute inset-0 flex justify-between items-end translate-y-4">
+                      {projectStats.map((item, i) => {
+                        const data = projectStats.map((s) => s.value);
+                        const max = Math.max(...data, 5);
+                        const heightPercent = (item.value / max) * 100 * 0.8;
+
+                        return (
                           <div
-                            className="w-full bg-primary/80 group-hover:bg-primary transition-all duration-500 ease-in-out relative"
-                            style={{ height: `${heightPercentage}%` }}
+                            key={i}
+                            className="relative flex-1 h-full hover:bg-gray-100/5 dark:hover:bg-white/5 group bg-transparent z-10 cursor-pointer transition-colors flex flex-col justify-end items-center"
                           >
-                            <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded transition-opacity whitespace-nowrap z-10">
+                            {/* Dot */}
+                            <div
+                              className="absolute w-3 h-3 bg-primary rounded-full ring-4 ring-white dark:ring-gray-950 transition-all scale-0 group-hover:scale-100 z-20"
+                              style={{
+                                bottom: `${heightPercent}%`,
+                              }}
+                            />
+
+                            {/* Tooltip */}
+                            <div
+                              className="opacity-0 group-hover:opacity-100 absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow whitespace-nowrap z-30 transition-opacity pointer-events-none mb-2"
+                              style={{
+                                bottom: `${heightPercent}%`,
+                              }}
+                            >
                               {item.value} Jobs
                             </div>
+
+                            {/* Hover Line */}
+                            <div className="h-full w-px bg-primary/20 opacity-0 group-hover:opacity-100 absolute bottom-0 z-0 transition-opacity" />
+
+                            {/* Label */}
+                            <div className="mt-2 text-xs text-muted-foreground font-medium opacity-60 group-hover:opacity-100 absolute -bottom-6">
+                              {item.name}
+                            </div>
                           </div>
-                        </div>
-                        <span className="text-xs text-muted-foreground font-medium">
-                          {item.name}
-                        </span>
-                      </div>
-                    );
-                  })
+                        );
+                      })}
+                    </div>
+                  </>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                     {loadingStats
@@ -1160,10 +1247,80 @@ export function SubcontractorDetail({
                   </div>
                 )}
               </div>
-              <div className="mt-4 text-sm text-muted-foreground text-center">
+              <div className="mt-8 text-sm text-muted-foreground text-center">
                 {subcontractor.role === "partner"
-                  ? "Aggregation of all jobs completed by linked subcontractors."
-                  : "Total jobs completed per month."}
+                  ? "Line graph showing the trend of projects completed by linked subcontractors over the last 12 months."
+                  : "Monthly project completion trend."}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Archived Jobs List */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Archived Jobs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {archivedProjects.length > 0 ? (
+                      archivedProjects.map((project) => (
+                        <TableRow key={project.id}>
+                          <TableCell className="font-medium">
+                            {project.name ||
+                              project.title ||
+                              `Project ${project.id.substring(0, 8)}`}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {project.address || "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            {project.abnahme
+                              ? new Date(project.abnahme).toLocaleDateString()
+                              : project.actual_start
+                                ? new Date(
+                                    project.actual_start,
+                                  ).toLocaleDateString()
+                                : project.created_at
+                                  ? new Date(
+                                      project.created_at,
+                                    ).toLocaleDateString()
+                                  : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="bg-muted">
+                              {project.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {project.amount
+                              ? `€${Number(project.amount).toLocaleString()}`
+                              : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="h-24 text-center text-muted-foreground"
+                        >
+                          No archived jobs found for this {subcontractor.role}.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
             </CardContent>
           </Card>

@@ -104,6 +104,28 @@ export default function FinancialDashboardPage() {
   });
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterType, setFilterType] = useState("All");
+  const [dbInvoices, setDbInvoices] = useState<any[]>([]);
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState("");
+
+  const calculateNextNumber = (invoices: any[]) => {
+    const now = new Date();
+    const currentYear = now.getFullYear().toString().slice(-2);
+    const regex = /^(\d+)\/(\d+)$/;
+    let maxNum = 0;
+
+    invoices.forEach((inv) => {
+      const match = inv.invoice_number?.match(regex);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        const year = match[2];
+        if (year === currentYear) {
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    });
+
+    return `${(maxNum + 1).toString().padStart(2, "0")}/${currentYear}`;
+  };
 
   const supabase = createClient();
 
@@ -115,7 +137,7 @@ export default function FinancialDashboardPage() {
       // - Generated Batch Invoices (status: "Sent", "Unpaid", "Received") -> type: "Batch"
       // - Side Projects (status: "Unpaid", "Received") -> type: "Side Project"
 
-      const { data: dbInvoices, error } = await supabase
+      const { data: dbInvoicesData, error } = await supabase
         .from("invoices")
         .select("*")
         .order("created_at", { ascending: false });
@@ -124,9 +146,14 @@ export default function FinancialDashboardPage() {
         console.error("Failed to fetch invoices:", error);
       }
 
+      if (dbInvoicesData) {
+        setDbInvoices(dbInvoicesData);
+        setNextInvoiceNumber(calculateNextNumber(dbInvoicesData));
+      }
+
       let allInvoices: any[] = [];
-      if (dbInvoices) {
-        allInvoices = dbInvoices.map((inv) => ({
+      if (dbInvoicesData) {
+        allInvoices = dbInvoicesData.map((inv) => ({
           id: inv.id,
           // Support both older individual items and new batch/side structures
           projectId: inv.project_id,
@@ -302,7 +329,7 @@ export default function FinancialDashboardPage() {
       0,
     );
 
-    const newInvoiceInv = `INV-${1050 + Math.floor(Math.random() * 1000)}`;
+    const newInvoiceInv = nextInvoiceNumber;
 
     // 1. Create the Batch Invoice in Supabase
     const { data: insertedBatch, error: insertError } = await supabase
@@ -324,6 +351,15 @@ export default function FinancialDashboardPage() {
     if (insertError) {
       console.error("Failed to create batch invoice in Supabase", insertError);
       return;
+    }
+
+    // Refresh next invoice number
+    const { data: refreshedInvoices } = await supabase
+      .from("invoices")
+      .select("invoice_number")
+      .order("created_at", { ascending: false });
+    if (refreshedInvoices) {
+      setNextInvoiceNumber(calculateNextNumber(refreshedInvoices));
     }
 
     // 2. Update status of individual items to "Sent" (so they leave the Ready list)
@@ -418,7 +454,7 @@ export default function FinancialDashboardPage() {
     if (!sideProjectForm.projectName || !sideProjectForm.amount) return;
 
     const amountVal = parseFloat(sideProjectForm.amount);
-    const newInvoiceInv = `SIDE-${1000 + Math.floor(Math.random() * 1000)}`;
+    const newInvoiceInv = nextInvoiceNumber;
 
     // 1. Create Side Project Invoice in Supabase
     const { data: insertedSide, error } = await supabase
@@ -450,6 +486,15 @@ export default function FinancialDashboardPage() {
     if (error) {
       console.error("Failed to create side project in Supabase", error);
       return;
+    }
+
+    // Refresh next invoice number
+    const { data: refreshedInvoices } = await supabase
+      .from("invoices")
+      .select("invoice_number")
+      .order("created_at", { ascending: false });
+    if (refreshedInvoices) {
+      setNextInvoiceNumber(calculateNextNumber(refreshedInvoices));
     }
 
     const newUiInvoice = {
@@ -774,6 +819,7 @@ export default function FinancialDashboardPage() {
                 <TableHead>Project</TableHead>
                 <TableHead>Partner</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead>Invoice #</TableHead>
                 <TableHead>Pending</TableHead>
                 <TableHead className="text-right">Amount €</TableHead>
                 <TableHead className="text-right">Action</TableHead>
@@ -783,7 +829,7 @@ export default function FinancialDashboardPage() {
               {forInvoiceProjects.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={7}
                     className="text-center text-muted-foreground py-8"
                   >
                     No projects waiting for invoice.
@@ -811,6 +857,9 @@ export default function FinancialDashboardPage() {
                       </TableCell>
                       <TableCell>{row.partner}</TableCell>
                       <TableCell>{row.date}</TableCell>
+                      <TableCell className="text-xs font-medium text-blue-600">
+                        {row.invoiceNumber}
+                      </TableCell>
                       <TableCell>
                         <div
                           className={`flex items-center gap-2 text-xs font-medium text-muted-foreground`}
@@ -926,7 +975,7 @@ export default function FinancialDashboardPage() {
           <Table>
             <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
               <TableRow>
-                <TableHead>Status</TableHead>
+                <TableHead>Project</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Partner</TableHead>
@@ -973,8 +1022,8 @@ export default function FinancialDashboardPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-xs">{row.date}</TableCell>
-                      <TableCell className="text-xs font-medium">
-                        {row.inv}
+                      <TableCell className="text-xs font-bold text-blue-600">
+                        {row.invoiceNumber}
                       </TableCell>
                       <TableCell className="text-xs">
                         {row.partner}
@@ -1018,6 +1067,7 @@ export default function FinancialDashboardPage() {
                                     </TableHead>
                                     <TableHead>Contractor</TableHead>
                                     <TableHead>Partner</TableHead>
+                                    <TableHead>Invoice #</TableHead>
                                     <TableHead className="text-right">
                                       Financial Debt
                                     </TableHead>
@@ -1051,6 +1101,9 @@ export default function FinancialDashboardPage() {
                                         </TableCell>
                                         <TableCell>{item.partner}</TableCell>
                                         <TableCell>Prostruktion</TableCell>
+                                        <TableCell className="text-xs font-medium text-blue-600">
+                                          {item.invoiceNumber}
+                                        </TableCell>
                                         <TableCell className="text-right font-bold">
                                           € {item.amount?.toLocaleString()}
                                         </TableCell>
@@ -1107,7 +1160,7 @@ export default function FinancialDashboardPage() {
             <Table>
               <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
                 <TableRow>
-                  <TableHead>Status #</TableHead>
+                  <TableHead>Project</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Partner</TableHead>
@@ -1118,17 +1171,22 @@ export default function FinancialDashboardPage() {
                 {receivedProjects.map((row, i) => (
                   <TableRow key={i}>
                     <TableCell>
-                      <Badge
-                        className={`${row.overdue ? "bg-orange-100 text-orange-700 hover:bg-orange-200" : "bg-green-100 text-green-700 hover:bg-green-200"} border-0 w-16 justify-center`}
-                      >
-                        {row.status}
-                      </Badge>
+                      <div className="flex items-center gap-3">
+                        <div className="h-7 w-7 rounded bg-green-100 dark:bg-green-900/40 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
+                          <Building2 className="h-4 w-4" />
+                        </div>
+                        <div className="text-xs font-medium truncate max-w-[120px]">
+                          {row.project}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="text-xs">{row.date}</TableCell>
-                    <TableCell className="text-xs font-medium">
-                      {row.inv}
+                    <TableCell className="text-xs font-bold text-blue-600">
+                      {row.invoiceNumber}
                     </TableCell>
-                    <TableCell className="text-xs">{row.partner}</TableCell>
+                    <TableCell className="text-xs truncate max-w-[100px]">
+                      {row.partner}
+                    </TableCell>
                     <TableCell
                       className={`text-right font-bold text-sm ${row.overdue ? "text-red-600" : ""}`}
                     >
@@ -1432,6 +1490,19 @@ export default function FinancialDashboardPage() {
                   })
                 }
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Invoice Number</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 font-medium"
+                value={nextInvoiceNumber}
+                readOnly
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Sequential number in format NN/YY
+              </p>
             </div>
 
             <div className="space-y-2">

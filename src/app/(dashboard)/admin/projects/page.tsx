@@ -150,6 +150,42 @@ export default function AdminProjects() {
     }).length;
   };
 
+  // --- INVOICE NUMBERING LOGIC ---
+  const [dbInvoices, setDbInvoices] = useState<any[]>([]);
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState("");
+
+  const calculateNextNumber = (invoices: any[]) => {
+    const now = new Date();
+    const currentYear = now.getFullYear().toString().slice(-2);
+    const regex = /^(\d+)\/(\d+)$/;
+    let maxNum = 0;
+
+    invoices.forEach((inv) => {
+      const match = inv.invoice_number?.match(regex);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        const year = match[2];
+        if (year === currentYear) {
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    });
+
+    return `${(maxNum + 1).toString().padStart(2, "0")}/${currentYear}`;
+  };
+
+  const refreshInvoiceNumber = async () => {
+    const supabase = createClient();
+    const { data: allInv } = await supabase
+      .from("invoices")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (allInv) {
+      setDbInvoices(allInv);
+      setNextInvoiceNumber(calculateNextNumber(allInv));
+    }
+  };
+
   // Form State
   const [newProject, setNewProject] = useState({
     project: "",
@@ -1406,6 +1442,7 @@ export default function AdminProjects() {
   };
 
   const handleCreateInvoice = (project: any, index: number) => {
+    refreshInvoiceNumber();
     // 1. Calculate Base Values
     const numericAmount = parseGermanFloat(
       project.amount || project.contract_value || 0,
@@ -3091,6 +3128,14 @@ export default function AdminProjects() {
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-xs uppercase font-semibold">
+                        Invoice Number
+                      </span>
+                      <span className="font-bold text-blue-600">
+                        {nextInvoiceNumber}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs uppercase font-semibold">
                         Prostruktion
                       </span>
                       <span className="font-medium text-blue-600">
@@ -4505,12 +4550,19 @@ export default function AdminProjects() {
 
                 // SYNC TO SUPABASE
                 try {
+                  const supabase = createClient();
+                  let currentSequentialNumber = nextInvoiceNumber;
+
                   for (const inv of newInvoices) {
-                    let recipientRole = "Partner";
-                    let recipientName = inv.partner;
-                    if (inv.action === "Mediator Invoice") {
+                    let recipientRole = "";
+                    let recipientName = "";
+
+                    if (inv.action === "Partner Invoice") {
+                      recipientRole = "Partner";
+                      recipientName = inv.partner;
+                    } else if (inv.action === "Mediator Invoice") {
                       recipientRole = "Mediator";
-                      recipientName = inv.mediator;
+                      recipientName = inv.mediator; // Corrected: Use inv.mediator for mediator name
                     } else if (inv.action === "Subcontractor Invoice") {
                       recipientRole = "Subcontractor";
                       recipientName = inv.emp; // reused field
@@ -4554,11 +4606,13 @@ export default function AdminProjects() {
                       date: new Date().toISOString().split("T")[0],
                       invoice_type: inv.action,
                       description: scopeDesc,
+                      invoice_number: currentSequentialNumber, // Assign current next number
                     };
 
                     const { error } = await supabase
                       .from("invoices")
                       .insert(payload);
+
                     if (error) {
                       console.error(
                         "Failed to sync invoice to Supabase:",
@@ -4566,7 +4620,19 @@ export default function AdminProjects() {
                       );
                       throw error;
                     }
+
+                    // Increment for next record in this batch
+                    const parts = currentSequentialNumber.split("/");
+                    if (parts.length === 2) {
+                      const nextNum = (parseInt(parts[0], 10) + 1)
+                        .toString()
+                        .padStart(2, "0");
+                      currentSequentialNumber = `${nextNum}/${parts[1]}`;
+                    }
                   }
+
+                  // Refresh state after all done
+                  refreshInvoiceNumber();
 
                   // Archive the project
                   if (currentInvoice.projectData?.id) {

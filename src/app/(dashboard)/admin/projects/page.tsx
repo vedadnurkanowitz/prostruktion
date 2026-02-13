@@ -57,8 +57,11 @@ import {
   Gift,
   X,
   Settings2,
+  Mail,
+  Search,
 } from "lucide-react";
 import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
+import { InvoiceEmailView } from "@/components/admin/invoice-email-view";
 import { Checkbox } from "@/components/ui/checkbox";
 import { createClient } from "@/lib/supabase/client";
 // import { sendInvoiceEmail } from "@/app/actions-email"; // Removed
@@ -336,7 +339,7 @@ export default function AdminProjects() {
           .insert({
             project_id: project.id,
             description: input.description,
-            price: priceVal
+            price: priceVal,
           })
           .select("id")
           .single();
@@ -357,7 +360,9 @@ export default function AdminProjects() {
     // --- LOCAL STATE UPDATE ---
     setProjects((prevProjects) => {
       const updatedProjects = [...prevProjects];
-      const mainIndex = updatedProjects.findIndex((p) => p === project || p.id === project.id);
+      const mainIndex = updatedProjects.findIndex(
+        (p) => p === project || p.id === project.id,
+      );
 
       if (mainIndex !== -1) {
         if (!updatedProjects[mainIndex].additionalWorks) {
@@ -384,6 +389,15 @@ export default function AdminProjects() {
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Filter State
+  const [phaseFilter, setPhaseFilter] = useState("all-phases");
+  const [contractorFilter, setContractorFilter] = useState("all-contractors");
+  const [partnerFilter, setPartnerFilter] = useState("all-partners");
+  const [mediatorFilter, setMediatorFilter] = useState("all-mediators");
+  const [subFilter, setSubFilter] = useState("all-subs");
+  const [statusFilter, setStatusFilter] = useState("all-statuses");
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
@@ -435,8 +449,63 @@ export default function AdminProjects() {
     setEditingId(null);
   };
 
-  // Apply pagination
-  const filteredProjects = projects; // Placeholder for future filtering
+  // Apply pagination and filtering
+  const filteredProjects = projects.filter((p) => {
+    // 1. Search term
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      const match =
+        p.project?.toLowerCase().includes(search) ||
+        p.address?.toLowerCase().includes(search) ||
+        p.sub?.toLowerCase().includes(search) ||
+        p.partner?.toLowerCase().includes(search);
+      if (!match) return false;
+    }
+
+    // 2. Phase filter
+    if (phaseFilter !== "all-phases") {
+      if (
+        phaseFilter === "active" &&
+        !(
+          p.status === "In Progress" ||
+          p.status === "active" ||
+          p.status === "Active"
+        )
+      )
+        return false;
+      if (phaseFilter === "abnahme" && p.status !== "In Abnahme") return false;
+      if (phaseFilter === "scheduled" && p.status !== "Scheduled") return false;
+      if (phaseFilter === "finished" && p.status !== "Finished") return false;
+    }
+
+    // 3. Status filter (fine-grained)
+    if (statusFilter !== "all-statuses" && p.status !== statusFilter)
+      return false;
+
+    // 4. Contractor filter
+    if (
+      contractorFilter !== "all-contractors" &&
+      p.contractorId !== contractorFilter
+    )
+      return false;
+
+    // 5. Partner filter
+    if (partnerFilter !== "all-partners" && p.partnerId !== partnerFilter)
+      return false;
+
+    // 6. Mediator filter
+    if (mediatorFilter !== "all-mediators" && p.mediatorId !== mediatorFilter)
+      return false;
+
+    // 7. Subcontractor filter
+    if (subFilter !== "all-subs" && p.subId !== subFilter) return false;
+
+    // Default: Exclude Archived from the main project list (they have their own page)
+    if (phaseFilter === "all-phases" && p.status === "Archived") return false;
+
+    return true;
+  });
+
   const totalProjects = filteredProjects.length;
   const totalPages = Math.ceil(totalProjects / itemsPerPage);
 
@@ -888,14 +957,14 @@ export default function AdminProjects() {
               selectedAdditionalServices,
               start: p.actual_start
                 ? new Date(p.actual_start).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })
                 : new Date(p.created_at || Date.now()).toLocaleDateString(
-                  "en-US",
-                  { year: "numeric", month: "short", day: "numeric" },
-                ),
+                    "en-US",
+                    { year: "numeric", month: "short", day: "numeric" },
+                  ),
               scheduledStart: p.scheduled_start
                 ? p.scheduled_start.split("T")[0]
                 : "",
@@ -912,7 +981,7 @@ export default function AdminProjects() {
                   : statusColor,
               abnahme:
                 p.status === "In Abnahme" ||
-                  (p.status === "In Progress" && p.abnahme_confirmed)
+                (p.status === "In Progress" && p.abnahme_confirmed)
                   ? "Yes"
                   : "No",
               invoiceHeader: "Create Invoice",
@@ -1089,7 +1158,7 @@ export default function AdminProjects() {
             const units = newProject.indoorUnits || 0;
             const matrixPrice =
               PRICING_MATRIX.baseCosts[units]?.[
-              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
               ] || 0;
             const price =
               newProject.workTypePrices[type] !== undefined
@@ -1199,11 +1268,11 @@ export default function AdminProjects() {
         const updatedProjects = projects.map((p) =>
           p.id === editingId
             ? {
-              ...p,
-              ...projectData,
-              status: p.status,
-              statusColor: p.statusColor,
-            }
+                ...p,
+                ...projectData,
+                status: p.status,
+                statusColor: p.statusColor,
+              }
             : p,
         );
         setProjects(updatedProjects);
@@ -1675,75 +1744,178 @@ export default function AdminProjects() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between bg-muted/20 p-2 rounded-lg border overflow-hidden">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="text-sm font-medium text-muted-foreground mr-2">
+      <div className="flex flex-col gap-4 bg-muted/20 p-4 rounded-xl border overflow-hidden shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative group w-full md:max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <Input
+              placeholder="Search projects, address, subcontractors..."
+              className="pl-9 h-9 bg-white dark:bg-gray-950 border shadow-sm rounded-lg"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          <Button
+            className="h-9 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+            onClick={() => setAddProjectOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add Project
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap min-w-0 pt-2 border-t border-muted/50">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mr-2">
             Filters:
           </span>
-          <Select defaultValue="all-phases">
-            <SelectTrigger className="w-auto min-w-[100px] max-w-[120px] h-8 bg-white dark:bg-gray-950">
-              <SelectValue placeholder="All Phases" />
+
+          <Select
+            value={phaseFilter}
+            onValueChange={(val) => {
+              setPhaseFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-auto min-w-[120px] h-8 bg-white dark:bg-gray-950 text-xs shadow-sm">
+              <SelectValue placeholder="Phase" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-phases">All Phases</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="abnahme">Abnahme</SelectItem>
+              <SelectItem value="abnahme">In Abnahme</SelectItem>
+              <SelectItem value="finished">Finished</SelectItem>
             </SelectContent>
           </Select>
 
-          <Select defaultValue="all-contractors">
-            <SelectTrigger className="w-auto min-w-[100px] max-w-[140px] h-8 bg-white dark:bg-gray-950">
-              <SelectValue placeholder="All Contractors" />
+          <Select
+            value={contractorFilter}
+            onValueChange={(val) => {
+              setContractorFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-auto min-w-[120px] h-8 bg-white dark:bg-gray-950 text-xs shadow-sm">
+              <SelectValue placeholder="Contractors" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-contractors">All Contractors</SelectItem>
+              {contractors.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select defaultValue="all-partners">
-            <SelectTrigger className="w-auto min-w-[100px] max-w-[120px] h-8 bg-white dark:bg-gray-950">
-              <SelectValue placeholder="All Partners" />
+          <Select
+            value={partnerFilter}
+            onValueChange={(val) => {
+              setPartnerFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-auto min-w-[120px] h-8 bg-white dark:bg-gray-950 text-xs shadow-sm">
+              <SelectValue placeholder="Partners" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-partners">All Partners</SelectItem>
+              {partners.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select defaultValue="all-mediators">
-            <SelectTrigger className="w-auto min-w-[100px] max-w-[130px] h-8 bg-white dark:bg-gray-950">
-              <SelectValue placeholder="All Mediators" />
+          <Select
+            value={mediatorFilter}
+            onValueChange={(val) => {
+              setMediatorFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-auto min-w-[120px] h-8 bg-white dark:bg-gray-950 text-xs shadow-sm">
+              <SelectValue placeholder="Mediators" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-mediators">All Mediators</SelectItem>
+              {mediators.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select defaultValue="all-subs">
-            <SelectTrigger className="w-auto min-w-[100px] max-w-[150px] h-8 bg-white dark:bg-gray-950">
-              <SelectValue placeholder="All Subcontractors" />
+          <Select
+            value={subFilter}
+            onValueChange={(val) => {
+              setSubFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-auto min-w-[120px] h-8 bg-white dark:bg-gray-950 text-xs shadow-sm">
+              <SelectValue placeholder="Subcontractors" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-subs">All Subcontractors</SelectItem>
+              {subcontractors.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <Select defaultValue="all-statuses">
-            <SelectTrigger className="w-auto min-w-[100px] max-w-[120px] h-8 bg-white dark:bg-gray-950">
-              <SelectValue placeholder="All Statuses" />
+          <Select
+            value={statusFilter}
+            onValueChange={(val) => {
+              setStatusFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-auto min-w-[120px] h-8 bg-white dark:bg-gray-950 text-xs shadow-sm">
+              <SelectValue placeholder="Statuses" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-statuses">All Statuses</SelectItem>
+              <SelectItem value="Scheduled">Scheduled</SelectItem>
+              <SelectItem value="In Progress">In Progress</SelectItem>
+              <SelectItem value="In Abnahme">Abnahme</SelectItem>
+              <SelectItem value="Finished">Finished</SelectItem>
+              <SelectItem value="Archived">Archived</SelectItem>
             </SelectContent>
           </Select>
-        </div>
 
-        <div>
-          <Button
-            className="h-8 bg-primary hover:bg-primary/90 text-primary-foreground"
-            onClick={() => setAddProjectOpen(true)}
-          >
-            <Plus className="mr-2 h-3 w-3" /> Add Project
-          </Button>
+          {(phaseFilter !== "all-phases" ||
+            statusFilter !== "all-statuses" ||
+            contractorFilter !== "all-contractors" ||
+            partnerFilter !== "all-partners" ||
+            mediatorFilter !== "all-mediators" ||
+            subFilter !== "all-subs" ||
+            searchTerm) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={() => {
+                setPhaseFilter("all-phases");
+                setStatusFilter("all-statuses");
+                setContractorFilter("all-contractors");
+                setPartnerFilter("all-partners");
+                setMediatorFilter("all-mediators");
+                setSubFilter("all-subs");
+                setSearchTerm("");
+                setCurrentPage(1);
+              }}
+            >
+              <X className="mr-1 h-3 w-3" /> Clear Filters
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1804,294 +1976,418 @@ export default function AdminProjects() {
       </div>
 
       {/* Scheduled Projects Table */}
-      <div className="space-y-2">
-        <h3 className="text-lg font-semibold tracking-tight">
-          Scheduled Projects
-        </h3>
-        <div className="rounded-md border bg-white dark:bg-gray-950 overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-yellow-50 dark:bg-yellow-900/10">
-              <TableRow>
-                <TableHead className="w-[40px]"></TableHead>
-                <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
-                  Name
-                </TableHead>
-                <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
-                  Subcontractor
-                </TableHead>
-                <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
-                  Scheduled date
-                </TableHead>
-                <TableHead className="w-[10%] font-semibold text-gray-700 dark:text-gray-300">
-                  Penalty
-                </TableHead>
-                <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
-                  Amount
-                </TableHead>
-                <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
-                  Net
-                </TableHead>
-                <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
-                  Action
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedProjects.filter((p) => p.status === "Scheduled")
-                .length === 0 ? (
+      {(phaseFilter === "all-phases" || phaseFilter === "scheduled") && (
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold tracking-tight">
+            Scheduled Projects
+          </h3>
+          <div className="rounded-md border bg-white dark:bg-gray-950 overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-yellow-50 dark:bg-yellow-900/10">
                 <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No scheduled projects found.
-                  </TableCell>
+                  <TableHead className="w-[40px]"></TableHead>
+                  <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
+                    Name
+                  </TableHead>
+                  <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
+                    Subcontractor
+                  </TableHead>
+                  <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
+                    Scheduled date
+                  </TableHead>
+                  <TableHead className="w-[10%] font-semibold text-gray-700 dark:text-gray-300">
+                    Penalty
+                  </TableHead>
+                  <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
+                    Amount
+                  </TableHead>
+                  <TableHead className="w-[12%] font-semibold text-gray-700 dark:text-gray-300">
+                    Net
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
+                    Action
+                  </TableHead>
                 </TableRow>
-              ) : (
-                paginatedProjects
-                  .filter((p) => p.status === "Scheduled")
-                  .map((project, i) => {
-                    const {
-                      penalty,
-                      daysLate,
-                      isOverdue,
-                      netAmount,
-                      penaltyPercentage,
-                    } = calculatePenalty(
-                      project.amount,
-                      project.scheduledStart || project.start,
-                    );
+              </TableHeader>
+              <TableBody>
+                {paginatedProjects.filter((p) => p.status === "Scheduled")
+                  .length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      {phaseFilter === "scheduled"
+                        ? "No scheduled projects found for this selection."
+                        : "No scheduled projects on this page."}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedProjects
+                    .filter((p) => p.status === "Scheduled")
+                    .map((project, i) => {
+                      const {
+                        penalty,
+                        daysLate,
+                        isOverdue,
+                        netAmount,
+                        penaltyPercentage,
+                      } = calculatePenalty(
+                        project.amount,
+                        project.scheduledStart || project.start,
+                      );
 
-                    const isExpanded = expandedScheduledRows.has(i);
+                      const isExpanded = expandedScheduledRows.has(i);
 
-                    return (
-                      <Fragment key={i}>
-                        <TableRow
-                          className={`group hover:bg-muted/50 ${isExpanded ? "bg-muted/30" : ""}`}
-                        >
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => toggleScheduledRow(i)}
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
-                                <Building2 className="h-4 w-4" />
-                              </div>
-                              <div>
-                                <div className="font-semibold text-sm">
-                                  {project.project}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {project.address}
-                                </div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{project.sub}</TableCell>
-                          <TableCell className="text-sm">
-                            {formatDate(project.scheduledStart) ||
-                              project.start}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-1 items-start">
-                              <Badge
-                                variant={
-                                  isOverdue ? "destructive" : "secondary"
-                                }
-                                className={
-                                  isOverdue
-                                    ? "bg-red-100 text-red-700 hover:bg-red-200 border-0"
-                                    : "bg-green-100 text-green-700 hover:bg-green-200 border-0"
-                                }
-                              >
-                                {isOverdue ? `${daysLate} Days` : "No"}
-                              </Badge>
-                              {penalty > 0 && (
-                                <span className="text-xs text-red-500 font-medium ml-1">
-                                  -{penaltyPercentage}%
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {project.amount}
-                          </TableCell>
-                          <TableCell className="font-bold text-blue-600">
-                            €{" "}
-                            {netAmount.toLocaleString("de-DE", {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
+                      return (
+                        <Fragment key={i}>
+                          <TableRow
+                            className={`group hover:bg-muted/50 ${isExpanded ? "bg-muted/30" : ""}`}
+                          >
+                            <TableCell>
                               <Button
+                                variant="ghost"
                                 size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => handleEditClick(project)}
+                                className="h-6 w-6 p-0"
+                                onClick={() => toggleScheduledRow(i)}
                               >
-                                Edit
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
                               </Button>
-                              <Button
-                                size="sm"
-                                className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
-                                onClick={() => handleStartProject(project)}
-                              >
-                                <Rocket className="mr-1 h-3 w-3" /> Start
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                        {isExpanded && (
-                          <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
-                            <TableCell colSpan={10} className="p-0">
-                              <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* Column 1: Project & Customer Details */}
-                                <div className="space-y-4 h-full flex flex-col">
-                                  <div className="flex flex-col h-full">
-                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                      <FileText className="h-3 w-3" /> Customer
-                                      Details
-                                    </h4>
-                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
-                                      <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
-                                        <span className="text-muted-foreground text-xs">
-                                          Customer No:
-                                        </span>
-                                        <span className="font-medium">
-                                          {project.customerNumber || "N/A"}
-                                        </span>
-
-                                        <span className="text-muted-foreground text-xs">
-                                          Phone:
-                                        </span>
-                                        <span className="font-medium">
-                                          {project.customerPhone || "N/A"}
-                                        </span>
-
-                                        <span className="text-muted-foreground text-xs">
-                                          Email:
-                                        </span>
-                                        <span
-                                          className="font-medium truncate"
-                                          title={project.customerEmail}
-                                        >
-                                          {project.customerEmail || "N/A"}
-                                        </span>
-
-                                        <span className="text-muted-foreground text-xs">
-                                          Location:
-                                        </span>
-                                        <span className="font-medium">
-                                          {project.address}
-                                        </span>
-                                      </div>
-                                      {project.description && (
-                                        <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
-                                          <span className="text-xs text-muted-foreground block mb-2 shrink-0">
-                                            Notes:
-                                          </span>
-                                          <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
-                                            {project.description}
-                                          </p>
-                                        </div>
-                                      )}
-                                    </div>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
+                                  <Building2 className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-sm">
+                                    {project.project}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {project.address}
                                   </div>
                                 </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{project.sub}</TableCell>
+                            <TableCell className="text-sm">
+                              {formatDate(project.scheduledStart) ||
+                                project.start}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1 items-start">
+                                <Badge
+                                  variant={
+                                    isOverdue ? "destructive" : "secondary"
+                                  }
+                                  className={
+                                    isOverdue
+                                      ? "bg-red-100 text-red-700 hover:bg-red-200 border-0"
+                                      : "bg-green-100 text-green-700 hover:bg-green-200 border-0"
+                                  }
+                                >
+                                  {isOverdue ? `${daysLate} Days` : "No"}
+                                </Badge>
+                                {penalty > 0 && (
+                                  <span className="text-xs text-red-500 font-medium ml-1">
+                                    -{penaltyPercentage}%
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {project.amount}
+                            </TableCell>
+                            <TableCell className="font-bold text-blue-600">
+                              €{" "}
+                              {netAmount.toLocaleString("de-DE", {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => handleEditClick(project)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
+                                  onClick={() => handleStartProject(project)}
+                                >
+                                  <Rocket className="mr-1 h-3 w-3" /> Start
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {isExpanded && (
+                            <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
+                              <TableCell colSpan={10} className="p-0">
+                                <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                                  {/* Column 1: Project & Customer Details */}
+                                  <div className="space-y-4 h-full flex flex-col">
+                                    <div className="flex flex-col h-full">
+                                      <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <FileText className="h-3 w-3" />{" "}
+                                        Customer Details
+                                      </h4>
+                                      <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
+                                        <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
+                                          <span className="text-muted-foreground text-xs">
+                                            Customer No:
+                                          </span>
+                                          <span className="font-medium">
+                                            {project.customerNumber || "N/A"}
+                                          </span>
 
-                                {/* Column 2: Assigned Workers (Existing) */}
-                                <div className="space-y-4 h-full flex flex-col">
-                                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <HardHat className="h-3 w-3" /> Assigned
-                                    Workers
-                                  </h4>
+                                          <span className="text-muted-foreground text-xs">
+                                            Phone:
+                                          </span>
+                                          <span className="font-medium">
+                                            {project.customerPhone || "N/A"}
+                                          </span>
 
-                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
-                                    <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
-                                      <span className="text-muted-foreground text-xs">
-                                        Contractor:
-                                      </span>
-                                      <span className="font-medium">
-                                        {project.contractor || "N/A"}
-                                      </span>
+                                          <span className="text-muted-foreground text-xs">
+                                            Email:
+                                          </span>
+                                          <span
+                                            className="font-medium truncate"
+                                            title={project.customerEmail}
+                                          >
+                                            {project.customerEmail || "N/A"}
+                                          </span>
 
-                                      <span className="text-muted-foreground text-xs">
-                                        Partner:
-                                      </span>
-                                      <Select
-                                        value={project.partnerId || "none"}
-                                        onValueChange={(value) =>
-                                          handleContactFieldUpdate(
-                                            project,
-                                            "partner",
-                                            value === "none" ? "" : value,
-                                          )
-                                        }
-                                      >
-                                        <SelectTrigger className="h-7 text-xs">
-                                          <SelectValue placeholder="Select Partner">
-                                            {project.partner || "N/A"}
-                                          </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="none">
-                                            None
-                                          </SelectItem>
-                                          {partners.map((p) => (
-                                            <SelectItem key={p.id} value={p.id}>
-                                              {p.name}
+                                          <span className="text-muted-foreground text-xs">
+                                            Location:
+                                          </span>
+                                          <span className="font-medium">
+                                            {project.address}
+                                          </span>
+                                        </div>
+                                        {project.description && (
+                                          <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
+                                            <span className="text-xs text-muted-foreground block mb-2 shrink-0">
+                                              Notes:
+                                            </span>
+                                            <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
+                                              {project.description}
+                                            </p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Column 2: Assigned Workers (Existing) */}
+                                  <div className="space-y-4 h-full flex flex-col">
+                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                      <HardHat className="h-3 w-3" /> Assigned
+                                      Workers
+                                    </h4>
+
+                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
+                                      <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
+                                        <span className="text-muted-foreground text-xs">
+                                          Contractor:
+                                        </span>
+                                        <span className="font-medium">
+                                          {project.contractor || "N/A"}
+                                        </span>
+
+                                        <span className="text-muted-foreground text-xs">
+                                          Partner:
+                                        </span>
+                                        <Select
+                                          value={project.partnerId || "none"}
+                                          onValueChange={(value) =>
+                                            handleContactFieldUpdate(
+                                              project,
+                                              "partner",
+                                              value === "none" ? "" : value,
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger className="h-7 text-xs">
+                                            <SelectValue placeholder="Select Partner">
+                                              {project.partner || "N/A"}
+                                            </SelectValue>
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="none">
+                                              None
                                             </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
+                                            {partners.map((p) => (
+                                              <SelectItem
+                                                key={p.id}
+                                                value={p.id}
+                                              >
+                                                {p.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
 
-                                      <span className="text-muted-foreground text-xs">
-                                        Mediator:
-                                      </span>
-                                      <Select
-                                        value={project.mediatorId || "none"}
-                                        onValueChange={(value) =>
-                                          handleContactFieldUpdate(
-                                            project,
-                                            "mediator",
-                                            value === "none" ? "" : value,
-                                          )
-                                        }
-                                      >
-                                        <SelectTrigger className="h-7 text-xs">
-                                          <SelectValue placeholder="Select Mediator">
-                                            {project.mediator || "N/A"}
-                                          </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="none">
-                                            None
-                                          </SelectItem>
-                                          {mediators.map((m) => (
-                                            <SelectItem key={m.id} value={m.id}>
-                                              {m.name}
+                                        <span className="text-muted-foreground text-xs">
+                                          Mediator:
+                                        </span>
+                                        <Select
+                                          value={project.mediatorId || "none"}
+                                          onValueChange={(value) =>
+                                            handleContactFieldUpdate(
+                                              project,
+                                              "mediator",
+                                              value === "none" ? "" : value,
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger className="h-7 text-xs">
+                                            <SelectValue placeholder="Select Mediator">
+                                              {project.mediator || "N/A"}
+                                            </SelectValue>
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="none">
+                                              None
                                             </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
+                                            {mediators.map((m) => (
+                                              <SelectItem
+                                                key={m.id}
+                                                value={m.id}
+                                              >
+                                                {m.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </div>
+
+                                    {project.workers &&
+                                    project.workers.length > 0 ? (
+                                      <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
+                                        <Table>
+                                          <TableHeader className="bg-gray-50/50">
+                                            <TableRow className="h-8 hover:bg-transparent">
+                                              <TableHead className="h-8 text-[10px] font-semibold">
+                                                Name
+                                              </TableHead>
+                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                                Cert
+                                              </TableHead>
+                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                                A1
+                                              </TableHead>
+                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                                Success
+                                              </TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {project.workers.map(
+                                              (workerId: string) => {
+                                                const worker =
+                                                  workersMap[workerId];
+                                                const certValid =
+                                                  (worker?.certFiles || [])
+                                                    .length > 0;
+                                                const a1Valid =
+                                                  (worker?.a1Files || [])
+                                                    .length > 0;
+
+                                                return (
+                                                  <TableRow
+                                                    key={workerId}
+                                                    className="h-8 hover:bg-transparent border-0"
+                                                  >
+                                                    <TableCell className="py-1">
+                                                      <div className="flex items-center gap-2">
+                                                        <Avatar className="h-5 w-5 border">
+                                                          <AvatarImage
+                                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
+                                                          />
+                                                          <AvatarFallback className="text-[9px]">
+                                                            {workerId.charAt(0)}
+                                                          </AvatarFallback>
+                                                        </Avatar>
+                                                        <span className="text-xs font-medium truncate max-w-[100px]">
+                                                          {worker?.name ||
+                                                            `Worker ${workerId}`}
+                                                        </span>
+                                                      </div>
+                                                    </TableCell>
+                                                    <TableCell className="py-1 text-xs text-center">
+                                                      <span
+                                                        className={
+                                                          certValid
+                                                            ? "text-green-600 font-medium"
+                                                            : "text-muted-foreground"
+                                                        }
+                                                      >
+                                                        {certValid
+                                                          ? "Yes"
+                                                          : "No"}
+                                                      </span>
+                                                    </TableCell>
+                                                    <TableCell className="py-1 text-xs text-center">
+                                                      <span
+                                                        className={
+                                                          a1Valid
+                                                            ? "text-green-600 font-medium"
+                                                            : "text-muted-foreground"
+                                                        }
+                                                      >
+                                                        {a1Valid ? "Yes" : "No"}
+                                                      </span>
+                                                    </TableCell>
+                                                    <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                      {worker?.successRate !==
+                                                      undefined
+                                                        ? `${worker.successRate}%`
+                                                        : "100%"}
+                                                    </TableCell>
+                                                  </TableRow>
+                                                );
+                                              },
+                                            )}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
+                                        No workers assigned yet.
+                                      </div>
+                                    )}
+
+                                    {/* Estimated & Actual Hours Footer */}
+                                    <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                          Estimated Max Hours:
+                                        </span>
+                                        <span className="font-mono font-semibold">
+                                          {project.estimatedHours || "N/A"}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                          Actual Hours:
+                                        </span>
+                                        <span className="w-16 border-b border-gray-400 dark:border-gray-600"></span>
+                                      </div>
                                     </div>
                                   </div>
 
                                   {project.workers &&
-                                    project.workers.length > 0 ? (
+                                  project.workers.length > 0 ? (
                                     <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
                                       <Table>
                                         <TableHeader className="bg-gray-50/50">
@@ -2167,7 +2463,7 @@ export default function AdminProjects() {
                                                   </TableCell>
                                                   <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
                                                     {worker?.successRate !==
-                                                      undefined
+                                                    undefined
                                                       ? `${worker.successRate}%`
                                                       : "100%"}
                                                   </TableCell>
@@ -2232,7 +2528,7 @@ export default function AdminProjects() {
                                             Base Installation
                                           </div>
                                           {project.selectedWorkTypes &&
-                                            project.selectedWorkTypes.length >
+                                          project.selectedWorkTypes.length >
                                             0 ? (
                                             <div className="grid gap-2">
                                               {project.selectedWorkTypes.map(
@@ -2242,7 +2538,7 @@ export default function AdminProjects() {
                                                     project.indoorUnits || 0;
                                                   const unitCosts =
                                                     PRICING_MATRIX.baseCosts[
-                                                    units
+                                                      units
                                                     ] || {};
                                                   const cost =
                                                     (unitCosts as any)[type] ||
@@ -2272,6 +2568,44 @@ export default function AdminProjects() {
                                             </p>
                                           )}
                                         </div>
+
+                                        {/* Additional Works (Custom) - NEW SECTION */}
+                                        {project.additionalWorks &&
+                                          project.additionalWorks.length >
+                                            0 && (
+                                            <div className="space-y-2 mt-4">
+                                              <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                                Additional Works (In Progress)
+                                              </div>
+                                              <div className="grid gap-2">
+                                                {project.additionalWorks.map(
+                                                  (work: any, idx: number) => {
+                                                    return (
+                                                      <div
+                                                        key={work.id || idx}
+                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                      >
+                                                        <div className="flex flex-col">
+                                                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                            {work.description}
+                                                          </span>
+                                                          {work.receiptName && (
+                                                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                              <FileText className="h-3 w-3" />{" "}
+                                                              {work.receiptName}
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                          € {work.price || 0}
+                                                        </span>
+                                                      </div>
+                                                    );
+                                                  },
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
 
                                         {/* Additional Services */}
                                         {project.selectedAdditionalServices &&
@@ -2309,45 +2643,6 @@ export default function AdminProjects() {
                                               </div>
                                             </div>
                                           )}
-
-                                        {/* Additional Works (Custom) - NEW SECTION */}
-                                        {project.additionalWorks &&
-                                          project.additionalWorks.length > 0 && (
-                                            <div className="space-y-2 mt-4">
-                                              <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
-                                                Additional Works (In Progress)
-                                              </div>
-                                              <div className="grid gap-2">
-                                                {project.additionalWorks.map(
-                                                  (work: any, idx: number) => {
-                                                    return (
-                                                      <div
-                                                        key={work.id || idx}
-                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
-                                                      >
-                                                        <div className="flex flex-col">
-                                                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
-                                                            {work.description}
-                                                          </span>
-                                                          {work.receiptName && (
-                                                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                              <FileText className="h-3 w-3" /> {work.receiptName}
-                                                            </span>
-                                                          )}
-                                                        </div>
-                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                          €{" "}
-                                                          {work.price || 0}
-                                                        </span>
-                                                      </div>
-                                                    );
-                                                  },
-                                                )}
-                                              </div>
-                                            </div>
-                                          )}
-
-
                                       </div>
 
                                       <div className="pt-4 mt-4 border-t">
@@ -2363,773 +2658,850 @@ export default function AdminProjects() {
                                     </div>
                                   </div>
                                 </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Main Table (Active/Other Projects) */}
+      {(phaseFilter === "all-phases" ||
+        phaseFilter === "active" ||
+        phaseFilter === "abnahme" ||
+        phaseFilter === "finished") && (
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold tracking-tight">
+            {phaseFilter === "all-phases"
+              ? "Active Projects"
+              : phaseFilter === "active"
+                ? "Active Projects"
+                : phaseFilter === "abnahme"
+                  ? "Projects in Abnahme"
+                  : "Finished Projects"}
+          </h3>
+          <div className="rounded-md border bg-white dark:bg-gray-950 overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+                <TableRow>
+                  <TableHead className="w-[40px]"></TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Subcontractor
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Start date
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Status
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                    Amount (€)
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
+                    Invoice (€)
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedProjects.filter((p) => {
+                  if (phaseFilter === "all-phases")
+                    return p.status !== "Scheduled" && p.status !== "Archived";
+                  if (phaseFilter === "active")
+                    return (
+                      p.status === "In Progress" ||
+                      p.status === "active" ||
+                      p.status === "Active"
+                    );
+                  if (phaseFilter === "abnahme")
+                    return p.status === "In Abnahme";
+                  if (phaseFilter === "finished")
+                    return p.status === "Finished";
+                  return false;
+                }).length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      No projects found for this selection.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedProjects
+                    .filter((p) => {
+                      if (phaseFilter === "all-phases")
+                        return (
+                          p.status !== "Scheduled" && p.status !== "Archived"
+                        );
+                      if (phaseFilter === "active")
+                        return (
+                          p.status === "In Progress" ||
+                          p.status === "active" ||
+                          p.status === "Active"
+                        );
+                      if (phaseFilter === "abnahme")
+                        return p.status === "In Abnahme";
+                      if (phaseFilter === "finished")
+                        return p.status === "Finished";
+                      return false;
+                    })
+                    .map((item, i) => {
+                      // Calculate stats for accordion details
+                      const {
+                        penalty,
+                        daysLate,
+                        isOverdue,
+                        penaltyPercentage,
+                        netAmount,
+                      } = calculatePenalty(
+                        item.amount,
+                        item.scheduledStart || item.start,
+                      );
+                      const isExpanded = expandedRows.has(i);
+
+                      return (
+                        <Fragment key={i}>
+                          <TableRow
+                            className={`group hover:bg-muted/50 ${isExpanded ? "bg-muted/30" : ""}`}
+                          >
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => toggleRow(i)}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
+                                  <Building2 className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-sm">
+                                    {item.project}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {item.address}
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{item.sub}</TableCell>
+                            <TableCell className="text-sm">
+                              {item.start}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={item.status}
+                                onValueChange={(val) =>
+                                  handleStatusChange(item, val)
+                                }
+                              >
+                                <SelectTrigger
+                                  className={`w-[130px] h-8 border-0 ${item.statusColor}`}
+                                >
+                                  <SelectValue>{item.status}</SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Scheduled">
+                                    ↩ Return to Scheduled
+                                  </SelectItem>
+                                  <SelectItem value="In Progress">
+                                    In Progress
+                                  </SelectItem>
+                                  <SelectItem value="In Abnahme">
+                                    In Abnahme
+                                  </SelectItem>
+                                  <SelectItem value="Finished">
+                                    Finished
+                                  </SelectItem>
+                                  <SelectItem value="Archived">
+                                    Archived
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              €{" "}
+                              {netAmount.toLocaleString("de-DE", {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {item.invoiceStatus === "Sent" ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 bg-green-50 text-green-700 border-green-200"
+                                    disabled
+                                  >
+                                    Sent{" "}
+                                    <CheckCircle2 className="ml-1 h-3 w-3" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
+                                    onClick={() => handleCreateInvoice(item, i)}
+                                    disabled={item.status !== "Finished"}
+                                  >
+                                    Create Invoice
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
-                        )}
-                      </Fragment>
-                    );
-                  })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {/* Main Table (Active Projects) */}
-      <div className="space-y-2">
-        <h3 className="text-lg font-semibold tracking-tight">
-          Active Projects
-        </h3>
-        <div className="rounded-md border bg-white dark:bg-gray-950 overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
-              <TableRow>
-                <TableHead className="w-[40px]"></TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Name
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Subcontractor
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Start date
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Status
-                </TableHead>
-                <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                  Amount (€)
-                </TableHead>
-                <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
-                  Invoice (€)
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedProjects
-                .filter(
-                  (p) => p.status !== "Scheduled" && p.status !== "Archived",
-                )
-                .map((item, i) => {
-                  // Calculate stats for accordion details
-                  const {
-                    penalty,
-                    daysLate,
-                    isOverdue,
-                    penaltyPercentage,
-                    netAmount,
-                  } = calculatePenalty(
-                    item.amount,
-                    item.scheduledStart || item.start,
-                  );
-                  const isExpanded = expandedRows.has(i);
-
-                  return (
-                    <Fragment key={i}>
-                      <TableRow
-                        className={`group hover:bg-muted/50 ${isExpanded ? "bg-muted/30" : ""}`}
-                      >
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={() => toggleRow(i)}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center text-blue-600">
-                              <Building2 className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-sm">
-                                {item.project}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {item.address}
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{item.sub}</TableCell>
-                        <TableCell className="text-sm">{item.start}</TableCell>
-                        <TableCell>
-                          <Select
-                            value={item.status}
-                            onValueChange={(val) =>
-                              handleStatusChange(item, val)
-                            }
-                          >
-                            <SelectTrigger
-                              className={`w-[130px] h-8 border-0 ${item.statusColor}`}
-                            >
-                              <SelectValue>{item.status}</SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Scheduled">
-                                ↩ Return to Scheduled
-                              </SelectItem>
-                              <SelectItem value="In Progress">
-                                In Progress
-                              </SelectItem>
-                              <SelectItem value="In Abnahme">
-                                In Abnahme
-                              </SelectItem>
-                              <SelectItem value="Finished">Finished</SelectItem>
-                              <SelectItem value="Archived">Archived</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          €{" "}
-                          {netAmount.toLocaleString("de-DE", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          })}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {item.invoiceStatus === "Sent" ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 bg-green-50 text-green-700 border-green-200"
-                                disabled
+                          {isExpanded && (
+                            <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
+                              <TableCell
+                                colSpan={10}
+                                className="p-0 overflow-hidden"
                               >
-                                Sent <CheckCircle2 className="ml-1 h-3 w-3" />
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
-                                className="h-7 bg-primary hover:bg-primary/90 text-primary-foreground"
-                                onClick={() => handleCreateInvoice(item, i)}
-                                disabled={item.status !== "Finished"}
-                              >
-                                Create Invoice
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && (
-                        <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
-                          <TableCell
-                            colSpan={10}
-                            className="p-0 overflow-hidden"
-                          >
-                            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden">
-                              {/* Column 1: Project & Customer Details */}
-                              <div className="space-y-4 h-full flex flex-col">
-                                <div className="flex flex-col h-full">
-                                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <FileText className="h-3 w-3" /> Customer
-                                    Details
-                                  </h4>
-                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
-                                    <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
-                                      <span className="text-muted-foreground text-xs">
-                                        Customer No:
-                                      </span>
-                                      <span className="font-medium">
-                                        {item.customerNumber || "N/A"}
-                                      </span>
+                                <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden">
+                                  {/* Column 1: Project & Customer Details */}
+                                  <div className="space-y-4 h-full flex flex-col">
+                                    <div className="flex flex-col h-full">
+                                      <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <FileText className="h-3 w-3" />{" "}
+                                        Customer Details
+                                      </h4>
+                                      <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm flex-1 flex flex-col">
+                                        <div className="grid grid-cols-[100px_1fr] gap-2 shrink-0">
+                                          <span className="text-muted-foreground text-xs">
+                                            Customer No:
+                                          </span>
+                                          <span className="font-medium">
+                                            {item.customerNumber || "N/A"}
+                                          </span>
 
-                                      <span className="text-muted-foreground text-xs">
-                                        Phone:
-                                      </span>
-                                      <span className="font-medium">
-                                        {item.customerPhone || "N/A"}
-                                      </span>
+                                          <span className="text-muted-foreground text-xs">
+                                            Phone:
+                                          </span>
+                                          <span className="font-medium">
+                                            {item.customerPhone || "N/A"}
+                                          </span>
 
-                                      <span className="text-muted-foreground text-xs">
-                                        Email:
-                                      </span>
-                                      <span
-                                        className="font-medium truncate"
-                                        title={item.customerEmail}
-                                      >
-                                        {item.customerEmail || "N/A"}
-                                      </span>
+                                          <span className="text-muted-foreground text-xs">
+                                            Email:
+                                          </span>
+                                          <span
+                                            className="font-medium truncate"
+                                            title={item.customerEmail}
+                                          >
+                                            {item.customerEmail || "N/A"}
+                                          </span>
 
-                                      <span className="text-muted-foreground text-xs">
-                                        Location:
-                                      </span>
-                                      <span className="font-medium">
-                                        {item.address}
-                                      </span>
-                                    </div>
-                                    {item.description && (
-                                      <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
-                                        <span className="text-xs text-muted-foreground block mb-2 shrink-0">
-                                          Notes:
-                                        </span>
-                                        <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
-                                          {item.description}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Column 2: Assigned Workers (Existing) */}
-                              <div className="space-y-4 h-full flex flex-col">
-                                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                  <HardHat className="h-3 w-3" /> Assigned
-                                  Workers
-                                </h4>
-
-                                <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
-                                  <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
-                                    <span className="text-muted-foreground text-xs">
-                                      Contractor:
-                                    </span>
-                                    <span className="font-medium">
-                                      {item.contractor || "N/A"}
-                                    </span>
-
-                                    <span className="text-muted-foreground text-xs">
-                                      Partner:
-                                    </span>
-                                    <Select
-                                      value={item.partnerId || "none"}
-                                      onValueChange={(value) =>
-                                        handleContactFieldUpdate(
-                                          item,
-                                          "partner",
-                                          value === "none" ? "" : value,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="h-7 text-xs">
-                                        <SelectValue placeholder="Select Partner">
-                                          {item.partner || "N/A"}
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="none">
-                                          None
-                                        </SelectItem>
-                                        {partners.map((p) => (
-                                          <SelectItem key={p.id} value={p.id}>
-                                            {p.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-
-                                    <span className="text-muted-foreground text-xs">
-                                      Mediator:
-                                    </span>
-                                    <Select
-                                      value={item.mediatorId || "none"}
-                                      onValueChange={(value) =>
-                                        handleContactFieldUpdate(
-                                          item,
-                                          "mediator",
-                                          value === "none" ? "" : value,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="h-7 text-xs">
-                                        <SelectValue placeholder="Select Mediator">
-                                          {item.mediator || "N/A"}
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="none">
-                                          None
-                                        </SelectItem>
-                                        {mediators.map((m) => (
-                                          <SelectItem key={m.id} value={m.id}>
-                                            {m.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-
-                                {item.workers && item.workers.length > 0 ? (
-                                  <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
-                                    <Table>
-                                      <TableHeader className="bg-gray-50/50">
-                                        <TableRow className="h-8 hover:bg-transparent">
-                                          <TableHead className="h-8 text-[10px] font-semibold">
-                                            Name
-                                          </TableHead>
-                                          <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                            Cert
-                                          </TableHead>
-                                          <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                            A1
-                                          </TableHead>
-                                          <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                            Success
-                                          </TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {item.workers.map(
-                                          (workerId: string) => {
-                                            const worker = workersMap[workerId];
-                                            const certValid =
-                                              worker?.certStatus === "Valid" &&
-                                              worker?.certFiles &&
-                                              worker.certFiles.length > 0;
-                                            const a1Valid =
-                                              worker?.a1Status === "Valid";
-
-                                            return (
-                                              <TableRow
-                                                key={workerId}
-                                                className="h-8 hover:bg-transparent border-0"
-                                              >
-                                                <TableCell className="py-1">
-                                                  <div className="flex items-center gap-2">
-                                                    <Avatar className="h-5 w-5 border">
-                                                      <AvatarImage
-                                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                      />
-                                                      <AvatarFallback className="text-[9px]">
-                                                        {workerId.charAt(0)}
-                                                      </AvatarFallback>
-                                                    </Avatar>
-                                                    <span className="text-xs font-medium truncate max-w-[100px]">
-                                                      {worker?.name ||
-                                                        `Worker ${workerId}`}
-                                                    </span>
-                                                  </div>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-xs text-center">
-                                                  <span
-                                                    className={
-                                                      certValid
-                                                        ? "text-green-600 font-medium"
-                                                        : "text-muted-foreground"
-                                                    }
-                                                  >
-                                                    {certValid
-                                                      ? "Yes"
-                                                      : worker?.certStatus ===
-                                                        "Valid"
-                                                        ? "Missing"
-                                                        : worker?.certStatus ||
-                                                        "No"}
-                                                  </span>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-xs text-center">
-                                                  <span
-                                                    className={
-                                                      a1Valid
-                                                        ? "text-green-600 font-medium"
-                                                        : "text-muted-foreground"
-                                                    }
-                                                  >
-                                                    {a1Valid
-                                                      ? "Yes"
-                                                      : worker?.a1Status ||
-                                                      "No"}
-                                                  </span>
-                                                </TableCell>
-                                                <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
-                                                  {worker?.successRate !==
-                                                    undefined
-                                                    ? `${worker.successRate}%`
-                                                    : "100%"}
-                                                </TableCell>
-                                              </TableRow>
-                                            );
-                                          },
-                                        )}
-                                      </TableBody>
-                                    </Table>
-                                  </div>
-                                ) : (
-                                  <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
-                                    No workers assigned yet.
-                                  </div>
-                                )}
-
-                                {/* Estimated & Actual Hours Footer */}
-                                <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
-                                  <div className="flex justify-between items-center text-xs">
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">
-                                      Estimated Max Hours:
-                                    </span>
-                                    <span className="font-mono font-semibold">
-                                      {item.estimatedHours || "N/A"}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between items-center text-xs">
-                                    <span className="font-medium text-gray-700 dark:text-gray-300">
-                                      Actual Hours:
-                                    </span>
-                                    <div className="flex items-center gap-1">
-                                      <Input
-                                        className="h-6 w-20 text-xs text-right bg-white dark:bg-gray-950 px-1 py-0 h-7"
-                                        placeholder="0"
-                                        value={item.actualHours || ""}
-                                        onChange={(e) =>
-                                          handleActualHoursChange(
-                                            item,
-                                            e.target.value,
-                                          )
-                                        }
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Column 3: Scope of Work */}
-                              <div className="space-y-4 h-full flex flex-col">
-                                <div className="h-full flex flex-col">
-                                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <Trophy className="h-3 w-3" /> Scope of Work
-                                  </h4>
-
-                                  <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
-                                    <div className="flex-1 space-y-5 text-xs">
-                                      {/* Unit Count Header */}
-                                      <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
-                                        <span className="font-medium text-muted-foreground">
-                                          Indoor Units
-                                        </span>
-                                        <Badge
-                                          variant="secondary"
-                                          className="text-sm font-bold px-2.5 py-0.5"
-                                        >
-                                          {item.indoorUnits || 0}
-                                        </Badge>
-                                      </div>
-
-                                      {/* Work Types */}
-                                      <div className="space-y-2">
-                                        <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
-                                          Base Installation
+                                          <span className="text-muted-foreground text-xs">
+                                            Location:
+                                          </span>
+                                          <span className="font-medium">
+                                            {item.address}
+                                          </span>
                                         </div>
-                                        {item.selectedWorkTypes &&
-                                          item.selectedWorkTypes.length > 0 ? (
-                                          <div className="grid gap-2">
-                                            {item.selectedWorkTypes.map(
-                                              (type: string) => {
-                                                // Calculate cost for this type based on units
-                                                const units =
-                                                  item.indoorUnits || 0;
-                                                const unitCosts =
-                                                  PRICING_MATRIX.baseCosts[
-                                                  units
-                                                  ] || {};
-                                                const cost =
-                                                  (unitCosts as any)[type] || 0;
+                                        {item.description && (
+                                          <div className="pt-2 mt-2 border-t border-dashed flex-1 flex flex-col min-h-0">
+                                            <span className="text-xs text-muted-foreground block mb-2 shrink-0">
+                                              Notes:
+                                            </span>
+                                            <p className="text-xs whitespace-pre-wrap overflow-y-auto text-gray-600 flex-1 pr-1 max-h-[250px]">
+                                              {item.description}
+                                            </p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Column 2: Assigned Workers (Existing) */}
+                                  <div className="space-y-4 h-full flex flex-col">
+                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                      <HardHat className="h-3 w-3" /> Assigned
+                                      Workers
+                                    </h4>
+
+                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
+                                      <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
+                                        <span className="text-muted-foreground text-xs">
+                                          Contractor:
+                                        </span>
+                                        <span className="font-medium">
+                                          {item.contractor || "N/A"}
+                                        </span>
+
+                                        <span className="text-muted-foreground text-xs">
+                                          Partner:
+                                        </span>
+                                        <Select
+                                          value={item.partnerId || "none"}
+                                          onValueChange={(value) =>
+                                            handleContactFieldUpdate(
+                                              item,
+                                              "partner",
+                                              value === "none" ? "" : value,
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger className="h-7 text-xs">
+                                            <SelectValue placeholder="Select Partner">
+                                              {item.partner || "N/A"}
+                                            </SelectValue>
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="none">
+                                              None
+                                            </SelectItem>
+                                            {partners.map((p) => (
+                                              <SelectItem
+                                                key={p.id}
+                                                value={p.id}
+                                              >
+                                                {p.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+
+                                        <span className="text-muted-foreground text-xs">
+                                          Mediator:
+                                        </span>
+                                        <Select
+                                          value={item.mediatorId || "none"}
+                                          onValueChange={(value) =>
+                                            handleContactFieldUpdate(
+                                              item,
+                                              "mediator",
+                                              value === "none" ? "" : value,
+                                            )
+                                          }
+                                        >
+                                          <SelectTrigger className="h-7 text-xs">
+                                            <SelectValue placeholder="Select Mediator">
+                                              {item.mediator || "N/A"}
+                                            </SelectValue>
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="none">
+                                              None
+                                            </SelectItem>
+                                            {mediators.map((m) => (
+                                              <SelectItem
+                                                key={m.id}
+                                                value={m.id}
+                                              >
+                                                {m.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </div>
+
+                                    {item.workers && item.workers.length > 0 ? (
+                                      <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
+                                        <Table>
+                                          <TableHeader className="bg-gray-50/50">
+                                            <TableRow className="h-8 hover:bg-transparent">
+                                              <TableHead className="h-8 text-[10px] font-semibold">
+                                                Name
+                                              </TableHead>
+                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                                Cert
+                                              </TableHead>
+                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                                A1
+                                              </TableHead>
+                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
+                                                Success
+                                              </TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {item.workers.map(
+                                              (workerId: string) => {
+                                                const worker =
+                                                  workersMap[workerId];
+                                                const certValid =
+                                                  (worker?.certFiles || [])
+                                                    .length > 0;
+                                                const a1Valid =
+                                                  (worker?.a1Files || [])
+                                                    .length > 0;
 
                                                 return (
-                                                  <div
-                                                    key={type}
-                                                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                  <TableRow
+                                                    key={workerId}
+                                                    className="h-8 hover:bg-transparent border-0"
                                                   >
-                                                    <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
-                                                      {WORK_TYPE_LABELS[type] ||
-                                                        type}
-                                                    </span>
-                                                    <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                      € {cost}
-                                                    </span>
-                                                  </div>
+                                                    <TableCell className="py-1">
+                                                      <div className="flex items-center gap-2">
+                                                        <Avatar className="h-5 w-5 border">
+                                                          <AvatarImage
+                                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
+                                                          />
+                                                          <AvatarFallback className="text-[9px]">
+                                                            {workerId.charAt(0)}
+                                                          </AvatarFallback>
+                                                        </Avatar>
+                                                        <span className="text-xs font-medium truncate max-w-[100px]">
+                                                          {worker?.name ||
+                                                            `Worker ${workerId}`}
+                                                        </span>
+                                                      </div>
+                                                    </TableCell>
+                                                    <TableCell className="py-1 text-xs text-center">
+                                                      <span
+                                                        className={
+                                                          certValid
+                                                            ? "text-green-600 font-medium"
+                                                            : "text-muted-foreground"
+                                                        }
+                                                      >
+                                                        {certValid
+                                                          ? "Yes"
+                                                          : worker?.certStatus ===
+                                                              "Valid"
+                                                            ? "Missing"
+                                                            : worker?.certStatus ||
+                                                              "No"}
+                                                      </span>
+                                                    </TableCell>
+                                                    <TableCell className="py-1 text-xs text-center">
+                                                      <span
+                                                        className={
+                                                          a1Valid
+                                                            ? "text-green-600 font-medium"
+                                                            : "text-muted-foreground"
+                                                        }
+                                                      >
+                                                        {a1Valid
+                                                          ? "Yes"
+                                                          : worker?.a1Status ||
+                                                            "No"}
+                                                      </span>
+                                                    </TableCell>
+                                                    <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
+                                                      {worker?.successRate !==
+                                                      undefined
+                                                        ? `${worker.successRate}%`
+                                                        : "100%"}
+                                                    </TableCell>
+                                                  </TableRow>
                                                 );
                                               },
                                             )}
-                                          </div>
-                                        ) : (
-                                          <p className="text-muted-foreground italic text-[11px] py-1">
-                                            No specific work types selected.
-                                          </p>
-                                        )}
+                                          </TableBody>
+                                        </Table>
                                       </div>
+                                    ) : (
+                                      <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
+                                        No workers assigned yet.
+                                      </div>
+                                    )}
 
-                                      {/* Additional Services */}
-                                      {item.selectedAdditionalServices &&
-                                        item.selectedAdditionalServices.length >
-                                        0 && (
-                                          <div className="space-y-2 mt-4">
-                                            <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
-                                              Extras
+                                    {/* Estimated & Actual Hours Footer */}
+                                    <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                          Estimated Max Hours:
+                                        </span>
+                                        <span className="font-mono font-semibold">
+                                          {item.estimatedHours || "N/A"}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                          Actual Hours:
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                          <Input
+                                            className="h-6 w-20 text-xs text-right bg-white dark:bg-gray-950 px-1 py-0 h-7"
+                                            placeholder="0"
+                                            value={item.actualHours || ""}
+                                            onChange={(e) =>
+                                              handleActualHoursChange(
+                                                item,
+                                                e.target.value,
+                                              )
+                                            }
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Column 3: Scope of Work */}
+                                  <div className="space-y-4 h-full flex flex-col">
+                                    <div className="h-full flex flex-col">
+                                      <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <Trophy className="h-3 w-3" /> Scope of
+                                        Work
+                                      </h4>
+
+                                      <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
+                                        <div className="flex-1 space-y-5 text-xs">
+                                          {/* Unit Count Header */}
+                                          <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
+                                            <span className="font-medium text-muted-foreground">
+                                              Indoor Units
+                                            </span>
+                                            <Badge
+                                              variant="secondary"
+                                              className="text-sm font-bold px-2.5 py-0.5"
+                                            >
+                                              {item.indoorUnits || 0}
+                                            </Badge>
+                                          </div>
+
+                                          {/* Work Types */}
+                                          <div className="space-y-2">
+                                            <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
+                                              Base Installation
                                             </div>
-                                            <div className="grid gap-2">
-                                              {item.selectedAdditionalServices.map(
-                                                (serviceId: string) => {
-                                                  const service =
-                                                    ADDITIONAL_SERVICES.find(
-                                                      (s) => s.id === serviceId,
+                                            {item.selectedWorkTypes &&
+                                            item.selectedWorkTypes.length >
+                                              0 ? (
+                                              <div className="grid gap-2">
+                                                {item.selectedWorkTypes.map(
+                                                  (type: string) => {
+                                                    // Calculate cost for this type based on units
+                                                    const units =
+                                                      item.indoorUnits || 0;
+                                                    const unitCosts =
+                                                      PRICING_MATRIX.baseCosts[
+                                                        units
+                                                      ] || {};
+                                                    const cost =
+                                                      (unitCosts as any)[
+                                                        type
+                                                      ] || 0;
+
+                                                    return (
+                                                      <div
+                                                        key={type}
+                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                      >
+                                                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
+                                                          {WORK_TYPE_LABELS[
+                                                            type
+                                                          ] || type}
+                                                        </span>
+                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                          € {cost}
+                                                        </span>
+                                                      </div>
                                                     );
-                                                  return (
-                                                    <div
-                                                      key={serviceId}
-                                                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
-                                                    >
-                                                      <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
-                                                        {service?.label ||
-                                                          serviceId}
-                                                      </span>
-                                                      <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                        € {service?.price || 0}
-                                                      </span>
-                                                    </div>
-                                                  );
+                                                  },
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <p className="text-muted-foreground italic text-[11px] py-1">
+                                                No specific work types selected.
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          {/* Additional Services */}
+                                          {item.selectedAdditionalServices &&
+                                            item.selectedAdditionalServices
+                                              .length > 0 && (
+                                              <div className="space-y-2 mt-4">
+                                                <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                                  Extras
+                                                </div>
+                                                <div className="grid gap-2">
+                                                  {item.selectedAdditionalServices.map(
+                                                    (serviceId: string) => {
+                                                      const service =
+                                                        ADDITIONAL_SERVICES.find(
+                                                          (s) =>
+                                                            s.id === serviceId,
+                                                        );
+                                                      return (
+                                                        <div
+                                                          key={serviceId}
+                                                          className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                        >
+                                                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                            {service?.label ||
+                                                              serviceId}
+                                                          </span>
+                                                          <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                            €{" "}
+                                                            {service?.price ||
+                                                              0}
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    },
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-4 mt-4 border-t">
+                                          <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                                            <span className="font-bold text-blue-900 dark:text-blue-100">
+                                              Total Amount
+                                            </span>
+                                            <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                                              €{" "}
+                                              {netAmount.toLocaleString(
+                                                "de-DE",
+                                                {
+                                                  minimumFractionDigits: 0,
+                                                  maximumFractionDigits: 2,
                                                 },
                                               )}
-                                            </div>
+                                            </span>
                                           </div>
-                                        )}
-                                    </div>
-
-                                    <div className="pt-4 mt-4 border-t">
-                                      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
-                                        <span className="font-bold text-blue-900 dark:text-blue-100">
-                                          Total Amount
-                                        </span>
-                                        <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
-                                          €{" "}
-                                          {netAmount.toLocaleString("de-DE", {
-                                            minimumFractionDigits: 0,
-                                            maximumFractionDigits: 2,
-                                          })}
-                                        </span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            </div>
 
-                            {/* Additional Work Section (Full Width) */}
-                            <div className="px-4 pb-4 overflow-hidden">
-                              <div className="pt-6 mt-6 border-t border-dashed">
-                                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                                  <PlusCircle className="h-3 w-3" /> In-Progress
-                                  Additional Work
-                                </h4>
+                                {/* Additional Work Section (Full Width) */}
+                                <div className="px-4 pb-4 overflow-hidden">
+                                  <div className="pt-6 mt-6 border-t border-dashed">
+                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                                      <PlusCircle className="h-3 w-3" />{" "}
+                                      In-Progress Additional Work
+                                    </h4>
 
-                                <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 shadow-sm space-y-4 overflow-hidden">
-                                  {/* List of Additional Works */}
-                                  {item.additionalWorks &&
-                                    item.additionalWorks.length > 0 && (
-                                      <div className="space-y-2 mb-4">
-                                        <div className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-xs font-medium text-muted-foreground pb-2 border-b px-2">
-                                          <span>Description</span>
-                                          <span className="text-right">
-                                            Price
-                                          </span>
-                                          <span className="text-center">
-                                            Receipt
-                                          </span>
-                                          <span></span>
-                                        </div>
-                                        {item.additionalWorks.map(
-                                          (work: any, wIndex: number) => (
-                                            <div
-                                              key={wIndex}
-                                              className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-sm items-center px-2"
-                                            >
-                                              <span className="font-medium truncate">
-                                                {work.description}
+                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 shadow-sm space-y-4 overflow-hidden">
+                                      {/* List of Additional Works */}
+                                      {item.additionalWorks &&
+                                        item.additionalWorks.length > 0 && (
+                                          <div className="space-y-2 mb-4">
+                                            <div className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-xs font-medium text-muted-foreground pb-2 border-b px-2">
+                                              <span>Description</span>
+                                              <span className="text-right">
+                                                Price
                                               </span>
-                                              <span className="font-mono text-right text-gray-600">
-                                                € {work.price.toFixed(2)}
+                                              <span className="text-center">
+                                                Receipt
                                               </span>
-                                              <div className="flex justify-center">
-                                                {work.receiptName ? (
-                                                  <Badge
-                                                    variant="outline"
-                                                    className="text-[10px] bg-green-50 text-green-700 border-green-200 truncate max-w-full"
-                                                  >
-                                                    <FileText className="h-3 w-3 mr-1" />{" "}
-                                                    {work.receiptName}
-                                                  </Badge>
-                                                ) : (
-                                                  <span className="text-xs text-muted-foreground italic">
-                                                    No receipt
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div></div>
+                                              <span></span>
                                             </div>
-                                          ),
+                                            {item.additionalWorks.map(
+                                              (work: any, wIndex: number) => (
+                                                <div
+                                                  key={wIndex}
+                                                  className="grid grid-cols-[1fr_120px_180px_100px] gap-4 text-sm items-center px-2"
+                                                >
+                                                  <span className="font-medium truncate">
+                                                    {work.description}
+                                                  </span>
+                                                  <span className="font-mono text-right text-gray-600">
+                                                    € {work.price.toFixed(2)}
+                                                  </span>
+                                                  <div className="flex justify-center">
+                                                    {work.receiptName ? (
+                                                      <Badge
+                                                        variant="outline"
+                                                        className="text-[10px] bg-green-50 text-green-700 border-green-200 truncate max-w-full"
+                                                      >
+                                                        <FileText className="h-3 w-3 mr-1" />{" "}
+                                                        {work.receiptName}
+                                                      </Badge>
+                                                    ) : (
+                                                      <span className="text-xs text-muted-foreground italic">
+                                                        No receipt
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div></div>
+                                                </div>
+                                              ),
+                                            )}
+                                            <div className="flex justify-between items-center pt-2 mt-2 border-t px-2">
+                                              <span className="text-xs font-bold">
+                                                Total Additional Cost
+                                              </span>
+                                              <span className="font-mono font-bold text-blue-600">
+                                                €{" "}
+                                                {item.additionalWorks
+                                                  .reduce(
+                                                    (sum: number, w: any) =>
+                                                      sum + (w.price || 0),
+                                                    0,
+                                                  )
+                                                  .toFixed(2)}
+                                              </span>
+                                            </div>
+                                          </div>
                                         )}
-                                        <div className="flex justify-between items-center pt-2 mt-2 border-t px-2">
-                                          <span className="text-xs font-bold">
-                                            Total Additional Cost
-                                          </span>
-                                          <span className="font-mono font-bold text-blue-600">
-                                            €{" "}
-                                            {item.additionalWorks
-                                              .reduce(
-                                                (sum: number, w: any) =>
-                                                  sum + (w.price || 0),
-                                                0,
-                                              )
-                                              .toFixed(2)}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
 
-                                  {/* Add New Item Form - Polished Layout */}
-                                  <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
-                                    <div className="space-y-4">
-                                      {/* Row 1: Description */}
-                                      <div className="space-y-1.5 max-w-md">
-                                        <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
-                                          Description
-                                        </label>
-                                        <Input
-                                          placeholder="e.g. Additional cabling..."
-                                          className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 focus:ring-blue-500/20 w-full"
-                                          value={
-                                            additionalWorkInputs[i]
-                                              ?.description || ""
-                                          }
-                                          onChange={(e) =>
-                                            handleAdditionalWorkInputChange(
-                                              i,
-                                              "description",
-                                              e.target.value,
-                                            )
-                                          }
-                                        />
-                                      </div>
-
-                                      {/* Row 2: Price and Receipt stacked */}
-                                      <div className="space-y-3 max-w-xs">
-                                        <div className="space-y-1.5">
-                                          <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
-                                            Price
-                                          </label>
-                                          <div className="relative">
-                                            <span className="absolute left-2.5 top-2.5 text-gray-400 text-xs">
-                                              €
-                                            </span>
+                                      {/* Add New Item Form - Polished Layout */}
+                                      <div className="bg-gray-50/80 dark:bg-gray-900/20 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+                                        <div className="space-y-4">
+                                          {/* Row 1: Description */}
+                                          <div className="space-y-1.5 max-w-md">
+                                            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
+                                              Description
+                                            </label>
                                             <Input
-                                              type="number"
-                                              placeholder="0.00"
-                                              className="pl-6 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 font-mono text-sm w-full"
+                                              placeholder="e.g. Additional cabling..."
+                                              className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 focus:ring-blue-500/20 w-full"
                                               value={
                                                 additionalWorkInputs[i]
-                                                  ?.price || ""
+                                                  ?.description || ""
                                               }
                                               onChange={(e) =>
                                                 handleAdditionalWorkInputChange(
                                                   i,
-                                                  "price",
+                                                  "description",
                                                   e.target.value,
                                                 )
                                               }
                                             />
                                           </div>
-                                        </div>
 
-                                        <div className="space-y-1.5 overflow-hidden">
-                                          <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
-                                            Receipt
-                                          </label>
-                                          <Input
-                                            id={`receipt-upload-${i}`}
-                                            type="file"
-                                            className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-xs py-1.5 h-10 w-full file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-600 hover:file:bg-gray-200 truncate"
-                                          />
-                                        </div>
-                                      </div>
+                                          {/* Row 2: Price and Receipt stacked */}
+                                          <div className="space-y-3 max-w-xs">
+                                            <div className="space-y-1.5">
+                                              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
+                                                Price
+                                              </label>
+                                              <div className="relative">
+                                                <span className="absolute left-2.5 top-2.5 text-gray-400 text-xs">
+                                                  €
+                                                </span>
+                                                <Input
+                                                  type="number"
+                                                  placeholder="0.00"
+                                                  className="pl-6 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 font-mono text-sm w-full"
+                                                  value={
+                                                    additionalWorkInputs[i]
+                                                      ?.price || ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    handleAdditionalWorkInputChange(
+                                                      i,
+                                                      "price",
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                />
+                                              </div>
+                                            </div>
 
-                                      {/* Row 3: Add Button */}
-                                      <div className="flex justify-end">
-                                        <Button
-                                          size="default"
-                                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[120px]"
-                                          onClick={() =>
-                                            handleAddAdditionalWorkItem(i, item)
-                                          }
-                                        >
-                                          <PlusCircle className="h-4 w-4 mr-2" />{" "}
-                                          Add
-                                        </Button>
+                                            <div className="space-y-1.5 overflow-hidden">
+                                              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
+                                                Receipt
+                                              </label>
+                                              <Input
+                                                id={`receipt-upload-${i}`}
+                                                type="file"
+                                                className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-xs py-1.5 h-10 w-full file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-600 hover:file:bg-gray-200 truncate"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Row 3: Add Button */}
+                                          <div className="flex justify-end">
+                                            <Button
+                                              size="default"
+                                              className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 min-w-[120px]"
+                                              onClick={() =>
+                                                handleAddAdditionalWorkItem(
+                                                  i,
+                                                  item,
+                                                )
+                                              }
+                                            >
+                                              <PlusCircle className="h-4 w-4 mr-2" />{" "}
+                                              Add
+                                            </Button>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
+
+                                  {/* Evidence / Screenshots Section */}
+                                  <div className="px-4 pb-4 overflow-hidden">
+                                    <div className="pt-6 mt-6 border-t border-dashed">
+                                      <ProjectEvidence projectId={item.id} />
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-
-                              {/* Evidence / Screenshots Section */}
-                              <div className="px-4 pb-4 overflow-hidden">
-                                <div className="pt-6 mt-6 border-t border-dashed">
-                                  <ProjectEvidence projectId={item.id} />
-                                </div>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </Fragment>
-                  );
-                })}
-            </TableBody>
-          </Table>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between p-4 border-t bg-gray-50/50 dark:bg-gray-900/50">
-            <div className="text-sm text-muted-foreground">
-              Showing {totalProjects} projects
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground"
-                disabled
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 text-sm font-medium bg-white dark:bg-gray-800 border shadow-sm"
-              >
-                1
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground"
-                disabled={totalProjects <= 10}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Button variant="outline" size="icon" className="h-6 w-6">
-                  <ChevronLeft className="h-3 w-3" />
-                </Button>
-                <span>10 / page</span>
-                <Button variant="outline" size="icon" className="h-6 w-6">
-                  <ChevronRight className="h-3 w-3" />
-                </Button>
-              </div>
-              <Button variant="outline" size="sm" className="h-8">
-                Download CSV <ChevronRight className="ml-1 h-3 w-3" />
-              </Button>
-            </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })
+                )}
+              </TableBody>
+            </Table>
           </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground mt-4">
+        <div className="text-sm text-muted-foreground">
+          Showing {totalProjects} projects
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground"
+            disabled
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 text-sm font-medium bg-white dark:bg-gray-800 border shadow-sm"
+          >
+            1
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground"
+            disabled={totalProjects <= 10}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Button variant="outline" size="icon" className="h-6 w-6">
+              <ChevronLeft className="h-3 w-3" />
+            </Button>
+            <span>10 / page</span>
+            <Button variant="outline" size="icon" className="h-6 w-6">
+              <ChevronRight className="h-3 w-3" />
+            </Button>
+          </div>
+          <Button variant="outline" size="sm" className="h-8">
+            Download CSV <ChevronRight className="ml-1 h-3 w-3" />
+          </Button>
         </div>
       </div>
 
@@ -3145,14 +3517,22 @@ export default function AdminProjects() {
             </DialogDescription>
           </DialogHeader>
 
-          {currentInvoice && (
-            !showInvoicePreview ? (
+          {currentInvoice &&
+            (!showInvoicePreview ? (
               <Tabs defaultValue="partner" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsList className="grid w-full grid-cols-4 mb-4">
                   <TabsTrigger value="partner">Partner Invoice</TabsTrigger>
                   <TabsTrigger value="subcontractor">Subcontractor</TabsTrigger>
                   <TabsTrigger value="company">
-                    {currentInvoice?.hasMediator ? "Mediator" : "Mediator (N/A)"}
+                    {currentInvoice?.hasMediator
+                      ? "Mediator"
+                      : "Mediator (N/A)"}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="emails"
+                    className="text-blue-600 font-semibold gap-2"
+                  >
+                    <Mail className="h-4 w-4" /> Email Formats
                   </TabsTrigger>
                 </TabsList>
 
@@ -3233,7 +3613,7 @@ export default function AdminProjects() {
                           Units):
                         </span>
                         {currentInvoice.projectData?.selectedWorkTypes?.length >
-                          0 ? (
+                        0 ? (
                           <ul className="space-y-1">
                             {currentInvoice.projectData.selectedWorkTypes.map(
                               (type: string) => {
@@ -3241,7 +3621,7 @@ export default function AdminProjects() {
                                   currentInvoice.projectData?.indoorUnits || 0;
                                 const cost =
                                   PRICING_MATRIX.baseCosts[units]?.[
-                                  type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                    type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                                   ] || 0;
 
                                 return (
@@ -3273,45 +3653,45 @@ export default function AdminProjects() {
                       {/* Additional Services */}
                       {currentInvoice.projectData?.selectedAdditionalServices
                         ?.length > 0 && (
-                          <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-                            <span className="text-muted-foreground block font-semibold mb-1">
-                              Additional Services:
-                            </span>
-                            <ul className="space-y-1">
-                              {currentInvoice.projectData.selectedAdditionalServices.map(
-                                (serviceId: string) => {
-                                  const service = ADDITIONAL_SERVICES.find(
-                                    (s) => s.id === serviceId,
-                                  );
-                                  const price =
-                                    currentInvoice.projectData
-                                      .additionalServicePrices?.[serviceId] !==
-                                      undefined
-                                      ? currentInvoice.projectData
+                        <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
+                          <span className="text-muted-foreground block font-semibold mb-1">
+                            Additional Services:
+                          </span>
+                          <ul className="space-y-1">
+                            {currentInvoice.projectData.selectedAdditionalServices.map(
+                              (serviceId: string) => {
+                                const service = ADDITIONAL_SERVICES.find(
+                                  (s) => s.id === serviceId,
+                                );
+                                const price =
+                                  currentInvoice.projectData
+                                    .additionalServicePrices?.[serviceId] !==
+                                  undefined
+                                    ? currentInvoice.projectData
                                         .additionalServicePrices[serviceId]
-                                      : service?.price || 0;
+                                    : service?.price || 0;
 
-                                  return (
-                                    <li
-                                      key={serviceId}
-                                      className="flex items-start gap-2 justify-between"
-                                    >
-                                      <div className="flex items-start gap-2">
-                                        <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
-                                        <span className="leading-tight text-xs">
-                                          {service?.label || serviceId}
-                                        </span>
-                                      </div>
-                                      <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
-                                        € {price}
+                                return (
+                                  <li
+                                    key={serviceId}
+                                    className="flex items-start gap-2 justify-between"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <Plus className="h-3 w-3 text-purple-600 mt-0.5 shrink-0" />
+                                      <span className="leading-tight text-xs">
+                                        {service?.label || serviceId}
                                       </span>
-                                    </li>
-                                  );
-                                },
-                              )}
-                            </ul>
-                          </div>
-                        )}
+                                    </div>
+                                    <span className="font-mono text-xs font-semibold text-gray-700 dark:text-gray-300">
+                                      € {price}
+                                    </span>
+                                  </li>
+                                );
+                              },
+                            )}
+                          </ul>
+                        </div>
+                      )}
 
                       {/* Additional Works Section */}
                       <div className="space-y-1 mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
@@ -3319,7 +3699,8 @@ export default function AdminProjects() {
                           Additional Works (Material/Extra):
                         </span>
                         {currentInvoice.projectData?.additionalWorks &&
-                          currentInvoice.projectData.additionalWorks.length > 0 ? (
+                        currentInvoice.projectData.additionalWorks.length >
+                          0 ? (
                           <ul className="space-y-1">
                             {currentInvoice.projectData.additionalWorks.map(
                               (work: any, idx: number) => (
@@ -3355,10 +3736,11 @@ export default function AdminProjects() {
 
                         {/* Quality Bonus Card */}
                         <div
-                          className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.qualityBonus.enabled
-                            ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
-                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                            }`}
+                          className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                            invoiceEditState.qualityBonus.enabled
+                              ? "bg-blue-50/50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800"
+                              : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                          }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -3386,10 +3768,11 @@ export default function AdminProjects() {
                                 <div className="mt-0.5">
                                   <Badge
                                     variant="outline"
-                                    className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.qualityBonus.enabled
-                                      ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
-                                      : "text-gray-500 border-gray-300"
-                                      }`}
+                                    className={`text-[10px] h-4 px-1.5 font-normal ${
+                                      invoiceEditState.qualityBonus.enabled
+                                        ? "bg-white/50 text-blue-700 border-blue-300 dark:border-blue-700 dark:text-blue-400"
+                                        : "text-gray-500 border-gray-300"
+                                    }`}
                                   >
                                     {invoiceEditState.qualityBonus.label ||
                                       "Indoor Units"}
@@ -3399,17 +3782,22 @@ export default function AdminProjects() {
                             </div>
                             <div className="flex items-center gap-2">
                               <span
-                                className={`text-sm font-medium ${invoiceEditState.qualityBonus.enabled
-                                  ? "text-blue-600 dark:text-blue-400"
-                                  : "text-gray-400"
-                                  }`}
+                                className={`text-sm font-medium ${
+                                  invoiceEditState.qualityBonus.enabled
+                                    ? "text-blue-600 dark:text-blue-400"
+                                    : "text-gray-400"
+                                }`}
                               >
                                 + €
                               </span>
                               <Input
                                 type="number"
-                                disabled={!invoiceEditState.qualityBonus.enabled}
-                                value={invoiceEditState.qualityBonus.amount || 0}
+                                disabled={
+                                  !invoiceEditState.qualityBonus.enabled
+                                }
+                                value={
+                                  invoiceEditState.qualityBonus.amount || 0
+                                }
                                 onChange={(e) =>
                                   setInvoiceEditState({
                                     ...invoiceEditState,
@@ -3420,10 +3808,11 @@ export default function AdminProjects() {
                                     },
                                   })
                                 }
-                                className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.qualityBonus.enabled
-                                  ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                                  }`}
+                                className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                                  invoiceEditState.qualityBonus.enabled
+                                    ? "border-blue-200 focus:border-blue-400 focus:ring-blue-400 bg-white"
+                                    : "bg-transparent border-transparent"
+                                }`}
                               />
                             </div>
                           </div>
@@ -3431,10 +3820,11 @@ export default function AdminProjects() {
 
                         {/* Quantity Bonus Card */}
                         <div
-                          className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${invoiceEditState.quantityBonus.enabled
-                            ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
-                            : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                            }`}
+                          className={`transition-colors rounded-lg border p-3 flex flex-col gap-1 ${
+                            invoiceEditState.quantityBonus.enabled
+                              ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                              : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                          }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -3462,19 +3852,21 @@ export default function AdminProjects() {
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <Badge
                                     variant="outline"
-                                    className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.quantityBonus.enabled
-                                      ? "bg-white/50 text-green-700 border-green-300 dark:border-green-700 dark:text-green-400"
-                                      : "text-gray-500 border-gray-300"
-                                      }`}
+                                    className={`text-[10px] h-4 px-1.5 font-normal ${
+                                      invoiceEditState.quantityBonus.enabled
+                                        ? "bg-white/50 text-green-700 border-green-300 dark:border-green-700 dark:text-green-400"
+                                        : "text-gray-500 border-gray-300"
+                                    }`}
                                   >
                                     {invoiceEditState.quantityBonus.label ||
                                       "Volume Tier"}
                                   </Badge>
-                                  {invoiceEditState.quantityCount !== undefined &&
+                                  {invoiceEditState.quantityCount !==
+                                    undefined &&
                                     invoiceEditState.quantityCount > 0 && (
                                       <span className="text-[10px] text-gray-500">
-                                        ({invoiceEditState.quantityCount} projects
-                                        this month)
+                                        ({invoiceEditState.quantityCount}{" "}
+                                        projects this month)
                                       </span>
                                     )}
                                 </div>
@@ -3482,7 +3874,9 @@ export default function AdminProjects() {
                             </div>
                             <div className="flex items-center gap-2">
                               <Select
-                                disabled={!invoiceEditState.quantityBonus.enabled}
+                                disabled={
+                                  !invoiceEditState.quantityBonus.enabled
+                                }
                                 value={String(
                                   invoiceEditState.quantityBonus.amount || 0,
                                 )}
@@ -3505,10 +3899,11 @@ export default function AdminProjects() {
                                 }
                               >
                                 <SelectTrigger
-                                  className={`h-7 w-40 text-right font-mono font-bold text-sm ${invoiceEditState.quantityBonus.enabled
-                                    ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
-                                    : "bg-transparent border-transparent"
-                                    }`}
+                                  className={`h-7 w-40 text-right font-mono font-bold text-sm ${
+                                    invoiceEditState.quantityBonus.enabled
+                                      ? "border-green-200 focus:border-green-400 focus:ring-green-400 bg-white"
+                                      : "bg-transparent border-transparent"
+                                  }`}
                                 >
                                   <SelectValue placeholder="Select Tier" />
                                 </SelectTrigger>
@@ -3543,7 +3938,8 @@ export default function AdminProjects() {
                         <div className="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-800 bg-gray-100/50 dark:bg-gray-800/50">
                           <div className="flex flex-col">
                             <span className="font-semibold text-sm">
-                              Contractor: {currentInvoice.contractor || "Unknown"}
+                              Contractor:{" "}
+                              {currentInvoice.contractor || "Unknown"}
                             </span>
                             <span className="text-[10px] text-gray-500 font-normal">
                               Base + Bonuses
@@ -3575,18 +3971,18 @@ export default function AdminProjects() {
                           <span className="font-mono font-medium">
                             {currentInvoice.hasMediator
                               ? `€ ${(
-                                (invoiceEditState.projectValue +
-                                  (invoiceEditState.quantityBonus.enabled
-                                    ? invoiceEditState.quantityBonus.amount
-                                    : 0) +
-                                  (invoiceEditState.qualityBonus.enabled
-                                    ? invoiceEditState.qualityBonus.amount
-                                    : 0)) *
-                                0.1
-                              ).toLocaleString("de-DE", {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              })}`
+                                  (invoiceEditState.projectValue +
+                                    (invoiceEditState.quantityBonus.enabled
+                                      ? invoiceEditState.quantityBonus.amount
+                                      : 0) +
+                                    (invoiceEditState.qualityBonus.enabled
+                                      ? invoiceEditState.qualityBonus.amount
+                                      : 0)) *
+                                  0.1
+                                ).toLocaleString("de-DE", {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 2,
+                                })}`
                               : "-"}
                           </span>
                         </div>
@@ -3659,12 +4055,11 @@ export default function AdminProjects() {
                           </span>
                           <span className="font-mono font-medium">
                             €{" "}
-                            {(invoiceEditState.projectValue * 0.7).toLocaleString(
-                              undefined,
-                              {
-                                minimumFractionDigits: 2,
-                              },
-                            )}
+                            {(
+                              invoiceEditState.projectValue * 0.7
+                            ).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
 
@@ -3673,7 +4068,9 @@ export default function AdminProjects() {
                           <div className="flex items-center gap-3">
                             <Checkbox
                               id="sub-qual-bonus-chk"
-                              checked={invoiceEditState.subQualityBonus?.enabled}
+                              checked={
+                                invoiceEditState.subQualityBonus?.enabled
+                              }
                               onCheckedChange={(checked) =>
                                 setInvoiceEditState({
                                   ...invoiceEditState,
@@ -3695,10 +4092,11 @@ export default function AdminProjects() {
                               <div className="flex items-center gap-2 mt-0.5">
                                 <Badge
                                   variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.subQualityBonus?.enabled
-                                    ? "bg-orange-100 text-orange-700 border-orange-300"
-                                    : "text-gray-500 border-gray-300"
-                                    }`}
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${
+                                    invoiceEditState.subQualityBonus?.enabled
+                                      ? "bg-orange-100 text-orange-700 border-orange-300"
+                                      : "text-gray-500 border-gray-300"
+                                  }`}
                                 >
                                   {invoiceEditState.subQualityBonus?.label ||
                                     "Indoor Units"}
@@ -3709,10 +4107,11 @@ export default function AdminProjects() {
 
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-sm font-medium ${invoiceEditState.subQualityBonus?.enabled
-                                ? "text-orange-600"
-                                : "text-gray-400"
-                                }`}
+                              className={`text-sm font-medium ${
+                                invoiceEditState.subQualityBonus?.enabled
+                                  ? "text-orange-600"
+                                  : "text-gray-400"
+                              }`}
                             >
                               + €
                             </span>
@@ -3724,9 +4123,9 @@ export default function AdminProjects() {
                               value={
                                 invoiceEditState.subQualityBonus?.amount
                                   ? (
-                                    invoiceEditState.subQualityBonus.amount *
-                                    0.7
-                                  ).toFixed(2)
+                                      invoiceEditState.subQualityBonus.amount *
+                                      0.7
+                                    ).toFixed(2)
                                   : 0
                               }
                               onChange={(e) => {
@@ -3739,10 +4138,11 @@ export default function AdminProjects() {
                                   },
                                 });
                               }}
-                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${invoiceEditState.subQualityBonus?.enabled
-                                ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
-                                : "bg-transparent border-transparent"
-                                }`}
+                              className={`h-7 w-20 text-right font-mono font-bold text-sm ${
+                                invoiceEditState.subQualityBonus?.enabled
+                                  ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                  : "bg-transparent border-transparent"
+                              }`}
                             />
                           </div>
                         </div>
@@ -3752,7 +4152,9 @@ export default function AdminProjects() {
                           <div className="flex items-center gap-3">
                             <Checkbox
                               id="sub-qty-bonus-chk"
-                              checked={invoiceEditState.subQuantityBonus?.enabled}
+                              checked={
+                                invoiceEditState.subQuantityBonus?.enabled
+                              }
                               onCheckedChange={(checked) =>
                                 setInvoiceEditState({
                                   ...invoiceEditState,
@@ -3774,17 +4176,19 @@ export default function AdminProjects() {
                               <div className="flex items-center gap-2 mt-0.5">
                                 <Badge
                                   variant="outline"
-                                  className={`text-[10px] h-4 px-1.5 font-normal ${invoiceEditState.subQuantityBonus?.enabled
-                                    ? "bg-orange-100 text-orange-700 border-orange-300"
-                                    : "text-gray-500 border-gray-300"
-                                    }`}
+                                  className={`text-[10px] h-4 px-1.5 font-normal ${
+                                    invoiceEditState.subQuantityBonus?.enabled
+                                      ? "bg-orange-100 text-orange-700 border-orange-300"
+                                      : "text-gray-500 border-gray-300"
+                                  }`}
                                 >
                                   {invoiceEditState.subQuantityBonus?.label ||
                                     "Sub Tier"}
                                 </Badge>
                                 {invoiceEditState.subQuantityCount > 0 && (
                                   <span className="text-[10px] text-gray-500">
-                                    ({invoiceEditState.subQuantityCount} projects)
+                                    ({invoiceEditState.subQuantityCount}{" "}
+                                    projects)
                                   </span>
                                 )}
                               </div>
@@ -3793,10 +4197,11 @@ export default function AdminProjects() {
 
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-sm font-medium ${invoiceEditState.subQuantityBonus?.enabled
-                                ? "text-orange-600"
-                                : "text-gray-400"
-                                }`}
+                              className={`text-sm font-medium ${
+                                invoiceEditState.subQuantityBonus?.enabled
+                                  ? "text-orange-600"
+                                  : "text-gray-400"
+                              }`}
                             >
                               + €
                             </span>
@@ -3826,10 +4231,11 @@ export default function AdminProjects() {
                               }
                             >
                               <SelectTrigger
-                                className={`h-7 w-[200px] text-right font-mono font-bold text-sm ${invoiceEditState.subQuantityBonus?.enabled
-                                  ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
-                                  : "bg-transparent border-transparent"
-                                  }`}
+                                className={`h-7 w-[200px] text-right font-mono font-bold text-sm ${
+                                  invoiceEditState.subQuantityBonus?.enabled
+                                    ? "border-orange-200 focus:border-orange-400 focus:ring-orange-400 bg-white"
+                                    : "bg-transparent border-transparent"
+                                }`}
                               >
                                 <SelectValue placeholder="Select Tier" />
                               </SelectTrigger>
@@ -3891,7 +4297,9 @@ export default function AdminProjects() {
                           <div className="flex items-center gap-3">
                             <Checkbox
                               id="sub-qual-bonus-chk"
-                              checked={invoiceEditState.subQualityBonus?.enabled}
+                              checked={
+                                invoiceEditState.subQualityBonus?.enabled
+                              }
                               onCheckedChange={(checked) =>
                                 setInvoiceEditState({
                                   ...invoiceEditState,
@@ -3904,17 +4312,26 @@ export default function AdminProjects() {
                               className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
                             />
                             <div className="flex flex-col">
-                              <label htmlFor="sub-qual-bonus-chk" className="font-medium text-sm cursor-pointer">
+                              <label
+                                htmlFor="sub-qual-bonus-chk"
+                                className="font-medium text-sm cursor-pointer"
+                              >
                                 Quality Bonus
                               </label>
-                              <span className="text-[10px] text-muted-foreground">Base Amount (100%)</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                Base Amount (100%)
+                              </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
-                              disabled={!invoiceEditState.subQualityBonus?.enabled}
-                              value={invoiceEditState.subQualityBonus?.amount || 0}
+                              disabled={
+                                !invoiceEditState.subQualityBonus?.enabled
+                              }
+                              value={
+                                invoiceEditState.subQualityBonus?.amount || 0
+                              }
                               onChange={(e) => {
                                 const val = parseFloat(e.target.value) || 0;
                                 setInvoiceEditState({
@@ -3927,7 +4344,9 @@ export default function AdminProjects() {
                               }}
                               className="h-8 w-24 text-right font-mono text-sm"
                             />
-                            <span className="text-xs text-muted-foreground">€</span>
+                            <span className="text-xs text-muted-foreground">
+                              €
+                            </span>
                           </div>
                         </div>
 
@@ -3936,7 +4355,9 @@ export default function AdminProjects() {
                           <div className="flex items-center gap-3">
                             <Checkbox
                               id="sub-qty-bonus-chk"
-                              checked={invoiceEditState.subQuantityBonus?.enabled}
+                              checked={
+                                invoiceEditState.subQuantityBonus?.enabled
+                              }
                               onCheckedChange={(checked) =>
                                 setInvoiceEditState({
                                   ...invoiceEditState,
@@ -3949,22 +4370,38 @@ export default function AdminProjects() {
                               className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
                             />
                             <div className="flex flex-col">
-                              <label htmlFor="sub-qty-bonus-chk" className="font-medium text-sm cursor-pointer">
+                              <label
+                                htmlFor="sub-qty-bonus-chk"
+                                className="font-medium text-sm cursor-pointer"
+                              >
                                 Quantity Bonus
                               </label>
-                              <span className="text-[10px] text-muted-foreground">Base Amount (100%)</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                Base Amount (100%)
+                              </span>
                             </div>
                           </div>
                           <Select
-                            disabled={!invoiceEditState.subQuantityBonus?.enabled}
-                            value={String(invoiceEditState.subQuantityBonus?.amount || 0)}
+                            disabled={
+                              !invoiceEditState.subQuantityBonus?.enabled
+                            }
+                            value={String(
+                              invoiceEditState.subQuantityBonus?.amount || 0,
+                            )}
                             onValueChange={(val) =>
                               setInvoiceEditState({
                                 ...invoiceEditState,
                                 subQuantityBonus: {
                                   ...invoiceEditState.subQuantityBonus,
                                   amount: parseFloat(val) || 0,
-                                  label: val === "150" ? "0-12 Projects" : val === "330" ? "12-36 Projects" : val === "600" ? "36+ Projects" : "No Bonus",
+                                  label:
+                                    val === "150"
+                                      ? "0-12 Projects"
+                                      : val === "330"
+                                        ? "12-36 Projects"
+                                        : val === "600"
+                                          ? "36+ Projects"
+                                          : "No Bonus",
                                 },
                               })
                             }
@@ -3989,9 +4426,13 @@ export default function AdminProjects() {
                       <div className="p-8 border-b bg-gray-50/50">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h1 className="text-2xl font-bold uppercase tracking-widest text-gray-800">Invoice</h1>
+                            <h1 className="text-2xl font-bold uppercase tracking-widest text-gray-800">
+                              Invoice
+                            </h1>
                             <div className="mt-4 text-sm text-gray-500 space-y-1">
-                              <p className="font-semibold text-gray-900">Prostruktion GmbH</p>
+                              <p className="font-semibold text-gray-900">
+                                Prostruktion GmbH
+                              </p>
                               <p>Musterstraße 123</p>
                               <p>12345 Berlin, Germany</p>
                               <p>VAT ID: DE123456789</p>
@@ -3999,16 +4440,28 @@ export default function AdminProjects() {
                           </div>
                           <div className="text-right text-sm space-y-2">
                             <div>
-                              <span className="block text-gray-500 text-xs uppercase font-semibold">Date</span>
-                              <span className="font-medium">{new Date().toLocaleDateString("de-DE")}</span>
+                              <span className="block text-gray-500 text-xs uppercase font-semibold">
+                                Date
+                              </span>
+                              <span className="font-medium">
+                                {new Date().toLocaleDateString("de-DE")}
+                              </span>
                             </div>
                             <div>
-                              <span className="block text-gray-500 text-xs uppercase font-semibold">Invoice No.</span>
-                              <span className="font-medium">#{currentInvoice.id?.slice(0, 8).toUpperCase()}</span>
+                              <span className="block text-gray-500 text-xs uppercase font-semibold">
+                                Invoice No.
+                              </span>
+                              <span className="font-medium">
+                                #{currentInvoice.id?.slice(0, 8).toUpperCase()}
+                              </span>
                             </div>
                             <div>
-                              <span className="block text-gray-500 text-xs uppercase font-semibold">Project</span>
-                              <span className="font-medium">{currentInvoice.project}</span>
+                              <span className="block text-gray-500 text-xs uppercase font-semibold">
+                                Project
+                              </span>
+                              <span className="font-medium">
+                                {currentInvoice.project}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -4016,9 +4469,15 @@ export default function AdminProjects() {
 
                       {/* Bill To */}
                       <div className="p-8 pb-4">
-                        <span className="block text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Bill To</span>
-                        <h2 className="text-xl font-medium text-gray-900">{currentInvoice.sub || "Subcontractor Name"}</h2>
-                        <p className="text-sm text-gray-500 mt-1">Partner ID: {currentInvoice.subId || "N/A"}</p>
+                        <span className="block text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">
+                          Bill To
+                        </span>
+                        <h2 className="text-xl font-medium text-gray-900">
+                          {currentInvoice.sub || "Subcontractor Name"}
+                        </h2>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Partner ID: {currentInvoice.subId || "N/A"}
+                        </p>
                       </div>
 
                       {/* Line Items Table */}
@@ -4026,57 +4485,152 @@ export default function AdminProjects() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b-2 border-gray-900 text-gray-600">
-                              <th className="text-left py-3 font-semibold uppercase text-xs tracking-wider">Description</th>
-                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Base</th>
-                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[100px]">Share %</th>
-                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Total</th>
+                              <th className="text-left py-3 font-semibold uppercase text-xs tracking-wider">
+                                Description
+                              </th>
+                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">
+                                Base
+                              </th>
+                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[100px]">
+                                Share %
+                              </th>
+                              <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">
+                                Total
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {/* WORK TYPES */}
-                            {currentInvoice.projectData?.selectedWorkTypes?.map((type: string) => {
-                              const units = currentInvoice.projectData?.indoorUnits || 0;
-                              const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
-                              const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
-                              return (
-                                <tr key={type}>
-                                  <td className="py-3 text-gray-800">{WORK_TYPE_LABELS[type] || type}</td>
-                                  <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                  <td className="py-3 text-right text-gray-500">70%</td>
-                                  <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                </tr>
-                              );
-                            })}
+                            {currentInvoice.projectData?.selectedWorkTypes?.map(
+                              (type: string) => {
+                                const units =
+                                  currentInvoice.projectData?.indoorUnits || 0;
+                                const matrixPrice =
+                                  PRICING_MATRIX.baseCosts[units]?.[
+                                    type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  ] || 0;
+                                const base =
+                                  currentInvoice.projectData?.workTypePrices?.[
+                                    type
+                                  ] !== undefined
+                                    ? currentInvoice.projectData.workTypePrices[
+                                        type
+                                      ]
+                                    : matrixPrice;
+                                return (
+                                  <tr key={type}>
+                                    <td className="py-3 text-gray-800">
+                                      {WORK_TYPE_LABELS[type] || type}
+                                    </td>
+                                    <td className="py-3 text-right text-gray-500">
+                                      €{" "}
+                                      {base.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                    <td className="py-3 text-right text-gray-500">
+                                      70%
+                                    </td>
+                                    <td className="py-3 text-right font-medium">
+                                      €{" "}
+                                      {(base * 0.7).toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                  </tr>
+                                );
+                              },
+                            )}
 
                             {/* ADDITIONAL SERVICES */}
-                            {currentInvoice.projectData?.selectedAdditionalServices?.map((s: string) => {
-                              const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
-                              const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
-                              return (
-                                <tr key={s}>
-                                  <td className="py-3 text-gray-800">{service?.label || s}</td>
-                                  <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                  <td className="py-3 text-right text-gray-500">70%</td>
-                                  <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                </tr>
-                              );
-                            })}
+                            {currentInvoice.projectData?.selectedAdditionalServices?.map(
+                              (s: string) => {
+                                const service = ADDITIONAL_SERVICES.find(
+                                  (as) => as.id === s,
+                                );
+                                const base =
+                                  currentInvoice.projectData
+                                    ?.additionalServicePrices?.[s] !== undefined
+                                    ? currentInvoice.projectData
+                                        .additionalServicePrices[s]
+                                    : service?.price || 0;
+                                return (
+                                  <tr key={s}>
+                                    <td className="py-3 text-gray-800">
+                                      {service?.label || s}
+                                    </td>
+                                    <td className="py-3 text-right text-gray-500">
+                                      €{" "}
+                                      {base.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                    <td className="py-3 text-right text-gray-500">
+                                      70%
+                                    </td>
+                                    <td className="py-3 text-right font-medium">
+                                      €{" "}
+                                      {(base * 0.7).toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                  </tr>
+                                );
+                              },
+                            )}
 
                             {/* BONUSES */}
                             {invoiceEditState.subQualityBonus?.enabled && (
                               <tr>
-                                <td className="py-3 text-gray-800">Quality Bonus</td>
-                                <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQualityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td className="py-3 text-right text-gray-500">70%</td>
-                                <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQualityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td className="py-3 text-gray-800">
+                                  Quality Bonus
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  €{" "}
+                                  {invoiceEditState.subQualityBonus.amount.toLocaleString(
+                                    undefined,
+                                    { minimumFractionDigits: 2 },
+                                  )}
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  70%
+                                </td>
+                                <td className="py-3 text-right font-medium text-green-600">
+                                  €{" "}
+                                  {(
+                                    invoiceEditState.subQualityBonus.amount *
+                                    0.7
+                                  ).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
                               </tr>
                             )}
                             {invoiceEditState.subQuantityBonus?.enabled && (
                               <tr>
-                                <td className="py-3 text-gray-800">Quantity Bonus ({invoiceEditState.subQuantityBonus.label})</td>
-                                <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQuantityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td className="py-3 text-right text-gray-500">70%</td>
-                                <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQuantityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td className="py-3 text-gray-800">
+                                  Quantity Bonus (
+                                  {invoiceEditState.subQuantityBonus.label})
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  €{" "}
+                                  {invoiceEditState.subQuantityBonus.amount.toLocaleString(
+                                    undefined,
+                                    { minimumFractionDigits: 2 },
+                                  )}
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  70%
+                                </td>
+                                <td className="py-3 text-right font-medium text-green-600">
+                                  €{" "}
+                                  {(
+                                    invoiceEditState.subQuantityBonus.amount *
+                                    0.7
+                                  ).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
                               </tr>
                             )}
                           </tbody>
@@ -4088,60 +4642,150 @@ export default function AdminProjects() {
                         <div className="flex flex-col gap-3 max-w-[400px] ml-auto">
                           {/* Subtotal */}
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Subtotal (Sharing Model):</span>
+                            <span className="text-gray-500">
+                              Subtotal (Sharing Model):
+                            </span>
                             <span className="font-medium">
-                              € {((
-                                (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
-                                  const units = currentInvoice.projectData?.indoorUnits || 0;
-                                  const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
-                                  const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
-                                  return acc + base * 0.7;
-                                }, 0) || 0) +
-                                (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
-                                  const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
-                                  const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
-                                  return acc + base * 0.7;
-                                }, 0) || 0) +
-                                (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
-                                (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0)
-                              ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                              €{" "}
+                              {(
+                                (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                                  (acc: number, type: string) => {
+                                    const units =
+                                      currentInvoice.projectData?.indoorUnits ||
+                                      0;
+                                    const matrixPrice =
+                                      PRICING_MATRIX.baseCosts[units]?.[
+                                        type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                      ] || 0;
+                                    const base =
+                                      currentInvoice.projectData
+                                        ?.workTypePrices?.[type] !== undefined
+                                        ? currentInvoice.projectData
+                                            .workTypePrices[type]
+                                        : matrixPrice;
+                                    return acc + base * 0.7;
+                                  },
+                                  0,
+                                ) || 0) +
+                                (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                                  (acc: number, s: string) => {
+                                    const service = ADDITIONAL_SERVICES.find(
+                                      (as) => as.id === s,
+                                    );
+                                    const base =
+                                      currentInvoice.projectData
+                                        ?.additionalServicePrices?.[s] !==
+                                      undefined
+                                        ? currentInvoice.projectData
+                                            .additionalServicePrices[s]
+                                        : service?.price || 0;
+                                    return acc + base * 0.7;
+                                  },
+                                  0,
+                                ) || 0) +
+                                (invoiceEditState.subQualityBonus.enabled
+                                  ? invoiceEditState.subQualityBonus.amount *
+                                    0.7
+                                  : 0) +
+                                (invoiceEditState.subQuantityBonus.enabled
+                                  ? invoiceEditState.subQuantityBonus.amount *
+                                    0.7
+                                  : 0)
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              })}
                             </span>
                           </div>
 
                           {/* Additional Works (100%) */}
-                          {currentInvoice.projectData?.additionalWorks && currentInvoice.projectData.additionalWorks.length > 0 && (
-                            <>
-                              <div className="my-1 border-t border-dashed border-gray-300"></div>
-                              <div className="text-xs font-semibold uppercase text-gray-400 mt-1">Reimbursements / Extras (100%)</div>
-                              {currentInvoice.projectData.additionalWorks.map((work: any, idx: number) => (
-                                <div key={idx} className="flex justify-between text-sm text-gray-600">
-                                  <span>{work.description}:</span>
-                                  <span>+ € {parseFloat(work.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          {currentInvoice.projectData?.additionalWorks &&
+                            currentInvoice.projectData.additionalWorks.length >
+                              0 && (
+                              <>
+                                <div className="my-1 border-t border-dashed border-gray-300"></div>
+                                <div className="text-xs font-semibold uppercase text-gray-400 mt-1">
+                                  Reimbursements / Extras (100%)
                                 </div>
-                              ))}
-                            </>
-                          )}
+                                {currentInvoice.projectData.additionalWorks.map(
+                                  (work: any, idx: number) => (
+                                    <div
+                                      key={idx}
+                                      className="flex justify-between text-sm text-gray-600"
+                                    >
+                                      <span>{work.description}:</span>
+                                      <span>
+                                        + €{" "}
+                                        {parseFloat(
+                                          work.price || 0,
+                                        ).toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                        })}
+                                      </span>
+                                    </div>
+                                  ),
+                                )}
+                              </>
+                            )}
 
                           {/* Grand Total */}
                           <div className="flex justify-between items-center pt-3 mt-2 border-t border-gray-900">
-                            <span className="text-base font-bold text-gray-900">Total Payable:</span>
+                            <span className="text-base font-bold text-gray-900">
+                              Total Payable:
+                            </span>
                             <span className="text-xl font-bold text-gray-900 font-mono">
-                              € {((
-                                (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
-                                  const units = currentInvoice.projectData?.indoorUnits || 0;
-                                  const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
-                                  const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
-                                  return acc + base * 0.7;
-                                }, 0) || 0) +
-                                (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
-                                  const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
-                                  const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
-                                  return acc + base * 0.7;
-                                }, 0) || 0) +
-                                (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
-                                (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0) +
-                                (currentInvoice.projectData?.additionalWorks?.reduce((acc: number, work: any) => acc + parseFloat(work.price || 0), 0) || 0)
-                              ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                              €{" "}
+                              {(
+                                (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                                  (acc: number, type: string) => {
+                                    const units =
+                                      currentInvoice.projectData?.indoorUnits ||
+                                      0;
+                                    const matrixPrice =
+                                      PRICING_MATRIX.baseCosts[units]?.[
+                                        type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                      ] || 0;
+                                    const base =
+                                      currentInvoice.projectData
+                                        ?.workTypePrices?.[type] !== undefined
+                                        ? currentInvoice.projectData
+                                            .workTypePrices[type]
+                                        : matrixPrice;
+                                    return acc + base * 0.7;
+                                  },
+                                  0,
+                                ) || 0) +
+                                (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                                  (acc: number, s: string) => {
+                                    const service = ADDITIONAL_SERVICES.find(
+                                      (as) => as.id === s,
+                                    );
+                                    const base =
+                                      currentInvoice.projectData
+                                        ?.additionalServicePrices?.[s] !==
+                                      undefined
+                                        ? currentInvoice.projectData
+                                            .additionalServicePrices[s]
+                                        : service?.price || 0;
+                                    return acc + base * 0.7;
+                                  },
+                                  0,
+                                ) || 0) +
+                                (invoiceEditState.subQualityBonus.enabled
+                                  ? invoiceEditState.subQualityBonus.amount *
+                                    0.7
+                                  : 0) +
+                                (invoiceEditState.subQuantityBonus.enabled
+                                  ? invoiceEditState.subQuantityBonus.amount *
+                                    0.7
+                                  : 0) +
+                                (currentInvoice.projectData?.additionalWorks?.reduce(
+                                  (acc: number, work: any) =>
+                                    acc + parseFloat(work.price || 0),
+                                  0,
+                                ) || 0)
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              })}
                             </span>
                           </div>
                         </div>
@@ -4168,7 +4812,9 @@ export default function AdminProjects() {
                           <span className="text-muted-foreground block text-xs uppercase font-semibold">
                             Project ID
                           </span>
-                          <span className="font-medium">{currentInvoice.id}</span>
+                          <span className="font-medium">
+                            {currentInvoice.id}
+                          </span>
                         </div>
                         <div>
                           <span className="text-muted-foreground block text-xs uppercase font-semibold">
@@ -4289,6 +4935,101 @@ export default function AdminProjects() {
                     </div>
                   )}
                 </TabsContent>
+
+                {/* EMAIL TEMPLATES TAB */}
+                <TabsContent value="emails" className="space-y-4 font-sans">
+                  <div className="bg-white dark:bg-gray-950 border rounded-lg p-5">
+                    <div className="flex items-center justify-between mb-6 pb-4 border-b">
+                      <div>
+                        <h3 className="text-lg font-bold">Email Templates</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Copy these formats directly into your email client.
+                        </p>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const partnerAmount =
+                        (invoiceEditState.projectValue +
+                          (invoiceEditState.quantityBonus.enabled
+                            ? invoiceEditState.quantityBonus.amount
+                            : 0) +
+                          (invoiceEditState.qualityBonus.enabled
+                            ? invoiceEditState.qualityBonus.amount
+                            : 0)) *
+                        (currentInvoice.hasMediator ? 0.1 : 0.15);
+
+                      const subAmount =
+                        (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                          (acc: number, type: string) => {
+                            const units =
+                              currentInvoice.projectData?.indoorUnits || 0;
+                            const matrixPrice =
+                              PRICING_MATRIX.baseCosts[units]?.[
+                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                              ] || 0;
+                            const base =
+                              currentInvoice.projectData?.workTypePrices?.[
+                                type
+                              ] !== undefined
+                                ? currentInvoice.projectData.workTypePrices[
+                                    type
+                                  ]
+                                : matrixPrice;
+                            return acc + base * 0.7;
+                          },
+                          0,
+                        ) || 0) +
+                        (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                          (acc: number, s: string) => {
+                            const service = ADDITIONAL_SERVICES.find(
+                              (as) => as.id === s,
+                            );
+                            const base =
+                              currentInvoice.projectData
+                                ?.additionalServicePrices?.[s] !== undefined
+                                ? currentInvoice.projectData
+                                    .additionalServicePrices[s]
+                                : service?.price || 0;
+                            return acc + base * 0.7;
+                          },
+                          0,
+                        ) || 0) +
+                        (currentInvoice.projectData?.additionalWorks?.reduce(
+                          (acc: number, work: any) =>
+                            acc + parseFloat(work.price || 0),
+                          0,
+                        ) || 0) +
+                        (invoiceEditState.subQualityBonus.enabled
+                          ? invoiceEditState.subQualityBonus.amount * 0.7
+                          : 0) +
+                        (invoiceEditState.subQuantityBonus.enabled
+                          ? invoiceEditState.subQuantityBonus.amount * 0.7
+                          : 0);
+
+                      const mediatorAmount =
+                        invoiceEditState.projectValue *
+                        (invoiceEditState.mediatorSharePercent / 100);
+
+                      return (
+                        <InvoiceEmailView
+                          projectName={currentInvoice.project}
+                          invoiceNumber={nextInvoiceNumber}
+                          address={currentInvoice.address}
+                          partnerName={currentInvoice.partner}
+                          partnerAmount={partnerAmount}
+                          subName={
+                            currentInvoice.projectData?.sub || "Subcontractor"
+                          }
+                          subAmount={subAmount}
+                          mediatorName={currentInvoice.projectData?.mediator}
+                          mediatorAmount={mediatorAmount}
+                          hasMediator={currentInvoice.hasMediator}
+                        />
+                      );
+                    })()}
+                  </div>
+                </TabsContent>
               </Tabs>
             ) : (
               /* FINAL REVIEW MODE (All Invoices Preview) */
@@ -4296,25 +5037,38 @@ export default function AdminProjects() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
                   <CheckCircle2 className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-semibold text-blue-900">Review Invoices</h4>
-                    <p className="text-xs text-blue-700 mt-1">Please review the invoices below. Click "Confirm & Register" to finalize and save them to the system.</p>
+                    <h4 className="text-sm font-semibold text-blue-900">
+                      Review Invoices
+                    </h4>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Please review the invoices below. Click "Confirm &
+                      Register" to finalize and save them to the system.
+                    </p>
                   </div>
                 </div>
 
                 {/* Subcontractor Invoice Preview (Re-used for Final Check) */}
                 <div className="bg-white text-gray-900 border rounded-lg shadow-sm overflow-hidden flex flex-col font-sans">
                   <div className="p-4 bg-gray-100 border-b flex justify-between items-center">
-                    <h3 className="font-bold text-sm uppercase text-gray-700">Subcontractor Invoice Preview</h3>
-                    <Badge variant="outline" className="bg-white">Draft</Badge>
+                    <h3 className="font-bold text-sm uppercase text-gray-700">
+                      Subcontractor Invoice Preview
+                    </h3>
+                    <Badge variant="outline" className="bg-white">
+                      Draft
+                    </Badge>
                   </div>
 
                   {/* Invoice Header */}
                   <div className="p-8 border-b bg-gray-50/50">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h1 className="text-2xl font-bold uppercase tracking-widest text-gray-800">Invoice</h1>
+                        <h1 className="text-2xl font-bold uppercase tracking-widest text-gray-800">
+                          Invoice
+                        </h1>
                         <div className="mt-4 text-sm text-gray-500 space-y-1">
-                          <p className="font-semibold text-gray-900">Prostruktion GmbH</p>
+                          <p className="font-semibold text-gray-900">
+                            Prostruktion GmbH
+                          </p>
                           <p>Musterstraße 123</p>
                           <p>12345 Berlin, Germany</p>
                           <p>VAT ID: DE123456789</p>
@@ -4322,16 +5076,28 @@ export default function AdminProjects() {
                       </div>
                       <div className="text-right text-sm space-y-2">
                         <div>
-                          <span className="block text-gray-500 text-xs uppercase font-semibold">Date</span>
-                          <span className="font-medium">{new Date().toLocaleDateString("de-DE")}</span>
+                          <span className="block text-gray-500 text-xs uppercase font-semibold">
+                            Date
+                          </span>
+                          <span className="font-medium">
+                            {new Date().toLocaleDateString("de-DE")}
+                          </span>
                         </div>
                         <div>
-                          <span className="block text-gray-500 text-xs uppercase font-semibold">Invoice No.</span>
-                          <span className="font-medium">#{currentInvoice.id?.slice(0, 8).toUpperCase()}</span>
+                          <span className="block text-gray-500 text-xs uppercase font-semibold">
+                            Invoice No.
+                          </span>
+                          <span className="font-medium">
+                            #{currentInvoice.id?.slice(0, 8).toUpperCase()}
+                          </span>
                         </div>
                         <div>
-                          <span className="block text-gray-500 text-xs uppercase font-semibold">Project</span>
-                          <span className="font-medium">{currentInvoice.project}</span>
+                          <span className="block text-gray-500 text-xs uppercase font-semibold">
+                            Project
+                          </span>
+                          <span className="font-medium">
+                            {currentInvoice.project}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -4339,9 +5105,15 @@ export default function AdminProjects() {
 
                   {/* Bill To */}
                   <div className="p-8 pb-4">
-                    <span className="block text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">Bill To</span>
-                    <h2 className="text-xl font-medium text-gray-900">{currentInvoice.sub || "Subcontractor Name"}</h2>
-                    <p className="text-sm text-gray-500 mt-1">Partner ID: {currentInvoice.subId || "N/A"}</p>
+                    <span className="block text-gray-400 text-xs uppercase font-bold tracking-wider mb-2">
+                      Bill To
+                    </span>
+                    <h2 className="text-xl font-medium text-gray-900">
+                      {currentInvoice.sub || "Subcontractor Name"}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Partner ID: {currentInvoice.subId || "N/A"}
+                    </p>
                   </div>
 
                   {/* Line Items Table */}
@@ -4349,57 +5121,150 @@ export default function AdminProjects() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b-2 border-gray-900 text-gray-600">
-                          <th className="text-left py-3 font-semibold uppercase text-xs tracking-wider">Description</th>
-                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Base</th>
-                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[100px]">Share %</th>
-                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">Total</th>
+                          <th className="text-left py-3 font-semibold uppercase text-xs tracking-wider">
+                            Description
+                          </th>
+                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">
+                            Base
+                          </th>
+                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[100px]">
+                            Share %
+                          </th>
+                          <th className="text-right py-3 font-semibold uppercase text-xs tracking-wider w-[120px]">
+                            Total
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {/* WORK TYPES */}
-                        {currentInvoice.projectData?.selectedWorkTypes?.map((type: string) => {
-                          const units = currentInvoice.projectData?.indoorUnits || 0;
-                          const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
-                          const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
-                          return (
-                            <tr key={type}>
-                              <td className="py-3 text-gray-800">{WORK_TYPE_LABELS[type] || type}</td>
-                              <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td className="py-3 text-right text-gray-500">70%</td>
-                              <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            </tr>
-                          );
-                        })}
+                        {currentInvoice.projectData?.selectedWorkTypes?.map(
+                          (type: string) => {
+                            const units =
+                              currentInvoice.projectData?.indoorUnits || 0;
+                            const matrixPrice =
+                              PRICING_MATRIX.baseCosts[units]?.[
+                                type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                              ] || 0;
+                            const base =
+                              currentInvoice.projectData?.workTypePrices?.[
+                                type
+                              ] !== undefined
+                                ? currentInvoice.projectData.workTypePrices[
+                                    type
+                                  ]
+                                : matrixPrice;
+                            return (
+                              <tr key={type}>
+                                <td className="py-3 text-gray-800">
+                                  {WORK_TYPE_LABELS[type] || type}
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  €{" "}
+                                  {base.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  70%
+                                </td>
+                                <td className="py-3 text-right font-medium">
+                                  €{" "}
+                                  {(base * 0.7).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
+                              </tr>
+                            );
+                          },
+                        )}
 
                         {/* ADDITIONAL SERVICES */}
-                        {currentInvoice.projectData?.selectedAdditionalServices?.map((s: string) => {
-                          const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
-                          const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
-                          return (
-                            <tr key={s}>
-                              <td className="py-3 text-gray-800">{service?.label || s}</td>
-                              <td className="py-3 text-right text-gray-500">€ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td className="py-3 text-right text-gray-500">70%</td>
-                              <td className="py-3 text-right font-medium">€ {(base * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            </tr>
-                          );
-                        })}
+                        {currentInvoice.projectData?.selectedAdditionalServices?.map(
+                          (s: string) => {
+                            const service = ADDITIONAL_SERVICES.find(
+                              (as) => as.id === s,
+                            );
+                            const base =
+                              currentInvoice.projectData
+                                ?.additionalServicePrices?.[s] !== undefined
+                                ? currentInvoice.projectData
+                                    .additionalServicePrices[s]
+                                : service?.price || 0;
+                            return (
+                              <tr key={s}>
+                                <td className="py-3 text-gray-800">
+                                  {service?.label || s}
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  €{" "}
+                                  {base.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="py-3 text-right text-gray-500">
+                                  70%
+                                </td>
+                                <td className="py-3 text-right font-medium">
+                                  €{" "}
+                                  {(base * 0.7).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
+                              </tr>
+                            );
+                          },
+                        )}
 
                         {/* BONUSES */}
                         {invoiceEditState.subQualityBonus?.enabled && (
                           <tr>
-                            <td className="py-3 text-gray-800">Quality Bonus</td>
-                            <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQualityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td className="py-3 text-right text-gray-500">70%</td>
-                            <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQualityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td className="py-3 text-gray-800">
+                              Quality Bonus
+                            </td>
+                            <td className="py-3 text-right text-gray-500">
+                              €{" "}
+                              {invoiceEditState.subQualityBonus.amount.toLocaleString(
+                                undefined,
+                                { minimumFractionDigits: 2 },
+                              )}
+                            </td>
+                            <td className="py-3 text-right text-gray-500">
+                              70%
+                            </td>
+                            <td className="py-3 text-right font-medium text-green-600">
+                              €{" "}
+                              {(
+                                invoiceEditState.subQualityBonus.amount * 0.7
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              })}
+                            </td>
                           </tr>
                         )}
                         {invoiceEditState.subQuantityBonus?.enabled && (
                           <tr>
-                            <td className="py-3 text-gray-800">Quantity Bonus ({invoiceEditState.subQuantityBonus.label})</td>
-                            <td className="py-3 text-right text-gray-500">€ {invoiceEditState.subQuantityBonus.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td className="py-3 text-right text-gray-500">70%</td>
-                            <td className="py-3 text-right font-medium text-green-600">€ {(invoiceEditState.subQuantityBonus.amount * 0.7).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td className="py-3 text-gray-800">
+                              Quantity Bonus (
+                              {invoiceEditState.subQuantityBonus.label})
+                            </td>
+                            <td className="py-3 text-right text-gray-500">
+                              €{" "}
+                              {invoiceEditState.subQuantityBonus.amount.toLocaleString(
+                                undefined,
+                                { minimumFractionDigits: 2 },
+                              )}
+                            </td>
+                            <td className="py-3 text-right text-gray-500">
+                              70%
+                            </td>
+                            <td className="py-3 text-right font-medium text-green-600">
+                              €{" "}
+                              {(
+                                invoiceEditState.subQuantityBonus.amount * 0.7
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              })}
+                            </td>
                           </tr>
                         )}
                       </tbody>
@@ -4411,60 +5276,145 @@ export default function AdminProjects() {
                     <div className="flex flex-col gap-3 max-w-[400px] ml-auto">
                       {/* Subtotal */}
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Subtotal (Sharing Model):</span>
+                        <span className="text-gray-500">
+                          Subtotal (Sharing Model):
+                        </span>
                         <span className="font-medium">
-                          € {((
-                            (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
-                              const units = currentInvoice.projectData?.indoorUnits || 0;
-                              const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
-                              const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
-                              return acc + base * 0.7;
-                            }, 0) || 0) +
-                            (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
-                              const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
-                              const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
-                              return acc + base * 0.7;
-                            }, 0) || 0) +
-                            (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
-                            (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0)
-                          ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                          €{" "}
+                          {(
+                            (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                              (acc: number, type: string) => {
+                                const units =
+                                  currentInvoice.projectData?.indoorUnits || 0;
+                                const matrixPrice =
+                                  PRICING_MATRIX.baseCosts[units]?.[
+                                    type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  ] || 0;
+                                const base =
+                                  currentInvoice.projectData?.workTypePrices?.[
+                                    type
+                                  ] !== undefined
+                                    ? currentInvoice.projectData.workTypePrices[
+                                        type
+                                      ]
+                                    : matrixPrice;
+                                return acc + base * 0.7;
+                              },
+                              0,
+                            ) || 0) +
+                            (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                              (acc: number, s: string) => {
+                                const service = ADDITIONAL_SERVICES.find(
+                                  (as) => as.id === s,
+                                );
+                                const base =
+                                  currentInvoice.projectData
+                                    ?.additionalServicePrices?.[s] !== undefined
+                                    ? currentInvoice.projectData
+                                        .additionalServicePrices[s]
+                                    : service?.price || 0;
+                                return acc + base * 0.7;
+                              },
+                              0,
+                            ) || 0) +
+                            (invoiceEditState.subQualityBonus.enabled
+                              ? invoiceEditState.subQualityBonus.amount * 0.7
+                              : 0) +
+                            (invoiceEditState.subQuantityBonus.enabled
+                              ? invoiceEditState.subQuantityBonus.amount * 0.7
+                              : 0)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
                         </span>
                       </div>
 
                       {/* Additional Works (100%) */}
-                      {currentInvoice.projectData?.additionalWorks && currentInvoice.projectData.additionalWorks.length > 0 && (
-                        <>
-                          <div className="my-1 border-t border-dashed border-gray-300"></div>
-                          <div className="text-xs font-semibold uppercase text-gray-400 mt-1">Reimbursements / Extras (100%)</div>
-                          {currentInvoice.projectData.additionalWorks.map((work: any, idx: number) => (
-                            <div key={idx} className="flex justify-between text-sm text-gray-600">
-                              <span>{work.description}:</span>
-                              <span>+ € {parseFloat(work.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      {currentInvoice.projectData?.additionalWorks &&
+                        currentInvoice.projectData.additionalWorks.length >
+                          0 && (
+                          <>
+                            <div className="my-1 border-t border-dashed border-gray-300"></div>
+                            <div className="text-xs font-semibold uppercase text-gray-400 mt-1">
+                              Reimbursements / Extras (100%)
                             </div>
-                          ))}
-                        </>
-                      )}
+                            {currentInvoice.projectData.additionalWorks.map(
+                              (work: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="flex justify-between text-sm text-gray-600"
+                                >
+                                  <span>{work.description}:</span>
+                                  <span>
+                                    + €{" "}
+                                    {parseFloat(work.price || 0).toLocaleString(
+                                      undefined,
+                                      { minimumFractionDigits: 2 },
+                                    )}
+                                  </span>
+                                </div>
+                              ),
+                            )}
+                          </>
+                        )}
 
                       {/* Grand Total */}
                       <div className="flex justify-between items-center pt-3 mt-2 border-t border-gray-900">
-                        <span className="text-base font-bold text-gray-900">Total Payable:</span>
+                        <span className="text-base font-bold text-gray-900">
+                          Total Payable:
+                        </span>
                         <span className="text-xl font-bold text-gray-900 font-mono">
-                          € {((
-                            (currentInvoice.projectData?.selectedWorkTypes?.reduce((acc: number, type: string) => {
-                              const units = currentInvoice.projectData?.indoorUnits || 0;
-                              const matrixPrice = PRICING_MATRIX.baseCosts[units]?.[type as keyof (typeof PRICING_MATRIX.baseCosts)[0]] || 0;
-                              const base = currentInvoice.projectData?.workTypePrices?.[type] !== undefined ? currentInvoice.projectData.workTypePrices[type] : matrixPrice;
-                              return acc + base * 0.7;
-                            }, 0) || 0) +
-                            (currentInvoice.projectData?.selectedAdditionalServices?.reduce((acc: number, s: string) => {
-                              const service = ADDITIONAL_SERVICES.find((as) => as.id === s);
-                              const base = currentInvoice.projectData?.additionalServicePrices?.[s] !== undefined ? currentInvoice.projectData.additionalServicePrices[s] : service?.price || 0;
-                              return acc + base * 0.7;
-                            }, 0) || 0) +
-                            (invoiceEditState.subQualityBonus.enabled ? invoiceEditState.subQualityBonus.amount * 0.7 : 0) +
-                            (invoiceEditState.subQuantityBonus.enabled ? invoiceEditState.subQuantityBonus.amount * 0.7 : 0) +
-                            (currentInvoice.projectData?.additionalWorks?.reduce((acc: number, work: any) => acc + parseFloat(work.price || 0), 0) || 0)
-                          ).toLocaleString(undefined, { minimumFractionDigits: 2 }))}
+                          €{" "}
+                          {(
+                            (currentInvoice.projectData?.selectedWorkTypes?.reduce(
+                              (acc: number, type: string) => {
+                                const units =
+                                  currentInvoice.projectData?.indoorUnits || 0;
+                                const matrixPrice =
+                                  PRICING_MATRIX.baseCosts[units]?.[
+                                    type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                                  ] || 0;
+                                const base =
+                                  currentInvoice.projectData?.workTypePrices?.[
+                                    type
+                                  ] !== undefined
+                                    ? currentInvoice.projectData.workTypePrices[
+                                        type
+                                      ]
+                                    : matrixPrice;
+                                return acc + base * 0.7;
+                              },
+                              0,
+                            ) || 0) +
+                            (currentInvoice.projectData?.selectedAdditionalServices?.reduce(
+                              (acc: number, s: string) => {
+                                const service = ADDITIONAL_SERVICES.find(
+                                  (as) => as.id === s,
+                                );
+                                const base =
+                                  currentInvoice.projectData
+                                    ?.additionalServicePrices?.[s] !== undefined
+                                    ? currentInvoice.projectData
+                                        .additionalServicePrices[s]
+                                    : service?.price || 0;
+                                return acc + base * 0.7;
+                              },
+                              0,
+                            ) || 0) +
+                            (invoiceEditState.subQualityBonus.enabled
+                              ? invoiceEditState.subQualityBonus.amount * 0.7
+                              : 0) +
+                            (invoiceEditState.subQuantityBonus.enabled
+                              ? invoiceEditState.subQuantityBonus.amount * 0.7
+                              : 0) +
+                            (currentInvoice.projectData?.additionalWorks?.reduce(
+                              (acc: number, work: any) =>
+                                acc + parseFloat(work.price || 0),
+                              0,
+                            ) || 0)
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
                         </span>
                       </div>
                     </div>
@@ -4509,11 +5459,12 @@ export default function AdminProjects() {
                             currentInvoice.projectData?.indoorUnits || 0;
                           const matrixPrice =
                             PRICING_MATRIX.baseCosts[units]?.[
-                            type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                              type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
                             ] || 0;
                           const base =
-                            currentInvoice.projectData?.workTypePrices?.[type] !==
-                              undefined
+                            currentInvoice.projectData?.workTypePrices?.[
+                              type
+                            ] !== undefined
                               ? currentInvoice.projectData.workTypePrices[type]
                               : matrixPrice;
                           return acc + base * 0.7;
@@ -4526,12 +5477,10 @@ export default function AdminProjects() {
                             (as) => as.id === s,
                           );
                           const base =
-                            currentInvoice.projectData?.additionalServicePrices?.[
-                              s
-                            ] !== undefined
-                              ? currentInvoice.projectData.additionalServicePrices[
-                              s
-                              ]
+                            currentInvoice.projectData
+                              ?.additionalServicePrices?.[s] !== undefined
+                              ? currentInvoice.projectData
+                                  .additionalServicePrices[s]
                               : service?.price || 0;
                           return acc + base * 0.7;
                         },
@@ -4604,7 +5553,8 @@ export default function AdminProjects() {
                           inv.project === currentInvoice.project;
 
                         const isPending =
-                          inv.status === "For Invoice" || inv.status === "Ready";
+                          inv.status === "For Invoice" ||
+                          inv.status === "Ready";
 
                         return !(isSameProject && isPending);
                       },
@@ -4620,7 +5570,7 @@ export default function AdminProjects() {
                     // PARTNER Invoice
                     const partnerAmount =
                       invoiceEditState.projectValue *
-                      (invoiceEditState.partnerSharePercent / 100) +
+                        (invoiceEditState.partnerSharePercent / 100) +
                       (invoiceEditState.qualityBonus.enabled
                         ? invoiceEditState.qualityBonus.amount
                         : 0) +
@@ -4716,8 +5666,8 @@ export default function AdminProjects() {
                           .map((t: string) => WORK_TYPE_LABELS[t] || t)
                           .join(", ");
                         const addServicesStr = (
-                          currentInvoice.projectData?.selectedAdditionalServices ||
-                          []
+                          currentInvoice.projectData
+                            ?.selectedAdditionalServices || []
                         )
                           .map((s: string) => {
                             const service = ADDITIONAL_SERVICES.find(
@@ -4733,8 +5683,9 @@ export default function AdminProjects() {
                           .map((w: any) => w.description)
                           .join(", ");
 
-                        const scopeDesc = `Indoor Units: ${currentInvoice.projectData?.indoorUnits || 0
-                          }. Work: ${workTypesStr}. Additional: ${addServicesStr}. Extra Works: ${addWorksStr}.`;
+                        const scopeDesc = `Indoor Units: ${
+                          currentInvoice.projectData?.indoorUnits || 0
+                        }. Work: ${workTypesStr}. Additional: ${addServicesStr}. Extra Works: ${addWorksStr}.`;
 
                         const payload = {
                           project_id: currentInvoice.projectData?.id || null,
@@ -4796,17 +5747,20 @@ export default function AdminProjects() {
                           .eq("id", projectId);
 
                         if (updateError) {
-                          console.error("Failed to archive project:", updateError);
+                          console.error(
+                            "Failed to archive project:",
+                            updateError,
+                          );
                         } else {
                           // Update local state
                           setProjects((prev) =>
                             prev.map((p) =>
                               p.id === projectId
                                 ? {
-                                  ...p,
-                                  status: "Archived",
-                                  statusColor: "bg-gray-500 text-white",
-                                }
+                                    ...p,
+                                    status: "Archived",
+                                    statusColor: "bg-gray-500 text-white",
+                                  }
                                 : p,
                             ),
                           );
@@ -5285,7 +6239,7 @@ export default function AdminProjects() {
                         );
                         const p =
                           newProject.additionalServicePrices[serviceId] !==
-                            undefined
+                          undefined
                             ? newProject.additionalServicePrices[serviceId]
                             : s?.price || 0;
                         servicesPrice += p;
@@ -5364,7 +6318,7 @@ export default function AdminProjects() {
                               // Recalculate
                               const currentCosts =
                                 PRICING_MATRIX.baseCosts[
-                                newProject.indoorUnits
+                                  newProject.indoorUnits
                                 ] || {};
                               let basePrice = 0;
                               newTypes.forEach((type) => {
@@ -5386,8 +6340,8 @@ export default function AdminProjects() {
                                       serviceId
                                     ] !== undefined
                                       ? newProject.additionalServicePrices[
-                                      serviceId
-                                      ]
+                                          serviceId
+                                        ]
                                       : s?.price || 0;
                                   servicesPrice += p;
                                 },
@@ -5437,7 +6391,7 @@ export default function AdminProjects() {
                                     // Use newPrices
                                     const currentCosts =
                                       PRICING_MATRIX.baseCosts[
-                                      newProject.indoorUnits
+                                        newProject.indoorUnits
                                       ] || {};
                                     let basePrice = 0;
                                     newProject.selectedWorkTypes.forEach(
@@ -5462,9 +6416,9 @@ export default function AdminProjects() {
                                             serviceId
                                           ] !== undefined
                                             ? newProject
-                                              .additionalServicePrices[
-                                            serviceId
-                                            ]
+                                                .additionalServicePrices[
+                                                serviceId
+                                              ]
                                             : s?.price || 0;
                                         servicesPrice += p;
                                       },
@@ -5527,13 +6481,13 @@ export default function AdminProjects() {
                                 // 1. Base
                                 const currentCosts =
                                   PRICING_MATRIX.baseCosts[
-                                  newProject.indoorUnits
+                                    newProject.indoorUnits
                                   ] || {};
                                 let basePrice = 0;
                                 newProject.selectedWorkTypes.forEach((type) => {
                                   const p =
                                     newProject.workTypePrices[type] !==
-                                      undefined
+                                    undefined
                                       ? newProject.workTypePrices[type]
                                       : (currentCosts as any)[type] || 0;
                                   basePrice += p;
@@ -5551,8 +6505,8 @@ export default function AdminProjects() {
                                         serviceId
                                       ] !== undefined
                                         ? newProject.additionalServicePrices[
-                                        serviceId
-                                        ]
+                                            serviceId
+                                          ]
                                         : s?.price || 0;
                                     servicesPrice += p;
                                   },
@@ -5649,8 +6603,8 @@ export default function AdminProjects() {
                                   serviceId
                                 ] !== undefined
                                   ? newProject.additionalServicePrices[
-                                  serviceId
-                                  ]
+                                      serviceId
+                                    ]
                                   : s?.price || 0;
                               servicesPrice += p;
                             },
@@ -5687,7 +6641,7 @@ export default function AdminProjects() {
                     {ADDITIONAL_SERVICES.map((service) => {
                       const currentPrice =
                         newProject.additionalServicePrices[service.id] !==
-                          undefined
+                        undefined
                           ? newProject.additionalServicePrices[service.id]
                           : service.price;
 
@@ -5727,7 +6681,7 @@ export default function AdminProjects() {
                               // Recalculate
                               const currentCosts =
                                 PRICING_MATRIX.baseCosts[
-                                newProject.indoorUnits
+                                  newProject.indoorUnits
                                 ] || {};
                               let basePrice = 0;
                               newProject.selectedWorkTypes.forEach((type) => {
@@ -5793,14 +6747,14 @@ export default function AdminProjects() {
                                     // Recalculate
                                     const currentCosts =
                                       PRICING_MATRIX.baseCosts[
-                                      newProject.indoorUnits
+                                        newProject.indoorUnits
                                       ] || {};
                                     let basePrice = 0;
                                     newProject.selectedWorkTypes.forEach(
                                       (type) => {
                                         const p =
                                           newProject.workTypePrices[type] !==
-                                            undefined
+                                          undefined
                                             ? newProject.workTypePrices[type]
                                             : (currentCosts as any)[type] || 0;
                                         basePrice += p;

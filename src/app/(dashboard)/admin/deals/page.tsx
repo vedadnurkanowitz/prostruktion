@@ -44,10 +44,13 @@ import {
   AlertCircle,
   Building2,
   ChevronsUpDown,
+  Mail,
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { useEffect } from "react";
+import { InvoiceEmailView } from "@/components/admin/invoice-email-view";
+import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 
 const parseGermanFloat = (str: string | number | undefined | null) => {
   if (typeof str === "number") return str;
@@ -71,6 +74,9 @@ const parseGermanFloat = (str: string | number | undefined | null) => {
 export default function FinancialDashboardPage() {
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [currentInvoice, setCurrentInvoice] = useState<any>(null);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [selectedProjectForEmail, setSelectedProjectForEmail] =
+    useState<any>(null);
 
   // Staging: Individual Projects from Project Management
   const [forInvoiceProjects, setForInvoiceProjects] = useState<any[]>([]);
@@ -129,6 +135,40 @@ export default function FinancialDashboardPage() {
 
   const supabase = createClient();
 
+  // Helper: Group invoices by projectId so each project appears as ONE row
+  const groupInvoicesByProject = (invoices: any[]) => {
+    const groups: { [key: string]: any } = {};
+
+    invoices.forEach((inv) => {
+      const key = inv.projectId || inv.project || inv.id;
+      if (!groups[key]) {
+        groups[key] = {
+          ...inv,
+          // Total amount across all invoice types for this project
+          amount: 0,
+          // Keep track of all individual invoice IDs for bulk operations
+          childInvoiceIds: [],
+          // Use the first invoice number found
+          invoiceNumber: inv.invoiceNumber,
+        };
+      }
+
+      groups[key].amount += inv.amount || 0;
+      groups[key].childInvoiceIds.push(inv.id);
+
+      // Prefer the partner name from the "Partner Invoice" type
+      if (inv.type === "Partner Invoice" || inv.action === "Partner Invoice") {
+        groups[key].partner = inv.partner;
+        // Use the Partner invoice's invoice number as the primary display number
+        if (inv.invoiceNumber) {
+          groups[key].invoiceNumber = inv.invoiceNumber;
+        }
+      }
+    });
+
+    return Object.values(groups);
+  };
+
   useEffect(() => {
     const loadData = async () => {
       // 1. Fetch ALL Invoices from Supabase
@@ -179,22 +219,25 @@ export default function FinancialDashboardPage() {
       }
 
       // 2. Separate "For Invoice" (Pending Individual Items)
-      const forInvoice = allInvoices.filter(
+      // Group by projectId so each project appears as ONE row
+      const forInvoiceRaw = allInvoices.filter(
         (p) =>
           p.status === "For Invoice" &&
           p.type !== "Batch" &&
           p.type !== "Side Project",
       );
-      setForInvoiceProjects(forInvoice);
+      const forInvoiceGrouped = groupInvoicesByProject(forInvoiceRaw);
+      setForInvoiceProjects(forInvoiceGrouped);
 
       // 3. Separate "Ready" (Batched / Waiting for Approval)
-      const ready = allInvoices.filter(
+      const readyRaw = allInvoices.filter(
         (p) =>
           p.status === "Ready" &&
           p.type !== "Batch" &&
           p.type !== "Side Project",
       );
-      setReadyToInvoiceProjects(ready);
+      const readyGrouped = groupInvoicesByProject(readyRaw);
+      setReadyToInvoiceProjects(readyGrouped);
 
       // 4. "Invoiced" (Sent/Unpaid Batch or Side Projects)
       // These are the "Generated Invoices"
@@ -1006,7 +1049,7 @@ export default function FinancialDashboardPage() {
                     >
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                           <div className="h-9 w-9 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
                             <Building2 className="h-5 w-5" />
                           </div>
@@ -1107,13 +1150,25 @@ export default function FinancialDashboardPage() {
                                         <TableCell className="text-right font-bold">
                                           € {item.amount?.toLocaleString()}
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-right flex items-center justify-end gap-2">
                                           <Badge
                                             variant="outline"
                                             className="bg-blue-50 text-blue-700 border-blue-200"
                                           >
                                             {item.hasMediator ? "10%" : "15%"}
                                           </Badge>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedProjectForEmail(item);
+                                              setEmailModalOpen(true);
+                                            }}
+                                          >
+                                            <Mail className="h-4 w-4" />
+                                          </Button>
                                         </TableCell>
                                       </TableRow>
                                     ))
@@ -1644,6 +1699,93 @@ export default function FinancialDashboardPage() {
             >
               Add Expense
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Templates Modal */}
+      <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-blue-600" /> Email Formats
+            </DialogTitle>
+            <DialogDescription>
+              Copy the email formats for the different parties involved in this
+              project.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedProjectForEmail && (
+            <div className="py-4 font-sans">
+              {(() => {
+                const item = selectedProjectForEmail;
+                const projectData = item.projectData || item;
+
+                // Try to get precise calculations if the projectData is full
+                let subAmount = item.amount * 0.7; // Fallback
+                let mediatorAmount = item.amount * 0.1; // Fallback
+
+                if (projectData.selectedWorkTypes) {
+                  const calculatedSub =
+                    (projectData.selectedWorkTypes.reduce(
+                      (acc: number, type: string) => {
+                        let units = parseInt(projectData.indoorUnits) || 0;
+                        if (units < 1) units = 1;
+                        if (units > 16) units = 16;
+                        const matrixPrice =
+                          PRICING_MATRIX.baseCosts[units]?.[
+                            type as keyof (typeof PRICING_MATRIX.baseCosts)[0]
+                          ] || 0;
+                        const base =
+                          projectData.workTypePrices?.[type] !== undefined
+                            ? projectData.workTypePrices[type]
+                            : matrixPrice;
+                        return acc + base * 0.7;
+                      },
+                      0,
+                    ) || 0) +
+                    (projectData.selectedAdditionalServices?.reduce(
+                      (acc: number, s: string) => {
+                        const service = ADDITIONAL_SERVICES.find(
+                          (as) => as.id === s,
+                        );
+                        const base =
+                          projectData.additionalServicePrices?.[s] !== undefined
+                            ? projectData.additionalServicePrices[s]
+                            : service?.price || 0;
+                        return acc + base * 0.7;
+                      },
+                      0,
+                    ) || 0) +
+                    (projectData.additionalWorks?.reduce(
+                      (acc: number, work: any) =>
+                        acc + parseFloat(work.price || 0),
+                      0,
+                    ) || 0);
+
+                  subAmount = calculatedSub;
+                }
+
+                return (
+                  <InvoiceEmailView
+                    projectName={item.project}
+                    invoiceNumber={item.invoiceNumber || "N/A"}
+                    address={item.address || "N/A"}
+                    partnerName={item.partner}
+                    partnerAmount={item.amount}
+                    subName={projectData.sub || "Subcontractor"}
+                    subAmount={subAmount}
+                    mediatorName={projectData.mediator}
+                    mediatorAmount={mediatorAmount}
+                    hasMediator={item.hasMediator}
+                  />
+                );
+              })()}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setEmailModalOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

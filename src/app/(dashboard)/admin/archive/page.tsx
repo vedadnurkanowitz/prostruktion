@@ -56,6 +56,64 @@ import { PRICING_MATRIX, ADDITIONAL_SERVICES } from "@/lib/pricing-data";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProjectEvidence } from "@/components/admin/project-evidence";
 
+// Helper to parse German currency strings (e.g. "4.820,00" -> 4820.00)
+const parseGermanFloat = (str: string | number | undefined | null) => {
+  if (typeof str === "number") return str;
+  if (!str) return 0;
+  const val = str.toString();
+  const clean = val.replace(/[^0-9.,-]/g, "");
+  const noDots = clean.replace(/\./g, "");
+  const withDecimal = noDots.replace(",", ".");
+  return parseFloat(withDecimal) || 0;
+};
+
+// Calculate Penalty Helper
+const calculatePenalty = (amountStr: string, startDateStr: string) => {
+  const amount = parseGermanFloat(amountStr);
+  if (isNaN(amount) || !startDateStr)
+    return {
+      penalty: 0,
+      daysLate: 0,
+      isOverdue: false,
+      netAmount: amount,
+      penaltyPercentage: "0",
+    };
+
+  const start = new Date(startDateStr);
+  const now = new Date();
+  start.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+
+  const diffTime = now.getTime() - start.getTime();
+  const daysLate = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (daysLate <= 0) {
+    return {
+      penalty: 0,
+      daysLate: 0,
+      isOverdue: false,
+      netAmount: amount,
+      penaltyPercentage: "0",
+    };
+  }
+
+  const dailyRate = 0.002;
+  const maxRate = 0.05;
+  let penaltyRate = daysLate * dailyRate;
+  if (penaltyRate > maxRate) penaltyRate = maxRate;
+
+  const penalty = amount * penaltyRate;
+  const netAmount = amount - penalty;
+
+  return {
+    penalty,
+    daysLate,
+    isOverdue: true,
+    netAmount,
+    penaltyPercentage: (penaltyRate * 100).toFixed(1),
+  };
+};
+
 export default function ArchivePage() {
   const router = useRouter();
   const [archivedProjects, setArchivedProjects] = useState<any[]>([]);
@@ -242,13 +300,42 @@ export default function ArchivePage() {
 
           additionalWorks: p.additional_works || p.additionalWorks || [],
 
-          selectedWorkTypes: p.selected_work_types || p.selectedWorkTypes || [],
-          selectedAdditionalServices:
-            p.selected_additional_services ||
-            p.selectedAdditionalServices ||
-            [],
+          // Extract work types from the joined relation table (same as Projects tab)
+          selectedWorkTypes: (p.project_work_types || [])
+            .filter((wt: any) => WORK_TYPE_LABELS[wt.work_type_key])
+            .map((wt: any) => wt.work_type_key),
+          customWorkTypes: (p.project_work_types || [])
+            .filter((wt: any) => !WORK_TYPE_LABELS[wt.work_type_key])
+            .map((wt: any) => ({
+              label: wt.work_type_key,
+              price: wt.price || 0,
+            })),
+          workTypePrices: (p.project_work_types || []).reduce(
+            (acc: any, wt: any) => {
+              if (WORK_TYPE_LABELS[wt.work_type_key]) {
+                acc[wt.work_type_key] = wt.price || 0;
+              }
+              return acc;
+            },
+            {} as Record<string, number>,
+          ),
+
+          // Extract additional services from the joined relation table
+          selectedAdditionalServices: (p.project_additional_services || []).map(
+            (s: any) => s.service_id,
+          ),
+          additionalServicePrices: (p.project_additional_services || []).reduce(
+            (acc: any, s: any) => {
+              if (s.price !== undefined && s.price !== null) {
+                acc[s.service_id] = s.price;
+              }
+              return acc;
+            },
+            {} as Record<string, number>,
+          ),
+
           indoorUnits: p.indoor_units || 0,
-          amount: p.amount || 0,
+          amount: p.contract_value || p.amount || 0,
 
           // Enhanced mappings for details
           projectWorkTypesRaw: p.project_work_types,
@@ -476,17 +563,23 @@ export default function ArchivePage() {
           <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
             <TableRow>
               <TableHead className="w-[40px]"></TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+              <TableHead className="w-[20%] font-semibold text-gray-700 dark:text-gray-300">
                 Name
-              </TableHead>
-              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                Project ID
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                 Subcontractor
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                 Abnahme Date
+              </TableHead>
+              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                Penalty
+              </TableHead>
+              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                Amount
+              </TableHead>
+              <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                Net
               </TableHead>
               <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                 Status
@@ -499,7 +592,7 @@ export default function ArchivePage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={9} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <RotateCw className="h-5 w-5 animate-spin text-muted-foreground" />
                     Loading archive...
@@ -509,7 +602,7 @@ export default function ArchivePage() {
             ) : paginatedArchive.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={9}
                   className="text-center py-10 text-muted-foreground"
                 >
                   No archived projects found.
@@ -518,6 +611,17 @@ export default function ArchivePage() {
             ) : (
               paginatedArchive.map((item, i) => {
                 const isExpanded = expandedRows.has(i);
+                const {
+                  penalty,
+                  daysLate,
+                  isOverdue,
+                  netAmount,
+                  penaltyPercentage,
+                } = calculatePenalty(
+                  item.amount,
+                  item.scheduled_start || item.scheduledStart || item.start,
+                );
+
                 return (
                   <Fragment key={item.id || i}>
                     <TableRow
@@ -552,15 +656,42 @@ export default function ArchivePage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {item.customerNumber ||
-                          (item.id ? item.id.substring(0, 8) + "..." : "N/A")}
-                      </TableCell>
                       <TableCell>{item.sub}</TableCell>
                       <TableCell className="text-sm">
                         {item.abnahme
                           ? new Date(item.abnahme).toLocaleDateString()
                           : item.start || "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1 items-start">
+                          <Badge
+                            variant={isOverdue ? "destructive" : "secondary"}
+                            className={
+                              isOverdue
+                                ? "bg-red-100 text-red-700 hover:bg-red-200 border-0"
+                                : "bg-green-100 text-green-700 hover:bg-green-200 border-0"
+                            }
+                          >
+                            {isOverdue ? `${daysLate} Days` : "No"}
+                          </Badge>
+                          {penalty > 0 && (
+                            <span className="text-xs text-red-500 font-medium ml-1">
+                              -{penaltyPercentage}%
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {typeof item.amount === "number"
+                          ? `€ ${item.amount.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+                          : item.amount}
+                      </TableCell>
+                      <TableCell className="font-bold text-blue-600">
+                        €{" "}
+                        {netAmount.toLocaleString("de-DE", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -586,7 +717,7 @@ export default function ArchivePage() {
                     </TableRow>
                     {isExpanded && (
                       <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-200">
-                        <TableCell colSpan={7} className="p-0">
+                        <TableCell colSpan={9} className="p-0">
                           <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
                             {/* Column 1: Project & Customer Details */}
                             <div className="space-y-4 h-full flex flex-col">
@@ -761,6 +892,30 @@ export default function ArchivePage() {
                                   No workers assigned.
                                 </div>
                               )}
+
+                              {/* Estimated & Actual Hours Footer */}
+                              <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                                    Estimated Max Hours:
+                                  </span>
+                                  <span className="font-mono font-semibold">
+                                    {item.estimated_hours ||
+                                      item.estimatedHours ||
+                                      "N/A"}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                                    Actual Hours:
+                                  </span>
+                                  <span className="font-mono font-semibold">
+                                    {item.actual_hours ||
+                                      item.actualHours ||
+                                      "—"}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
                             {/* Column 3: Scope of Work */}
@@ -801,13 +956,18 @@ export default function ArchivePage() {
                                                 PRICING_MATRIX.baseCosts[
                                                   units
                                                 ] || {};
-                                              // Use stored price if available, else calc
+                                              // Use stored price from relation table, else calc from matrix
                                               const cost =
-                                                item.workTypeCosts?.[type] !==
+                                                item.workTypePrices?.[type] !==
                                                 undefined
-                                                  ? item.workTypeCosts[type]
-                                                  : (unitCosts as any)[type] ||
-                                                    0;
+                                                  ? item.workTypePrices[type]
+                                                  : item.workTypeCosts?.[
+                                                        type
+                                                      ] !== undefined
+                                                    ? item.workTypeCosts[type]
+                                                    : (unitCosts as any)[
+                                                        type
+                                                      ] || 0;
 
                                               return (
                                                 <div
@@ -832,6 +992,33 @@ export default function ArchivePage() {
                                         </p>
                                       )}
                                     </div>
+
+                                    {/* Custom Work Types */}
+                                    {item.customWorkTypes &&
+                                      item.customWorkTypes.length > 0 && (
+                                        <div className="space-y-2 mt-4">
+                                          <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                            Custom Items
+                                          </div>
+                                          <div className="grid gap-2">
+                                            {item.customWorkTypes.map(
+                                              (cw: any, cwIdx: number) => (
+                                                <div
+                                                  key={cwIdx}
+                                                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                >
+                                                  <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                    {cw.label}
+                                                  </span>
+                                                  <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                    € {cw.price}
+                                                  </span>
+                                                </div>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
 
                                     {/* Additional Services */}
                                     {item.selectedAdditionalServices &&
@@ -860,14 +1047,22 @@ export default function ArchivePage() {
                                                     <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
                                                       €{" "}
                                                       {item
-                                                        .additionalServiceCosts?.[
+                                                        .additionalServicePrices?.[
                                                         serviceId
                                                       ] !== undefined
                                                         ? item
-                                                            .additionalServiceCosts[
+                                                            .additionalServicePrices[
                                                             serviceId
                                                           ]
-                                                        : service?.price || 0}
+                                                        : item
+                                                              .additionalServiceCosts?.[
+                                                              serviceId
+                                                            ] !== undefined
+                                                          ? item
+                                                              .additionalServiceCosts[
+                                                              serviceId
+                                                            ]
+                                                          : service?.price || 0}
                                                     </span>
                                                   </div>
                                                 );
@@ -886,7 +1081,13 @@ export default function ArchivePage() {
                                       <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
                                         €{" "}
                                         {typeof item.amount === "number"
-                                          ? item.amount.toFixed(2)
+                                          ? item.amount.toLocaleString(
+                                              "de-DE",
+                                              {
+                                                minimumFractionDigits: 0,
+                                                maximumFractionDigits: 2,
+                                              },
+                                            )
                                           : item.amount}
                                       </span>
                                     </div>

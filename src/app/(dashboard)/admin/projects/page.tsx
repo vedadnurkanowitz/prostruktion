@@ -2187,11 +2187,11 @@ export default function AdminProjects() {
                                     </div>
                                   </div>
 
-                                  {/* Column 2: Assigned Workers (Existing) */}
+                                  {/* Column 2: Project Partners */}
                                   <div className="space-y-4 h-full flex flex-col">
                                     <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                      <HardHat className="h-3 w-3" /> Assigned
-                                      Workers
+                                      <Users className="h-3 w-3" /> Project
+                                      Partners
                                     </h4>
 
                                     <div className="bg-white dark:bg-gray-950 rounded-lg border p-3 text-sm space-y-2 shadow-sm mb-1">
@@ -2271,143 +2271,16 @@ export default function AdminProjects() {
                                       </div>
                                     </div>
 
-                                    {project.workers &&
-                                    project.workers.length > 0 ? (
-                                      <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
-                                        <Table>
-                                          <TableHeader className="bg-gray-50/50">
-                                            <TableRow className="h-8 hover:bg-transparent">
-                                              <TableHead className="h-8 text-[10px] font-semibold">
-                                                Name
-                                              </TableHead>
-                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                                Cert
-                                              </TableHead>
-                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                                A1
-                                              </TableHead>
-                                              <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                                Success
-                                              </TableHead>
-                                            </TableRow>
-                                          </TableHeader>
-                                          <TableBody>
-                                            {project.workers.map(
-                                              (workerId: string) => {
-                                                const worker =
-                                                  workersMap[workerId];
-                                                const certValid =
-                                                  (worker?.certFiles || [])
-                                                    .length > 0;
-                                                const a1Valid =
-                                                  (worker?.a1Files || [])
-                                                    .length > 0;
+                                    <div className="mt-2 flex-1 flex flex-col">
+                                      <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <HardHat className="h-3 w-3" /> Assigned
+                                        Workers
+                                      </h4>
 
-                                                return (
-                                                  <TableRow
-                                                    key={workerId}
-                                                    className="h-8 hover:bg-transparent border-0"
-                                                  >
-                                                    <TableCell className="py-1">
-                                                      <div className="flex items-center gap-2">
-                                                        <Avatar className="h-5 w-5 border">
-                                                          <AvatarImage
-                                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
-                                                          />
-                                                          <AvatarFallback className="text-[9px]">
-                                                            {workerId.charAt(0)}
-                                                          </AvatarFallback>
-                                                        </Avatar>
-                                                        <span className="text-xs font-medium truncate max-w-[100px]">
-                                                          {worker?.name ||
-                                                            `Worker ${workerId}`}
-                                                        </span>
-                                                      </div>
-                                                    </TableCell>
-                                                    <TableCell className="py-1 text-xs text-center">
-                                                      <span
-                                                        className={
-                                                          certValid
-                                                            ? "text-green-600 font-medium"
-                                                            : "text-muted-foreground"
-                                                        }
-                                                      >
-                                                        {certValid
-                                                          ? "Yes"
-                                                          : "No"}
-                                                      </span>
-                                                    </TableCell>
-                                                    <TableCell className="py-1 text-xs text-center">
-                                                      <span
-                                                        className={
-                                                          a1Valid
-                                                            ? "text-green-600 font-medium"
-                                                            : "text-muted-foreground"
-                                                        }
-                                                      >
-                                                        {a1Valid ? "Yes" : "No"}
-                                                      </span>
-                                                    </TableCell>
-                                                    <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
-                                                      {worker?.successRate !==
-                                                      undefined
-                                                        ? `${worker.successRate}%`
-                                                        : "100%"}
-                                                    </TableCell>
-                                                  </TableRow>
-                                                );
-                                              },
-                                            )}
-                                          </TableBody>
-                                        </Table>
-                                      </div>
-                                    ) : (
-                                      <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
-                                        No workers assigned yet.
-                                      </div>
-                                    )}
-
-                                    {/* Estimated & Actual Hours Footer */}
-                                    <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                                          Estimated Max Hours:
-                                        </span>
-                                        <span className="font-mono font-semibold">
-                                          {project.estimatedHours || "N/A"}
-                                        </span>
-                                      </div>
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                                          Actual Hours:
-                                        </span>
-                                        <span className="w-16 border-b border-gray-400 dark:border-gray-600"></span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {project.workers &&
-                                  project.workers.length > 0 ? (
-                                    <div className="rounded-md border bg-white dark:bg-gray-950 overflow-hidden shadow-sm h-full">
-                                      <Table>
-                                        <TableHeader className="bg-gray-50/50">
-                                          <TableRow className="h-8 hover:bg-transparent">
-                                            <TableHead className="h-8 text-[10px] font-semibold">
-                                              Name
-                                            </TableHead>
-                                            <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                              Cert
-                                            </TableHead>
-                                            <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                              A1
-                                            </TableHead>
-                                            <TableHead className="h-8 text-[10px] font-semibold text-center">
-                                              Success
-                                            </TableHead>
-                                          </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                          {project.workers.map(
+                                      <div className="flex-1 overflow-y-auto pr-1 space-y-2 max-h-[250px]">
+                                        {project.workers &&
+                                        project.workers.length > 0 ? (
+                                          project.workers.map(
                                             (workerId: string) => {
                                               const worker =
                                                 workersMap[workerId];
@@ -2419,240 +2292,258 @@ export default function AdminProjects() {
                                                 0;
 
                                               return (
-                                                <TableRow
+                                                <Card
                                                   key={workerId}
-                                                  className="h-8 hover:bg-transparent border-0"
+                                                  className="mb-1 overflow-hidden transition-all hover:shadow-md border-l-4 border-l-blue-500"
                                                 >
-                                                  <TableCell className="py-1">
+                                                  <CardContent className="p-2">
                                                     <div className="flex items-center gap-2">
-                                                      <Avatar className="h-5 w-5 border">
+                                                      <Avatar className="h-8 w-8 border shrink-0">
                                                         <AvatarImage
                                                           src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workerId}`}
                                                         />
-                                                        <AvatarFallback className="text-[9px]">
+                                                        <AvatarFallback className="text-[10px]">
                                                           {workerId.charAt(0)}
                                                         </AvatarFallback>
                                                       </Avatar>
-                                                      <span className="text-xs font-medium truncate max-w-[100px]">
-                                                        {worker?.name ||
-                                                          `Worker ${workerId}`}
-                                                      </span>
+                                                      <div className="flex-1 min-w-0">
+                                                        <div className="font-semibold text-xs truncate">
+                                                          {worker?.name ||
+                                                            `Worker ${workerId}`}
+                                                        </div>
+                                                        <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                                          <span
+                                                            className={
+                                                              certValid
+                                                                ? "text-green-600 font-medium"
+                                                                : ""
+                                                            }
+                                                          >
+                                                            Cert:{" "}
+                                                            {certValid
+                                                              ? "Yes"
+                                                              : "No"}
+                                                          </span>
+                                                          <span
+                                                            className={
+                                                              a1Valid
+                                                                ? "text-green-600 font-medium"
+                                                                : ""
+                                                            }
+                                                          >
+                                                            A1:{" "}
+                                                            {a1Valid
+                                                              ? "Yes"
+                                                              : "No"}
+                                                          </span>
+                                                        </div>
+                                                      </div>
+                                                      <div className="text-right shrink-0">
+                                                        <div className="text-xs text-green-600 font-bold">
+                                                          {worker?.successRate !==
+                                                          undefined
+                                                            ? `${worker.successRate}%`
+                                                            : "100%"}
+                                                        </div>
+                                                        <div className="text-[9px] text-muted-foreground">
+                                                          Success
+                                                        </div>
+                                                      </div>
                                                     </div>
-                                                  </TableCell>
-                                                  <TableCell className="py-1 text-xs text-center">
-                                                    <span
-                                                      className={
-                                                        certValid
-                                                          ? "text-green-600 font-medium"
-                                                          : "text-muted-foreground"
-                                                      }
-                                                    >
-                                                      {certValid ? "Yes" : "No"}
-                                                    </span>
-                                                  </TableCell>
-                                                  <TableCell className="py-1 text-xs text-center">
-                                                    <span
-                                                      className={
-                                                        a1Valid
-                                                          ? "text-green-600 font-medium"
-                                                          : "text-muted-foreground"
-                                                      }
-                                                    >
-                                                      {a1Valid ? "Yes" : "No"}
-                                                    </span>
-                                                  </TableCell>
-                                                  <TableCell className="py-1 text-center text-xs text-green-600 font-medium">
-                                                    {worker?.successRate !==
-                                                    undefined
-                                                      ? `${worker.successRate}%`
-                                                      : "100%"}
-                                                  </TableCell>
-                                                </TableRow>
+                                                  </CardContent>
+                                                </Card>
                                               );
                                             },
-                                          )}
-                                        </TableBody>
-                                      </Table>
-                                    </div>
-                                  ) : (
-                                    <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center h-full flex items-center justify-center">
-                                      No workers assigned yet.
-                                    </div>
-                                  )}
-
-                                  {/* Estimated & Actual Hours Footer */}
-                                  <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
-                                    <div className="flex justify-between items-center text-xs">
-                                      <span className="font-medium text-gray-700 dark:text-gray-300">
-                                        Estimated Max Hours:
-                                      </span>
-                                      <span className="font-mono font-semibold">
-                                        {project.estimatedHours || "N/A"}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs">
-                                      <span className="font-medium text-gray-700 dark:text-gray-300">
-                                        Actual Hours:
-                                      </span>
-                                      <span className="w-16 border-b border-gray-400 dark:border-gray-600"></span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Column 3: Bonus & Performance Stats */}
-                                <div className="space-y-4 h-full flex flex-col">
-                                  <div className="h-full flex flex-col">
-                                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                      <Trophy className="h-3 w-3" /> Scope of
-                                      Work
-                                    </h4>
-
-                                    <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
-                                      <div className="flex-1 space-y-5 text-xs">
-                                        {/* Unit Count Header */}
-                                        <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
-                                          <span className="font-medium text-muted-foreground">
-                                            Indoor Units
-                                          </span>
-                                          <Badge
-                                            variant="secondary"
-                                            className="text-sm font-bold px-2.5 py-0.5"
-                                          >
-                                            {project.indoorUnits || 0}
-                                          </Badge>
-                                        </div>
-
-                                        {/* Work Types */}
-                                        <div className="space-y-2">
-                                          <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
-                                            Base Installation
+                                          )
+                                        ) : (
+                                          <div className="text-xs text-muted-foreground italic border rounded p-3 bg-white dark:bg-gray-950 text-center flex items-center justify-center min-h-[50px]">
+                                            No workers assigned yet.
                                           </div>
-                                          {project.selectedWorkTypes &&
-                                          project.selectedWorkTypes.length >
-                                            0 ? (
-                                            <div className="grid gap-2">
-                                              {project.selectedWorkTypes.map(
-                                                (type: string) => {
-                                                  // Calculate cost for this type based on units
-                                                  const units =
-                                                    project.indoorUnits || 0;
-                                                  const unitCosts =
-                                                    PRICING_MATRIX.baseCosts[
-                                                      units
-                                                    ] || {};
-                                                  const cost =
-                                                    (unitCosts as any)[type] ||
-                                                    0;
-
-                                                  return (
-                                                    <div
-                                                      key={type}
-                                                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
-                                                    >
-                                                      <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
-                                                        {WORK_TYPE_LABELS[
-                                                          type
-                                                        ] || type}
-                                                      </span>
-                                                      <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                        € {cost}
-                                                      </span>
-                                                    </div>
-                                                  );
-                                                },
-                                              )}
-                                            </div>
-                                          ) : (
-                                            <p className="text-muted-foreground italic text-[11px] py-1">
-                                              No specific work types selected.
-                                            </p>
-                                          )}
-                                        </div>
-
-                                        {/* Additional Works (Custom) - NEW SECTION */}
-                                        {project.additionalWorks &&
-                                          project.additionalWorks.length >
-                                            0 && (
-                                            <div className="space-y-2 mt-4">
-                                              <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
-                                                Additional Works (In Progress)
-                                              </div>
-                                              <div className="grid gap-2">
-                                                {project.additionalWorks.map(
-                                                  (work: any, idx: number) => {
-                                                    return (
-                                                      <div
-                                                        key={work.id || idx}
-                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
-                                                      >
-                                                        <div className="flex flex-col">
-                                                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
-                                                            {work.description}
-                                                          </span>
-                                                          {work.receiptName && (
-                                                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                              <FileText className="h-3 w-3" />{" "}
-                                                              {work.receiptName}
-                                                            </span>
-                                                          )}
-                                                        </div>
-                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                          € {work.price || 0}
-                                                        </span>
-                                                      </div>
-                                                    );
-                                                  },
-                                                )}
-                                              </div>
-                                            </div>
-                                          )}
-
-                                        {/* Additional Services */}
-                                        {project.selectedAdditionalServices &&
-                                          project.selectedAdditionalServices
-                                            .length > 0 && (
-                                            <div className="space-y-2 mt-4">
-                                              <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
-                                                Extras
-                                              </div>
-                                              <div className="grid gap-2">
-                                                {project.selectedAdditionalServices.map(
-                                                  (serviceId: string) => {
-                                                    const service =
-                                                      ADDITIONAL_SERVICES.find(
-                                                        (s) =>
-                                                          s.id === serviceId,
-                                                      );
-                                                    return (
-                                                      <div
-                                                        key={serviceId}
-                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
-                                                      >
-                                                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
-                                                          {service?.label ||
-                                                            serviceId}
-                                                        </span>
-                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                                                          €{" "}
-                                                          {service?.price || 0}
-                                                        </span>
-                                                      </div>
-                                                    );
-                                                  },
-                                                )}
-                                              </div>
-                                            </div>
-                                          )}
+                                        )}
                                       </div>
 
-                                      <div className="pt-4 mt-4 border-t">
-                                        <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
-                                          <span className="font-bold text-blue-900 dark:text-blue-100">
-                                            Total Amount
+                                      {/* Estimated & Actual Hours Footer */}
+                                      <div className="bg-gray-50 dark:bg-gray-900/10 rounded-lg border p-3 flex flex-col gap-2 mt-auto">
+                                        <div className="flex justify-between items-center text-xs">
+                                          <span className="font-medium text-gray-700 dark:text-gray-300">
+                                            Estimated Max Hours:
                                           </span>
-                                          <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
-                                            {project.amount}
+                                          <span className="font-mono font-semibold">
+                                            {project.estimatedHours || "N/A"}
                                           </span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs">
+                                          <span className="font-medium text-gray-700 dark:text-gray-300">
+                                            Actual Hours:
+                                          </span>
+                                          <span className="w-16 border-b border-gray-400 dark:border-gray-600"></span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Column 3: Scope of Work & Pricing */}
+                                  <div className="space-y-4 h-full flex flex-col">
+                                    <div className="h-full flex flex-col">
+                                      <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                        <Trophy className="h-3 w-3" /> Scope of
+                                        Work
+                                      </h4>
+
+                                      <div className="bg-white dark:bg-gray-950 rounded-lg border p-4 flex flex-col h-full shadow-sm">
+                                        <div className="flex-1 space-y-5 text-xs">
+                                          {/* Unit Count Header */}
+                                          <div className="flex justify-between items-center bg-muted/30 p-2 rounded-md border border-muted/50">
+                                            <span className="font-medium text-muted-foreground">
+                                              Indoor Units
+                                            </span>
+                                            <Badge
+                                              variant="secondary"
+                                              className="text-sm font-bold px-2.5 py-0.5"
+                                            >
+                                              {project.indoorUnits || 0}
+                                            </Badge>
+                                          </div>
+
+                                          {/* Work Types */}
+                                          <div className="space-y-2">
+                                            <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1">
+                                              Base Installation
+                                            </div>
+                                            {project.selectedWorkTypes &&
+                                            project.selectedWorkTypes.length >
+                                              0 ? (
+                                              <div className="grid gap-2">
+                                                {project.selectedWorkTypes.map(
+                                                  (type: string) => {
+                                                    // Calculate cost for this type based on units
+                                                    const units =
+                                                      project.indoorUnits || 0;
+                                                    const unitCosts =
+                                                      PRICING_MATRIX.baseCosts[
+                                                        units
+                                                      ] || {};
+                                                    const cost =
+                                                      (unitCosts as any)[
+                                                        type
+                                                      ] || 0;
+
+                                                    return (
+                                                      <div
+                                                        key={type}
+                                                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                      >
+                                                        <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight whitespace-pre-line">
+                                                          {WORK_TYPE_LABELS[
+                                                            type
+                                                          ] || type}
+                                                        </span>
+                                                        <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                          € {cost}
+                                                        </span>
+                                                      </div>
+                                                    );
+                                                  },
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <p className="text-muted-foreground italic text-[11px] py-1">
+                                                No specific work types selected.
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          {/* Additional Works (Custom) */}
+                                          {project.additionalWorks &&
+                                            project.additionalWorks.length >
+                                              0 && (
+                                              <div className="space-y-2 mt-4">
+                                                <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                                  Additional Works (In Progress)
+                                                </div>
+                                                <div className="grid gap-2">
+                                                  {project.additionalWorks.map(
+                                                    (
+                                                      work: any,
+                                                      idx: number,
+                                                    ) => {
+                                                      return (
+                                                        <div
+                                                          key={work.id || idx}
+                                                          className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                        >
+                                                          <div className="flex flex-col">
+                                                            <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                              {work.description}
+                                                            </span>
+                                                            {work.receiptName && (
+                                                              <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                                <FileText className="h-3 w-3" />{" "}
+                                                                {
+                                                                  work.receiptName
+                                                                }
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                          <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                            € {work.price || 0}
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    },
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                          {/* Additional Services */}
+                                          {project.selectedAdditionalServices &&
+                                            project.selectedAdditionalServices
+                                              .length > 0 && (
+                                              <div className="space-y-2 mt-4">
+                                                <div className="font-semibold text-[10px] uppercase text-muted-foreground border-b pb-1 mb-2">
+                                                  Extras
+                                                </div>
+                                                <div className="grid gap-2">
+                                                  {project.selectedAdditionalServices.map(
+                                                    (serviceId: string) => {
+                                                      const service =
+                                                        ADDITIONAL_SERVICES.find(
+                                                          (s) =>
+                                                            s.id === serviceId,
+                                                        );
+                                                      return (
+                                                        <div
+                                                          key={serviceId}
+                                                          className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-start w-full border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0"
+                                                        >
+                                                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium wrap-break-word leading-tight">
+                                                            {service?.label ||
+                                                              serviceId}
+                                                          </span>
+                                                          <span className="text-xs font-mono font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                                                            €{" "}
+                                                            {service?.price ||
+                                                              0}
+                                                          </span>
+                                                        </div>
+                                                      );
+                                                    },
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-4 mt-4 border-t">
+                                          <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                                            <span className="font-bold text-blue-900 dark:text-blue-100">
+                                              Total Amount
+                                            </span>
+                                            <span className="font-mono font-bold text-lg text-blue-700 dark:text-blue-300">
+                                              {project.amount}
+                                            </span>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
